@@ -53,16 +53,16 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 endif(${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 
 
-add_definitions("-DBUILDING_IOVMALL_DLL")
-
 # Produce the executables!
 add_executable(io_static ${SRCS})
 add_dependencies(io_static iovmall_static)
+target_compile_definitions(io_static PRIVATE BUILDING_IOVMALL_STATIC)
 target_link_libraries(io_static iovmall_static ${LIBS})
 
 
 add_executable(io ${SRCS})
 add_dependencies(io basekit coroutine garbagecollector iovmall)
+target_compile_definitions(io PRIVATE BUILDING_IOVMALL_DLL)
 target_link_libraries(io basekit coroutine garbagecollector iovmall ${LIBS})
 
 # The following add the install target, so we put io and io_static in our

@@ -542,27 +542,9 @@ void Coro_setup(Coro *self, void *arg) {
     globalCallbackBlock.context = ((CallbackBlock *)arg)->context;
     globalCallbackBlock.func = ((CallbackBlock *)arg)->func;
     setjmp(self->env);
-end : {
-    uintptr_t i;
-    uintptr_t *sav = (uintptr_t *)self->env;
-    size_t sz = sizeof(self->env) / sizeof(sav[0]);
-
-    // Try to guess PC index
-    i = sz;
-    while (i--)
-        if (sav[i] == (uintptr_t) && end)
-            break;
-    assert(i < sz);
-    sav[i] = start;
-
-    // Try to guess SP index
-    i = sz;
-    while (i--)
-        if (64 > (-sav[i] + (uintptr_t)&i))
-            break;
-    assert(i < sz);
-    sav[i] = stackend - sizeof(uintptr_t) * 2 - 128;
-}
+    // For MSVC/Windows, use hardcoded jmp_buf layout
+    ((uintptr_t *)self->env)[4] = stackend - 16;  // esp
+    ((uintptr_t *)self->env)[5] = start;          // eip
 }
 
 #endif

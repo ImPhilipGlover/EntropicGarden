@@ -33,6 +33,7 @@
 #include "IoDirectory.h"
 #include "IoProfiler.h"
 //#include "IoEditLine.h"
+#include "IoTelosUI.h"
 
 #include <stdlib.h>
 
@@ -205,6 +206,8 @@ void IoState_new_atAddress(void *address) {
         IoObject_setSlot_to_(core, SIOSYMBOL("CFunction"), cFunctionProto);
         IoObject_setSlot_to_(core, SIOSYMBOL("Profiler"),
                              IoProfiler_proto(self));
+
+        // IoObject_setSlot_to_(core, SIOSYMBOL("TelosUI"), IoTelosUI_proto(self));
 
         self->localsProto = IoState_retain_(self, IoObject_localsProto(self));
         IoObject_setSlot_to_(core, SIOSYMBOL("Locals"), self->localsProto);

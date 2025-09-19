@@ -158,7 +158,6 @@ IO_METHOD(IoObject, errorNumber)
 #ifdef WIN32
 #include <shellapi.h>
 #include "IoError.h"
-#include <stdint.h>
 IO_METHOD(IoObject, shellExecute) {
     LPCTSTR operation;
     LPCTSTR file;

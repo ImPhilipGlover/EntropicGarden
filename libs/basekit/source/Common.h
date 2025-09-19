@@ -33,6 +33,7 @@ typedef signed long int32_t;
  */
 typedef unsigned long long uint64_t;
 typedef long long int64_t;
+typedef ptrdiff_t ssize_t;
 #endif
 
 /* Windows stuff */
@@ -70,7 +71,6 @@ typedef long long int64_t;
 #if defined(WIN32) || defined(__WINS__) || defined(__MINGW32__) ||             \
     defined(_MSC_VER)
 #define inline __inline
-#define snprintf _snprintf
 #ifndef __MINGW32__
 #define usleep(x) Sleep(((x) + 999) / 1000)
 #endif
@@ -85,6 +85,8 @@ typedef long long int64_t;
 //#if !defined(__MINGW32__)
 #if defined(BUILDING_BASEKIT_DLL) || defined(BUILDING_IOVMALL_DLL)
 #define BASEKIT_API __declspec(dllexport)
+#elif defined(BUILDING_IOVMALL_STATIC)
+#define BASEKIT_API
 #else
 #define BASEKIT_API __declspec(dllimport)
 #endif

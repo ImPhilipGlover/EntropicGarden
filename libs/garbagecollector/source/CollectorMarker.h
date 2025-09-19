@@ -15,6 +15,8 @@ extern "C" {
 #if defined(WIN32)
 #if defined(BUILDING_COLLECTOR_DLL) || defined(BUILDING_IOVMALL_DLL)
 #define COLLECTOR_API __declspec(dllexport)
+#elif defined(BUILDING_IOVMALL_STATIC)
+#define COLLECTOR_API
 #else
 #define COLLECTOR_API __declspec(dllimport)
 #endif

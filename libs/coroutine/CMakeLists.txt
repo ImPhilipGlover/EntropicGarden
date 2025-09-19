@@ -7,7 +7,9 @@
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/_build/dll)
 
 # Definitions, love them.
-add_definitions("-DBUILDING_CORO_DLL")
+if(NOT BUILDING_IOVMALL_STATIC)
+    add_definitions("-DBUILDING_CORO_DLL")
+endif()
 
 # Check if we're on FreeBSD, if so, use ucontext.
 if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
