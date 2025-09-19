@@ -33,7 +33,7 @@
 #include "IoDirectory.h"
 #include "IoProfiler.h"
 //#include "IoEditLine.h"
-#include "IoTelosUI.h"
+#include "IoTelos.h"
 
 #include <stdlib.h>
 

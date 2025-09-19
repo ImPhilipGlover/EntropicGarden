@@ -1,1 +1,1 @@
-writeln("Hello TelOS zygote!")
+writeln("Hello Io!")

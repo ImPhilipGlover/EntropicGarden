@@ -1,68 +1,83 @@
 /*
-   IoTelosUI.io - Morphic UI Framework for TelOS
-   Living, directly manipulable interface objects
+   IoTelos.io - TelOS Synaptic Bridge: FFI, Persistence, and UI Stubs
+   The zygote's first pillars: mind touching muscle, heartbeat, and glance
    */
 
-TelosUI := Object clone do(
+Telos := Object clone do(
 
-    // Initialize the Morphic world - the living canvas
+    // Initialize the TelOS zygote - the computational embryo
     init := method(
         self world := nil
         self morphs := List clone
     )
 
+    // Pillar 1: Synaptic Bridge - Reach into Python muscle
+    getPythonVersion := method(
+        Telos_rawGetPythonVersion
+    )
+
+    // Pillar 2: First Heartbeat - Transactional persistence
+    transactional_setSlot := method(target, slotName, value,
+        Telos_rawTransactional_setSlot(target, slotName, value)
+    )
+
+    // Pillar 3: First Glance - UI window stub
+    openWindow := method(
+        Telos_rawOpenWindow
+    )
+
     // Create the root world (Morphic's World)
     createWorld := method(
-        TelosUI_rawCreateWorld
-        world = TelosUI_rawCreateWorld
-        writeln("TelosUI: Morphic World initialized - living canvas ready")
+        Telos_rawCreateWorld
+        world = Telos_rawCreateWorld
+        writeln("Telos: Morphic World initialized - living canvas ready")
         world
     )
 
     // Start the main event loop - the heart of the living interface
     mainLoop := method(
-        if(world == nil, return "TelosUI: No world exists - call createWorld first")
-        writeln("TelosUI: Starting Morphic main loop (direct manipulation active)")
-        TelosUI_rawMainLoop
-        "TelosUI: Main loop completed"
+        if(world == nil, return "Telos: No world exists - call createWorld first")
+        writeln("Telos: Starting Morphic main loop (direct manipulation active)")
+        Telos_rawMainLoop
+        "Telos: Main loop completed"
     )
 
     // Create a new morph - a living visual object
     createMorph := method(
-        morph := TelosUI_rawCreateMorph
+        morph := Telos_rawCreateMorph
         morph submorphs := List clone
         morphs append(morph)
-        writeln("TelosUI: Living morph created and added to ecosystem")
+        writeln("Telos: Living morph created and added to ecosystem")
         morph
     )
 
     // Add a submorph to build the living hierarchy
     addSubmorph := method(parent, child,
-        if(parent == nil or child == nil, return "TelosUI: Invalid morphs")
-        TelosUI_rawAddSubmorph(parent, child)
+        if(parent == nil or child == nil, return "Telos: Invalid morphs")
+        Telos_rawAddSubmorph(parent, child)
         parent submorphs append(child)
-        "TelosUI: Morph added to living hierarchy"
+        "Telos: Morph added to living hierarchy"
     )
 
     // Remove a submorph from the living hierarchy
     removeSubmorph := method(parent, child,
-        if(parent == nil or child == nil, return "TelosUI: Invalid morphs")
-        TelosUI_rawRemoveSubmorph(parent, child)
+        if(parent == nil or child == nil, return "Telos: Invalid morphs")
+        Telos_rawRemoveSubmorph(parent, child)
         parent submorphs remove(child)
-        "TelosUI: Morph removed from living hierarchy"
+        "Telos: Morph removed from living hierarchy"
     )
 
     // Draw the world and all living morphs
     draw := method(
-        if(world == nil, return "TelosUI: No world to draw")
-        TelosUI_rawDraw
-        "TelosUI: World rendered"
+        if(world == nil, return "Telos: No world to draw")
+        Telos_rawDraw
+        "Telos: World rendered"
     )
 
     // Handle direct manipulation events
     handleEvent := method(event,
-        TelosUI_rawHandleEvent(event)
-        "TelosUI: Event processed through living interface"
+        Telos_rawHandleEvent(event)
+        "Telos: Event processed through living interface"
     )
 )
 
@@ -84,20 +99,20 @@ Morph := Object clone do(
     moveTo := method(newX, newY,
         self x = newX
         self y = newY
-        "TelosUI: Morph moved to living position"
+        "Telos: Morph moved to living position"
     )
 
     // Resize the morph (direct manipulation)
     resizeTo := method(newWidth, newHeight,
         self width = newWidth
         self height = newHeight
-        "TelosUI: Morph resized in living space"
+        "Telos: Morph resized in living space"
     )
 
     // Change color (direct manipulation)
     setColor := method(r, g, b, a := 1,
         self color = list(r, g, b, a)
-        "TelosUI: Morph color changed in living palette"
+        "Telos: Morph color changed in living palette"
     )
 
     // Check if point is inside morph bounds
@@ -109,14 +124,14 @@ Morph := Object clone do(
     addMorph := method(child,
         child owner = self
         submorphs append(child)
-        TelosUI addSubmorph(self, child)
+        Telos addSubmorph(self, child)
     )
 
     // Remove a submorph
     removeMorph := method(child,
         submorphs remove(child)
         child owner = nil
-        TelosUI removeSubmorph(self, child)
+        Telos removeSubmorph(self, child)
     )
 
     // Draw this morph and all submorphs
@@ -151,7 +166,7 @@ Morph := Object clone do(
 // Rectangle morph - basic shape
 RectangleMorph := Morph clone do(
     draw := method(
-        writeln("TelosUI: Drawing rectangle at (", x, ",", y, ") size ", width, "x", height)
+        writeln("Telos: Drawing rectangle at (", x, ",", y, ") size ", width, "x", height)
     )
 )
 
@@ -161,7 +176,7 @@ CircleMorph := Morph clone do(
         radius := width / 2
         centerX := x + radius
         centerY := y + radius
-        writeln("TelosUI: Drawing circle at (", centerX, ",", centerY, ") radius ", radius)
+        writeln("Telos: Drawing circle at (", centerX, ",", centerY, ") radius ", radius)
     )
 )
 
@@ -174,13 +189,13 @@ TextMorph := Morph clone do(
     )
 
     draw := method(
-        writeln("TelosUI: Drawing text '", text, "' at (", x, ",", y, ") size ", fontSize)
+        writeln("Telos: Drawing text '", text, "' at (", x, ",", y, ") size ", fontSize)
     )
 
     setText := method(newText,
         self text = newText
-        "TelosUI: Text morph updated with living message"
+        "Telos: Text morph updated with living message"
     )
 )
 
-writeln("TelosUI: Morphic framework loaded - living interface ready for direct manipulation")
+writeln("Telos: Zygote pillars loaded - mind touches muscle, heartbeat begins, first glance opens")

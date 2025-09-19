@@ -100,14 +100,14 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../basekit/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../coroutine/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../garbagecollector/source
-    ${CMAKE_CURRENT_SOURCE_DIR}/../TelosUI/source
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Telos/source
     )
 
 # Our library sources.
 file(GLOB SRCS "source/*.c")
 list(APPEND SRCS source/IoVMInit.c)
 list(APPEND SRCS ../../deps/parson/parson.c)
-list(APPEND SRCS ../TelosUI/source/IoTelosUI.c)
+list(APPEND SRCS ../Telos/source/IoTelos.c)
 file(GLOB HEADERS "source/*.h")
 
 # Now build the shared library

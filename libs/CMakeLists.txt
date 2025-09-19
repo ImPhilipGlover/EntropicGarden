@@ -56,7 +56,7 @@ file(GLOB COROUTINE_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/coroutine/source/*.c")
 file(GLOB BASEKIT_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/basekit/source/*.c")
 file(GLOB GARBAGECOLLECTOR_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/garbagecollector/source/*.c")
 file(GLOB IOVM_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/iovm/source/*.c")
-file(GLOB TELOSUI_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/TelosUI/source/*.c")
+file(GLOB TELOS_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/Telos/source/*.c")
 list(APPEND IOVM_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/../deps/parson/parson.c)
 
 # Marvelous flags, likely compiler dependent.
@@ -68,7 +68,7 @@ set(IOVMALL_STATIC_SRCS
 	${BASEKIT_SRCS}
 	${GARBAGECOLLECTOR_SRCS}
 	${IOVM_SRCS}
-	${TELOSUI_SRCS}
+	${TELOS_SRCS}
 )
 
 # The custom command to generate source/IoVMInit.c which is our
@@ -93,7 +93,7 @@ include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/basekit/source/simd_cph/include
 	${CMAKE_CURRENT_SOURCE_DIR}/coroutine/source
 	${CMAKE_CURRENT_SOURCE_DIR}/garbagecollector/source
-	${CMAKE_CURRENT_SOURCE_DIR}/TelosUI/source
+	${CMAKE_CURRENT_SOURCE_DIR}/Telos/source
 )
 
 # Add a file to our library sources.
@@ -110,4 +110,4 @@ add_subdirectory(coroutine)
 add_subdirectory(basekit)
 add_subdirectory(garbagecollector)
 add_subdirectory(iovm)
-add_subdirectory(TelosUI)
+add_subdirectory(Telos)
