@@ -29,10 +29,11 @@ include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/../libs/coroutine/source
 	${CMAKE_CURRENT_SOURCE_DIR}/../libs/garbagecollector/source
 	${CMAKE_CURRENT_SOURCE_DIR}/../libs/iovm/source
+	${CMAKE_CURRENT_SOURCE_DIR}/../libs/Telos/source
 )
 
-# Only one file, main.c
-set(SRCS source/main.c)
+# Only one file, main.c (+ addon init shim)
+set(SRCS source/main.c source/IoAddons.c)
 
 # Set up an empty LIBS so we can append to it things we may need to link in.
 set(LIBS)
@@ -53,17 +54,17 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 endif(${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 
 
+add_definitions("-DBUILDING_IOVMALL_DLL")
+
 # Produce the executables!
 add_executable(io_static ${SRCS})
-add_dependencies(io_static iovmall_static)
-target_compile_definitions(io_static PRIVATE BUILDING_IOVMALL_STATIC)
-target_link_libraries(io_static iovmall_static ${LIBS})
+add_dependencies(io_static iovmall_static IoTelos_static)
+target_link_libraries(io_static iovmall_static IoTelos_static ${LIBS})
 
 
 add_executable(io ${SRCS})
-add_dependencies(io basekit coroutine garbagecollector iovmall)
-target_compile_definitions(io PRIVATE BUILDING_IOVMALL_DLL)
-target_link_libraries(io basekit coroutine garbagecollector iovmall ${LIBS})
+add_dependencies(io basekit coroutine garbagecollector iovmall IoTelos)
+target_link_libraries(io basekit coroutine garbagecollector iovmall IoTelos ${LIBS})
 
 # The following add the install target, so we put io and io_static in our
 # install prefix.

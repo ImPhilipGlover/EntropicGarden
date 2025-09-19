@@ -17,6 +17,8 @@ IoTag *IoTelos_newTag(void *state);
 IoTelos *IoTelos_proto(void *state);
 IoTelos *IoTelos_rawClone(IoTelos *proto);
 void IoTelos_free(IoTelos *self);
+// Addon-style init entry point to be called by host at bindings init time
+void IoTelosInit(IoState *self, IoObject *context);
 
 // TelOS Core API methods
 IoObject *IoTelos_getPythonVersion(IoTelos *self, IoObject *locals, IoMessage *m);

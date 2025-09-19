@@ -1,12 +1,10 @@
 #include "IoState.h"
+#include "IoState_callbacks.h"
 
-void IoAddonsInit(IoObject *context);
+void IoAddonsInit(IoState *self, IoObject *context);
 
-//#define IOBINDINGS
-
-#ifdef IO_CHECK_ALLOC
+#define IO_CHECK_ALLOC
 #define IO_SHOW_STATS 1
-#endif
 
 #ifdef IO_SHOW_STATS
 #include <time.h>
@@ -35,9 +33,8 @@ int main(int argc, const char *argv[])
 
 
 	self = IoState_new();
-#ifdef IOBINDINGS
+	// Register addons (e.g., TelOS) before state init completes
 	IoState_setBindingsInitCallback(self, (IoStateBindingsInitCallback *)IoAddonsInit);
-#endif
 	IoState_init(self);
 	IoState_argc_argv_(self, argc, argv);
 	//IoState_doCString_(self, "some test code...");

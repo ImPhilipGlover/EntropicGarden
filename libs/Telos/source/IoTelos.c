@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <Python.h> // FFI Pillar: Include Python C API
 
 static const char *protoId = "Telos";
 
@@ -32,6 +33,18 @@ typedef struct {
 
 // Global world state
 static MorphicWorld *globalWorld = NULL;
+static int isPythonInitialized = 0;
+
+// --- Helper Functions ---
+void IoTelos_initPython(void) {
+    if (!isPythonInitialized) {
+        Py_Initialize();
+        isPythonInitialized = 1;
+        printf("TelOS: Python Synaptic Bridge Initialized.\n");
+        // Ensure Python interpreter is finalized on exit
+        atexit(Py_Finalize);
+    }
+}
 
 IoTag *IoTelos_newTag(void *state)
 {
@@ -46,6 +59,8 @@ IoTelos *IoTelos_proto(void *state)
 {
 	IoObject *self = IoObject_new(state);
 	IoObject_tag_(self, IoTelos_newTag(state));
+
+	IoTelos_initPython(); // Initialize the FFI bridge
 
 	IoState_registerProtoWithId_(state, self, protoId);
 
@@ -88,6 +103,47 @@ void IoTelos_free(IoTelos *self)
         free(globalWorld);
         globalWorld = NULL;
     }
+    // Python is finalized via atexit()
+}
+
+// Addon-style init entry point
+// Registers the Telos prototype under Protos and wires raw method aliases
+void IoTelosInit(IoState *state, IoObject *context)
+{
+    // Ensure proto exists and is registered (without fatal lookups)
+    IoObject *telosProto = (IoObject *)PointerHash_at_(state->primitives, (void *)protoId);
+    if (!telosProto) {
+        telosProto = (IoObject *)IoTelos_proto(state); // registers under protoId
+    }
+
+    // Expose on Protos namespace as Telos
+    IoObject *protos = IoObject_getSlot_(state->lobby, IoState_symbolWithCString_(state, "Protos"));
+    if (protos)
+    {
+    IoObject_setSlot_to_(protos, IoState_symbolWithCString_(state, "Telos"), telosProto);
+    }
+
+    // Provide raw aliases expected by IoTelos.io
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawGetPythonVersion"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_getPythonVersion, NULL, "Telos_rawGetPythonVersion"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawTransactional_setSlot"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_transactional_setSlot, NULL, "Telos_rawTransactional_setSlot"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawOpenWindow"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_openWindow, NULL, "Telos_rawOpenWindow"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawCreateWorld"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_createWorld, NULL, "Telos_rawCreateWorld"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawMainLoop"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_mainLoop, NULL, "Telos_rawMainLoop"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawCreateMorph"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_createMorph, NULL, "Telos_rawCreateMorph"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawAddSubmorph"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_addSubmorph, NULL, "Telos_rawAddSubmorph"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawRemoveSubmorph"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_removeSubmorph, NULL, "Telos_rawRemoveSubmorph"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawDraw"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_draw, NULL, "Telos_rawDraw"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawHandleEvent"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_handleEvent, NULL, "Telos_rawHandleEvent"));
 }
 
 // --- TelOS Core Functions ---
@@ -95,10 +151,9 @@ void IoTelos_free(IoTelos *self)
 // Get Python version via FFI (Pillar 1: Synaptic Bridge)
 IoObject *IoTelos_getPythonVersion(IoTelos *self, IoObject *locals, IoMessage *m)
 {
-    // Stub implementation - in real FFI, this would call Python C API
-    // For now, return a mock version string
     printf("TelOS: Reaching into Python muscle via FFI...\n");
-    return IoSeq_newWithCString_(IOSTATE, "3.11.0 (FFI Bridge Active)");
+    const char* version = Py_GetVersion();
+    return IoSeq_newWithCString_(IOSTATE, version);
 }
 
 // Transactional persistence stub (Pillar 2: First Heartbeat)
@@ -186,8 +241,8 @@ IoObject *IoTelos_mainLoop(IoTelos *self, IoObject *locals, IoMessage *m)
 
         // Small delay to prevent busy loop
         // In real implementation: proper event loop with vsync
-        printf("Telos: World heartbeat (morphs: %d)\n",
-               IoList_rawSize(globalWorld->world->submorphs));
+     printf("Telos: World heartbeat (morphs: %d)\n",
+         (int)IoList_rawSize(globalWorld->world->submorphs));
 
         // For demo: exit after a few iterations
         static int iterations = 0;
@@ -206,23 +261,23 @@ IoObject *IoTelos_createMorph(IoTelos *self, IoObject *locals, IoMessage *m)
     IoObject *morph = IoObject_new(IOSTATE);
 
     // Set up morph properties
-    IoObject_setSlot_to_(morph, SIOSYMBOL("x"), IONUMBER(100));
-    IoObject_setSlot_to_(morph, SIOSYMBOL("y"), IONUMBER(100));
-    IoObject_setSlot_to_(morph, SIOSYMBOL("width"), IONUMBER(50));
-    IoObject_setSlot_to_(morph, SIOSYMBOL("height"), IONUMBER(50));
-    IoObject_setSlot_to_(morph, SIOSYMBOL("color"), IoList_new(IOSTATE));
+    IoObject_setSlot_to_(morph, IOSYMBOL("x"), IONUMBER(100));
+    IoObject_setSlot_to_(morph, IOSYMBOL("y"), IONUMBER(100));
+    IoObject_setSlot_to_(morph, IOSYMBOL("width"), IONUMBER(50));
+    IoObject_setSlot_to_(morph, IOSYMBOL("height"), IONUMBER(50));
+    IoObject_setSlot_to_(morph, IOSYMBOL("color"), IoList_new(IOSTATE));
 
     // Initialize color as [r, g, b, a]
-    IoList *color = (IoList *)IoObject_getSlot_(morph, SIOSYMBOL("color"));
+    IoList *color = (IoList *)IoObject_getSlot_(morph, IOSYMBOL("color"));
     IoList_rawAppend_(color, IONUMBER(1.0)); // red
     IoList_rawAppend_(color, IONUMBER(0.0)); // green
     IoList_rawAppend_(color, IONUMBER(0.0)); // blue
     IoList_rawAppend_(color, IONUMBER(1.0)); // alpha
 
     // Add morph methods
-    IoObject_setSlot_to_(morph, SIOSYMBOL("draw"), IoCFunction_newWithFunctionPointer_tag_name_(
+    IoObject_setSlot_to_(morph, IOSYMBOL("draw"), IoCFunction_newWithFunctionPointer_tag_name_(
         IOSTATE, IoTelos_morphDraw, NULL, "morphDraw"));
-    IoObject_setSlot_to_(morph, SIOSYMBOL("containsPoint"), IoCFunction_newWithFunctionPointer_tag_name_(
+    IoObject_setSlot_to_(morph, IOSYMBOL("containsPoint"), IoCFunction_newWithFunctionPointer_tag_name_(
         IOSTATE, IoTelos_morphContainsPoint, NULL, "morphContainsPoint"));
 
     printf("Telos: Living morph created at (100,100)\n");
@@ -241,10 +296,10 @@ IoObject *IoTelos_addSubmorph(IoTelos *self, IoObject *locals, IoMessage *m)
     }
 
     // Get or create submorphs list
-    IoList *submorphs = (IoList *)IoObject_getSlot_(parentMorph, SIOSYMBOL("submorphs"));
+    IoList *submorphs = (IoList *)IoObject_getSlot_(parentMorph, IOSYMBOL("submorphs"));
     if (!submorphs) {
         submorphs = IoList_new(IOSTATE);
-        IoObject_setSlot_to_(parentMorph, SIOSYMBOL("submorphs"), submorphs);
+    IoObject_setSlot_to_(parentMorph, IOSYMBOL("submorphs"), submorphs);
     }
 
     IoList_rawAppend_(submorphs, childMorph);
@@ -264,7 +319,7 @@ IoObject *IoTelos_removeSubmorph(IoTelos *self, IoObject *locals, IoMessage *m)
         return self;
     }
 
-    IoList *submorphs = (IoList *)IoObject_getSlot_(parentMorph, SIOSYMBOL("submorphs"));
+    IoList *submorphs = (IoList *)IoObject_getSlot_(parentMorph, IOSYMBOL("submorphs"));
     if (submorphs) {
         IoList_rawRemove_(submorphs, childMorph);
         printf("Telos: Morph removed from living hierarchy\n");
@@ -315,10 +370,10 @@ void IoTelos_drawWorld(IoTelos *self)
 
 void IoTelos_drawMorph(IoTelos *self, IoObject *morph)
 {
-    IoNumber *x = (IoNumber *)IoObject_getSlot_(morph, SIOSYMBOL("x"));
-    IoNumber *y = (IoNumber *)IoObject_getSlot_(morph, SIOSYMBOL("y"));
-    IoNumber *w = (IoNumber *)IoObject_getSlot_(morph, SIOSYMBOL("width"));
-    IoNumber *h = (IoNumber *)IoObject_getSlot_(morph, SIOSYMBOL("height"));
+    IoNumber *x = (IoNumber *)IoObject_getSlot_(morph, IOSYMBOL("x"));
+    IoNumber *y = (IoNumber *)IoObject_getSlot_(morph, IOSYMBOL("y"));
+    IoNumber *w = (IoNumber *)IoObject_getSlot_(morph, IOSYMBOL("width"));
+    IoNumber *h = (IoNumber *)IoObject_getSlot_(morph, IOSYMBOL("height"));
 
     printf("Telos: Drawing morph at (%.0f,%.0f) size %.0fx%.0f\n",
            x ? CNUMBER(x) : 0,
@@ -347,10 +402,10 @@ IoObject *IoTelos_morphContainsPoint(IoObject *self, IoObject *locals, IoMessage
 
     if (!px || !py) return IOSTATE->ioFalse;
 
-    IoNumber *x = (IoNumber *)IoObject_getSlot_(self, SIOSYMBOL("x"));
-    IoNumber *y = (IoNumber *)IoObject_getSlot_(self, SIOSYMBOL("y"));
-    IoNumber *w = (IoNumber *)IoObject_getSlot_(self, SIOSYMBOL("width"));
-    IoNumber *h = (IoNumber *)IoObject_getSlot_(self, SIOSYMBOL("height"));
+    IoNumber *x = (IoNumber *)IoObject_getSlot_(self, IOSYMBOL("x"));
+    IoNumber *y = (IoNumber *)IoObject_getSlot_(self, IOSYMBOL("y"));
+    IoNumber *w = (IoNumber *)IoObject_getSlot_(self, IOSYMBOL("width"));
+    IoNumber *h = (IoNumber *)IoObject_getSlot_(self, IOSYMBOL("height"));
 
     double pointX = CNUMBER(px);
     double pointY = CNUMBER(py);
