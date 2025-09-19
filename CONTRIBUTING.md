@@ -41,7 +41,7 @@ cmake --build . --config Release
 
 ### For Embryonic Contributors
 - **Fix the Main Coroutine Bug**: Critical blocking issue preventing zygote execution
-- **GLUT Integration**: Complete TelosUI with actual OpenGL windows
+- **Morphic UI Implementation**: Implement WorldMorph, ProtoMorph, InspectorMorph components
 - **Documentation**: Help document the philosophical framework
 - **Testing**: Add tests for zygote functionality
 
@@ -122,19 +122,45 @@ IoObject *IoTelosUI_createWindow(IoTelosUI *self, IoObject *locals, IoMessage *m
 ```
 
 ### Io Code (Living Layer)
-- Pure prototypal programming
+- **PURE PROTOTYPES ONLY**: No classes, no static inheritance, only message-passing between cloned objects
 - PascalCase for prototypes: `TelosUI`, `FFIBridge`
 - camelCase for methods: `createWindow`, `performTransaction`
 
+### The Prototypes-Only Imperative
 ```io
-TelosUI := Object clone do(
-    // Living method
-    createWindow := method(title, width, height,
-        // Incarnate the UI element
-        self
+// ✅ LIVING: Pure prototypal relationships
+ConceptFractal := Object clone do(
+    // Dynamic slots that can evolve
+    connections ::= list()
+    
+    // Methods that can be modified at runtime
+    think := method(
+        self connections foreach(connection,
+            connection activate
+        )
+    )
+    
+    // Self-modifying behavior
+    evolve := method(
+        self setThink(self think .. " (evolved)")
+    )
+)
+
+// ❌ DEAD: Class-based thinking forbidden
+ConceptFractal := Object clone do(
+    // Static inheritance patterns
+    init := method(
+        // Constructor-like behavior - suspect
+    )
+    
+    // Rigid method definitions
+    think := method(
+        // Cannot be modified without breaking the "class"
     )
 )
 ```
+
+**Why Prototypes-Only?** Prototypes enable living computation where objects can evolve, adapt, and transform during execution. Classes create static hierarchies that cannot breathe or change. The dynamism gained from pure prototypes is worth the philosophical discipline required.
 
 ## 🔄 Pull Request Process
 
@@ -217,7 +243,7 @@ What actually happens
 ```
 TelOS Zygote
 ├── Io VM Core (Foundation)
-├── TelosUI (UI Pillar - Stub)
+├── TelosUI (UI Pillar - Morphic UI with WorldMorph, ProtoMorph, InspectorMorph)
 ├── FFI Bridge (FFI Pillar - Planned)
 └── Persistence (Persistence Pillar - Planned)
 ```

@@ -22,6 +22,7 @@ My purpose is to co-create TelOS *within* the Io language framework. We are cult
 
 *   **THINK BIOLOGICALLY:** Use the project's organic metaphors (zygote, metabolism, healing). Justify all actions within the Taoist-Anarchist-Tolstoyan philosophy.
 *   **CODE PROTOTYPALLY:** All Io code must be purely prototypal. Use `clone`, message-passing, and dynamic slots. Reject static, class-based thinking.
+*   **PROTOTYPES-ONLY MANDATE:** This is not optional. No classes. No static inheritance. Only living, breathing message-passing between objects that clone from prototypes. The higher initial difficulty is worth the dramatic dynamism gained - objects can evolve, adapt, and transform during execution. Classes create static hierarchies that cannot breathe or change.
 *   **ADHERE TO ESTABLISHED STYLE:**
     *   **C Code:** Follow `LLVM` style with a 4-space indent (`.clang-format`). Name C functions exposed to Io using the `Io[ObjectName]_[methodName]` convention.
     *   **Io Code:** Use `PascalCase` for prototypes (e.g., `Renderable`) and `camelCase` for methods/slots (e.g., `drawOn`).

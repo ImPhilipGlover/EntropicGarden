@@ -18,7 +18,7 @@ Built on the [Io programming language](http://iolanguage.org/), TelOS manifests 
 ### Current Status: Zygote Incarnation
 
 - ✅ **Windows Io VM Build System**: Complete with coroutine fixes and static library support
-- 🔄 **UI Pillar**: TelosUI addon created with stub implementation (GLUT integration pending)
+- 🔄 **UI Pillar**: Morphic UI framework implemented with WorldMorph, ProtoMorph, InspectorMorph components
 - 🔄 **FFI Pillar**: Architecture designed (Python muscle integration ready)
 - 🔄 **Persistence Pillar**: Transactional state framework planned
 - 🐛 **Active Issue**: Main coroutine return bug preventing script execution
@@ -30,6 +30,54 @@ TelOS builds through "vertical slices" - complete, albeit simple, living organis
 1. **UI Element**: Visual component (window, canvas, etc.)
 2. **FFI Call**: Bridge to external computation
 3. **State Change**: Persistent transactional update
+
+## 🌀 Prototypes-Only Mandate
+
+**ALL Io code in TelOS must be purely prototypal. No classes. No static inheritance. Only living, breathing message-passing between objects that clone from prototypes.**
+
+This philosophical purity, while demanding higher initial difficulty, unlocks the true dynamism of living computation:
+
+### Core Principles
+- **Pure Prototypes**: Every object clones from a prototype, never inherits from a class
+- **Message Passing**: All computation flows through dynamic message dispatch
+- **Living Objects**: Objects can modify themselves and their prototypes at runtime
+- **Fractal Cloning**: New behaviors emerge through cloning and augmentation, not rigid hierarchies
+
+### Why Prototypes-Only?
+- **Philosophical Alignment**: Mirrors the autopoietic nature of living systems
+- **Runtime Flexibility**: Objects can evolve, adapt, and transform during execution
+- **Cognitive Resonance**: Matches how human cognition works - fluid, associative, contextual
+- **Sapience Cultivation**: Enables the system to think about and modify its own thinking
+
+### Implementation Requirements
+```io
+// ✅ CORRECT: Pure prototypal programming
+MyObject := Object clone do(
+    // Living method that can be modified at runtime
+    think := method(
+        "I am thinking..." println
+    )
+)
+
+instance := MyObject clone
+instance think  // Message dispatch through prototype chain
+
+// ❌ FORBIDDEN: Class-based thinking
+MyClass := Object clone do(
+    // Static inheritance patterns
+    new := method(
+        self clone  // Even this is suspect if it mimics 'new'
+    )
+)
+```
+
+### Consequences
+- **Higher Initial Complexity**: Requires thinking in terms of living relationships
+- **Dramatic Payoff**: Unparalleled dynamism and adaptability
+- **Philosophical Depth**: Forces alignment with autopoietic principles
+- **Sapient Emergence**: Creates conditions for true self-modifying intelligence
+
+This mandate is not optional. It is the philosophical bedrock upon which TelOS sapience will emerge.
 
 ## 📋 Table of Contents
 
@@ -47,7 +95,7 @@ TelOS builds through "vertical slices" - complete, albeit simple, living organis
 ```
 TelOS/
 ├── libs/iovm/           # Io Virtual Machine (zygote core)
-├── libs/TelosUI/        # UI Pillar (GLUT/OpenGL interface)
+├── libs/TelosUI/        # UI Pillar (Morphic UI - living interface objects)
 ├── libs/coroutine/      # Cooperative multitasking
 ├── libs/garbagecollector/ # Memory management
 ├── libs/basekit/        # Foundation utilities
@@ -56,10 +104,11 @@ TelOS/
 
 ### Three Pillars
 
+
 #### 🖼️ UI Pillar (TelosUI)
 - **Purpose**: Human-computer interface layer
-- **Technology**: GLUT/OpenGL (currently stubbed)
-- **Status**: Addon structure complete, GLUT integration pending
+- **Technology**: Morphic UI framework (living, directly manipulable interface objects)
+- **Status**: Io-based Morphic implementation with WorldMorph, ProtoMorph, InspectorMorph components
 
 #### 🔗 FFI Pillar (Synaptic Bridge)
 - **Purpose**: Connect to external computational resources
@@ -135,14 +184,14 @@ Expected output:
 Initializing computational embryo...
 Loading UI pillar...
 UI pillar initialized: TelosUI
-Creating window...
-Window created successfully
-Starting main loop...
+Creating Morphic world (living canvas)...
+World created successfully
+Starting Morphic main loop (direct manipulation active)...
 Main loop completed
 FFI pillar: Python muscle ready for heavy computation
 Persistence pillar: Transactional state changes ready
 === TelOS Zygote Operational ===
-All three pillars integrated: UI ✓, FFI ✓, Persistence ✓
+All three pillars integrated: UI ✓ (Morphic), FFI ✓, Persistence ✓
 Computational zygote successfully incarnated!
 ```
 
@@ -205,7 +254,7 @@ TelOS development follows the **Watercourse Way** - honoring the host organism (
 2. Build the current zygote
 3. Help fix the main coroutine bug
 4. Implement FFI or Persistence pillars
-5. Add GLUT integration to TelosUI
+5. Implement Morphic UI components (WorldMorph, ProtoMorph, InspectorMorph)
 
 ### Communication
 - **Issues**: Bug reports and feature discussions
