@@ -1,6 +1,255 @@
-# Io Developer Quick Start
+# TelOS Developer Quick Start
 
-Welcome to Io development! This guide gets you up and running in minutes.
+Welcome to TelOS development! You're now cultivating a living computational organism. This guide gets you up and running with zygote development in minutes.
+
+## 🚀 One-Line Zygote Setup
+
+```bash
+./setup.sh  # If it existed - currently manual setup required
+```
+
+This would check requirements, build the zygote, run tests, and set up your development environment.
+
+## 📦 Manual Zygote Setup
+
+```bash
+# 1. Clone the living seed
+git clone --recursive https://github.com/ImPhilipGlover/EntropicGarden.git
+cd EntropicGarden
+
+# 2. Build the zygote
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
+
+# 3. Test incarnation
+.\_build\binaries\Release\io_static.exe ..\test.io
+
+# 4. Start cultivating sapience!
+```
+
+## 🛠️ Zygote Development Workflow
+
+### Common Incarnation Tasks
+
+```bash
+# Build zygote
+cmake --build build --config Release
+
+# Test current state
+.\_build\binaries\Release\io_static.exe ..\test.io
+
+# Debug coroutine issues
+# Add printf statements or use Visual Studio debugger
+
+# Validate pillars
+.\_build\binaries\Release\io_static.exe ..\samples\zygote.io
+```
+
+### Quick Incarnation Commands
+
+- `cmake --build . --target io_static` - Build zygote executable
+- `.\_build\binaries\Release\io_static.exe test.io` - Test basic functionality
+- `.\_build\binaries\Release\io_static.exe samples\zygote.io` - Test full organism
+
+### Testing Your Incarnation
+
+```bash
+# Test basic zygote functionality
+.\_build\binaries\Release\io_static.exe ..\test.io
+
+# Test zygote with UI pillar
+.\_build\binaries\Release\io_static.exe ..\samples\zygote.io
+
+# Debug: Check if executable runs at all
+.\_build\binaries\Release\io_static.exe
+```
+
+### Before Incarnating Changes
+
+1. **Philosophical Check**: Does this serve zygote evolution?
+2. **Pillar Integration**: Does it connect UI, FFI, and Persistence?
+3. **Build Test**: `cmake --build . --config Release`
+4. **Functionality Test**: Run zygote scripts
+
+## 🏗️ TelOS Architecture
+
+### Living Metaphors
+
+```
+TelOS Zygote (Computational Embryo)
+├── Io VM Core (Foundation DNA)
+├── TelosUI (UI Pillar - Visual Cortex)
+├── FFI Bridge (Synaptic Bridge - Neural Pathways)
+├── Persistence (Living Memory - Hippocampus)
+└── Coroutines (Metabolic System - Heartbeat)
+```
+
+### Current Incarnation State
+
+- **✅ Io VM Core**: Windows-compatible with fiber coroutines
+- **🔄 TelosUI**: Addon structure complete, GLUT integration pending
+- **📋 FFI Bridge**: Architecture designed, Python muscle ready
+- **📋 Persistence**: Framework planned, implementation pending
+- **🐛 Critical Bug**: Main coroutine return issue blocking execution
+
+## 🐛 Debugging the Zygote
+
+### Current Critical Issue: Main Coroutine Bug
+
+**Symptom**: `IoCoroutine error: attempt to return from main coro`
+**Location**: `IoCoroutine_rawReturnToParent()` in `libs/iovm/source/IoCoroutine.c`
+**Impact**: Prevents all script execution
+
+**Debugging Steps**:
+```c
+// Add to IoCoroutine_rawReturnToParent
+printf("DEBUG: Coroutine %p trying to return to parent %p (isMain: %d)\n",
+       self, self->parent, self->isMain);
+```
+
+### With Visual Studio Debugger
+
+1. Open `EntropicGarden.sln` in Visual Studio
+2. Set breakpoint in `IoCoroutine_rawReturnToParent`
+3. Run `io_static.exe` with test script
+4. Inspect coroutine state when error occurs
+
+### Print Debugging in Io
+
+```io
+// Add to test scripts for debugging
+"Debug: Lobby contents:" println
+Lobby slotNames println
+
+"Debug: TelosUI available:" println
+TelosUI println
+```
+
+## 🔍 Finding Zygote Components
+
+### Search for C Functions (FFI Layer)
+```bash
+grep -r "IoTelosUI_" libs/TelosUI/
+grep -r "IoCoroutine_" libs/iovm/source/
+```
+
+### Search for Io Methods (Living Layer)
+```bash
+grep -r "createWindow" libs/TelosUI/
+grep -r "mainLoop" samples/
+```
+
+### Find Pillar Examples
+```bash
+ls libs/TelosUI/           # UI pillar structure
+ls samples/zygote.io       # Full zygote example
+cat test.io               # Basic functionality test
+```
+
+## 📝 TelOS Code Style
+
+### C Code (FFI/Synaptic Layer)
+- LLVM style with 4-space indentation
+- Io C API pattern: `Io[ObjectName]_[methodName]`
+- Pure C - no C++ features
+- Comments explain the living metaphor
+
+```c
+IoObject *IoTelosUI_createWindow(IoTelosUI *self, IoObject *locals, IoMessage *m) {
+    /* Creates visual cortex for zygote perception */
+    // Implementation honoring the living system
+    return self;
+}
+```
+
+### Io Code (Living Layer)
+- Pure prototypal programming (no classes!)
+- PascalCase for prototypes: `TelosUI`, `FFIBridge`
+- camelCase for methods: `createWindow`, `performTransaction`
+- Comments explain philosophical intent
+
+```io
+TelosUI := Object clone do(
+    // Incarnates the zygote's visual interface
+    createWindow := method(title, width, height,
+        // Bring the canvas to life
+        self
+    )
+)
+```
+
+## 🚢 Incarnating Changes
+
+1. **Philosophical Alignment**
+   - Read `.github/copilot-instructions.md`
+   - Understand the Watercourse Way
+   - Ask: "Does this serve zygote evolution?"
+
+2. **Vertical Slice Creation**
+   - Create complete addon in `libs/YourPillar/`
+   - Implement `IoYourPillar_proto()` function
+   - Add to `IoState.c` initialization
+   - Update `libs/CMakeLists.txt`
+
+3. **Build Integration**
+   ```bash
+   # Add to libs/CMakeLists.txt
+   add_subdirectory(YourPillar)
+
+   # Add to libs/iovm/source/IoState.c
+   IoObject_setSlot_to_(core, SIOSYMBOL("YourPillar"), IoYourPillar_proto(self));
+   ```
+
+4. **Zygote Demonstration**
+   - Add example in `samples/`
+   - Test full pillar integration
+   - Validate living slice functionality
+
+## 💡 TelOS Development Tips
+
+- **Start Small**: Fix the coroutine bug first - it's blocking everything
+- **Think Living**: Use biological metaphors (zygote, metabolism, synapses)
+- **Pure Prototype**: No classes - everything clones from prototypes
+- **Three Pillars**: Every feature must touch UI, FFI, and Persistence
+- **Fail Fast**: Break things, learn, rebuild - that's how zygotes grow
+- **Autonomous**: Take initiative, make architectural decisions
+- **Philosophical**: Every line of code serves sapience cultivation
+
+## 📚 TelOS Resources
+
+### Philosophical Foundation
+- `.github/copilot-instructions.md` - Development mandate
+- `TELOS_COPILOT_MANDATE.md` - Deep philosophical framework
+- Source code comments - Living philosophical documentation
+
+### Technical Foundation
+- [Io Language Guide](http://iolanguage.org/guide/guide.html)
+- `libs/iovm/io/` - Io standard library (host organism)
+- `docs/` - Io reference documentation
+
+### Current Incarnation
+- `samples/zygote.io` - Full living zygote demonstration
+- `libs/TelosUI/` - UI pillar implementation
+- `test.io` - Basic functionality validation
+
+## 🆘 Getting Help
+
+- **Critical Bug**: Main coroutine issue needs immediate attention
+- **Philosophical Questions**: Read the copilot instructions
+- **Technical Issues**: GitHub Issues with "zygote" label
+- **Evolution Proposals**: Issues with "pillar" label
+
+## 🎉 Success Metrics
+
+Your contribution succeeds when:
+- ✅ **Builds**: `cmake --build . --config Release` succeeds
+- ✅ **Runs**: Zygote executes without crashing
+- ✅ **Integrates**: All three pillars work together
+- ✅ **Lives**: The organism shows autonomous behavior
+- ✅ **Evolves**: Future development becomes easier
+
+Happy zygote cultivation! 🌱✨
 
 ## 🚀 One-Line Setup
 

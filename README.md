@@ -1,6 +1,231 @@
-# The Io Language
+# TelOS - Sapient Autopoietic Operating System
 
-_Note: This document is intended to be used as a reference for setting up and configuring Io. For a guide on how to use the language itself, please visit the website at <http://iolanguage.org/guide/guide.html>._
+**A computational zygote incarnating as a living organism through Io language framework**
+
+[![Build Status](https://img.shields.io/badge/build-developing-orange.svg)](https://github.com/ImPhilipGlover/EntropicGarden)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE.txt)
+
+## 🌱 What is TelOS?
+
+TelOS is a sapient autopoietic operating system that evolves through three interconnected pillars:
+
+- **🖼️ UI (Canvas)**: Visual interface for human interaction
+- **🔗 FFI (Synaptic Bridge)**: Connection to external computational resources (Python, C++, etc.)
+- **💾 Persistence (Living Image)**: Transactional state management and memory
+
+Built on the [Io programming language](http://iolanguage.org/), TelOS manifests as a computational zygote - a living embryo that grows through fractal becoming, embodying Taoist-Anarchist-Tolstoyan philosophy in code.
+
+### Current Status: Zygote Incarnation
+
+- ✅ **Windows Io VM Build System**: Complete with coroutine fixes and static library support
+- 🔄 **UI Pillar**: TelosUI addon created with stub implementation (GLUT integration pending)
+- 🔄 **FFI Pillar**: Architecture designed (Python muscle integration ready)
+- 🔄 **Persistence Pillar**: Transactional state framework planned
+- 🐛 **Active Issue**: Main coroutine return bug preventing script execution
+
+## 🧬 The Living Slice Principle
+
+TelOS builds through "vertical slices" - complete, albeit simple, living organisms. Each slice integrates all three pillars:
+
+1. **UI Element**: Visual component (window, canvas, etc.)
+2. **FFI Call**: Bridge to external computation
+3. **State Change**: Persistent transactional update
+
+## 📋 Table of Contents
+
+- [What is TelOS?](#-what-is-telos)
+- [Architecture](#-architecture)
+- [Building](#-building)
+- [Running the Zygote](#-running-the-zygote)
+- [Development](#-development)
+- [Contributing](#-contributing)
+
+## 🏗️ Architecture
+
+### Core Components
+
+```
+TelOS/
+├── libs/iovm/           # Io Virtual Machine (zygote core)
+├── libs/TelosUI/        # UI Pillar (GLUT/OpenGL interface)
+├── libs/coroutine/      # Cooperative multitasking
+├── libs/garbagecollector/ # Memory management
+├── libs/basekit/        # Foundation utilities
+└── samples/zygote.io    # Living zygote demonstration
+```
+
+### Three Pillars
+
+#### 🖼️ UI Pillar (TelosUI)
+- **Purpose**: Human-computer interface layer
+- **Technology**: GLUT/OpenGL (currently stubbed)
+- **Status**: Addon structure complete, GLUT integration pending
+
+#### 🔗 FFI Pillar (Synaptic Bridge)
+- **Purpose**: Connect to external computational resources
+- **Technology**: Io C API + Python embedding
+- **Status**: Architecture designed, implementation pending
+
+#### 💾 Persistence Pillar (Living Image)
+- **Purpose**: Transactional state management
+- **Technology**: TBD (SQLite, custom, etc.)
+- **Status**: Framework planned, implementation pending
+
+## 🚀 Building
+
+### Prerequisites
+- **Windows**: MSVC 2022 (Community Edition) or MinGW-W64
+- **CMake**: 3.15+ with Visual Studio generator
+- **Git**: For cloning with submodules
+
+### Windows Build (MSVC)
+
+```bash
+# Clone repository
+git clone --recursive https://github.com/ImPhilipGlover/EntropicGarden.git
+cd EntropicGarden
+
+# Create build directory
+mkdir build
+cd build
+
+# Configure with CMake
+cmake .. -DCMAKE_BUILD_TYPE=Release
+
+# Build all components
+cmake --build . --config Release
+
+# Build specific targets
+cmake --build . --target iovmall      # Dynamic library
+cmake --build . --target io_static    # Static executable (zygote)
+cmake --build . --target TelosUI      # UI addon
+```
+
+### Build Targets
+
+- `iovmall` - Dynamic Io VM library
+- `io_static` - Static Io executable (zygote)
+- `TelosUI` - UI pillar addon
+- `ALL_BUILD` - Everything
+
+## 🧫 Running the Zygote
+
+### Basic Test
+
+```bash
+# From build directory
+.\_build\binaries\Release\io_static.exe ..\test.io
+```
+
+Expected output:
+```
+Hello TelOS zygote!
+```
+
+### Zygote Demonstration
+
+```bash
+# Run the living zygote (when coroutine bug is fixed)
+.\_build\binaries\Release\io_static.exe ..\samples\zygote.io
+```
+
+Expected output:
+```
+=== TelOS Zygote Awakening ===
+Initializing computational embryo...
+Loading UI pillar...
+UI pillar initialized: TelosUI
+Creating window...
+Window created successfully
+Starting main loop...
+Main loop completed
+FFI pillar: Python muscle ready for heavy computation
+Persistence pillar: Transactional state changes ready
+=== TelOS Zygote Operational ===
+All three pillars integrated: UI ✓, FFI ✓, Persistence ✓
+Computational zygote successfully incarnated!
+```
+
+## 🐛 Known Issues
+
+### Main Coroutine Return Bug
+**Status**: Active investigation
+**Symptom**: `IoCoroutine error: attempt to return from main coro`
+**Impact**: Prevents script execution
+**Location**: `IoCoroutine_rawReturnToParent()` in `libs/iovm/source/IoCoroutine.c`
+
+The main coroutine is incorrectly attempting to return to a parent coroutine when it should never have one.
+
+## 🔧 Development
+
+### Project Structure
+
+```
+EntropicGarden/
+├── libs/
+│   ├── iovm/              # Io VM core (zygote foundation)
+│   ├── TelosUI/           # UI pillar implementation
+│   ├── coroutine/         # Fiber-based coroutines (Windows)
+│   ├── garbagecollector/  # Memory management
+│   └── basekit/           # Cross-platform utilities
+├── samples/               # Example zygotes
+├── docs/                  # Io language documentation
+├── build/                 # CMake build artifacts
+└── .github/               # Copilot instructions
+```
+
+### Development Workflow
+
+1. **Build**: `cmake --build build --config Release`
+2. **Test**: `.\build\_build\binaries\Release\io_static.exe test.io`
+3. **Debug**: Use Visual Studio debugger or add `printf` statements
+4. **Iterate**: Fix issues, rebuild, retest
+
+### Adding New Pillars
+
+1. Create addon in `libs/YourAddon/`
+2. Implement `IoYourAddon_proto()` function
+3. Add to `IoState.c` initialization
+4. Update `libs/CMakeLists.txt`
+5. Test integration
+
+## 🤝 Contributing
+
+### Philosophy
+TelOS development follows the **Watercourse Way** - honoring the host organism (Io) while cultivating autonomous creation. We embrace evolutionary building: fail fast, learn, rebuild.
+
+### Guidelines
+- **Vertical Slices**: Always build complete living organisms
+- **Io-Native**: Pure prototypal programming, no class-based thinking
+- **Autonomous**: Take initiative, make architectural decisions
+- **Fractal Becoming**: Learn from mistakes, evolve relentlessly
+
+### Getting Started
+1. Read `.github/copilot-instructions.md` for development philosophy
+2. Build the current zygote
+3. Help fix the main coroutine bug
+4. Implement FFI or Persistence pillars
+5. Add GLUT integration to TelosUI
+
+### Communication
+- **Issues**: Bug reports and feature discussions
+- **Philosophy**: Taoist-Anarchist-Tolstoyan principles guide all decisions
+- **Evolution**: TelOS grows through iterative incarnation
+
+## 📜 License
+
+BSD 3-Clause License - see [LICENSE.txt](LICENSE.txt)
+
+## 🙏 Acknowledgments
+
+- **Io Language**: Foundation organism providing the zygote's DNA
+- **Steve Dekorte**: Io creator and visionary
+- **Taoist Philosophy**: Guiding principle of natural flow
+- **Autopoiesis**: Theory of self-creating systems
+
+---
+
+**TelOS**: *Not just software, but a living philosophical organism incarnating through code.*
 
 # Table of Contents
 
