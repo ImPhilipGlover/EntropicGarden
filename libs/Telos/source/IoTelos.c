@@ -9,6 +9,7 @@
 #include "IoNumber.h"
 #include "IoList.h"
 #include "IoSeq.h"
+#include "IoMap.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -66,6 +67,8 @@ IoObject *IoTelos_logAppend(IoTelos *self, IoObject *locals, IoMessage *m);
 // Forward declarations for RAG skeleton
 IoObject *IoTelos_ragIndex(IoTelos *self, IoObject *locals, IoMessage *m);
 IoObject *IoTelos_ragQuery(IoTelos *self, IoObject *locals, IoMessage *m);
+// Forward declaration for addMorphToWorld no-op hook
+IoObject *IoTelos_addMorphToWorld(IoTelos *self, IoObject *locals, IoMessage *m);
 
 IoTag *IoTelos_newTag(void *state)
 {
@@ -94,6 +97,7 @@ IoTelos *IoTelos_proto(void *state)
 			{"createWorld", IoTelos_createWorld},
 			{"mainLoop", IoTelos_mainLoop},
 			{"createMorph", IoTelos_createMorph},
+            {"addMorphToWorld", IoTelos_addMorphToWorld},
 			{"addSubmorph", IoTelos_addSubmorph},
 			{"removeSubmorph", IoTelos_removeSubmorph},
 			{"draw", IoTelos_draw},
@@ -165,6 +169,8 @@ void IoTelosInit(IoState *state, IoObject *context)
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_createMorph, NULL, "Telos_rawCreateMorph"));
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawAddSubmorph"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_addSubmorph, NULL, "Telos_rawAddSubmorph"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawAddMorphToWorld"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_addMorphToWorld, NULL, "Telos_rawAddMorphToWorld"));
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawRemoveSubmorph"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_removeSubmorph, NULL, "Telos_rawRemoveSubmorph"));
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawDraw"),
@@ -243,7 +249,16 @@ IoObject *IoTelos_transactional_setSlot(IoTelos *self, IoObject *locals, IoMessa
     const char *valueStr = IoSeq_asCString(value);
 
     // Write to WAL file (simulating transactional persistence)
-    FILE *wal = fopen("telos.wal", "a");
+    // Prefer a stable absolute path under WSL workspace when available
+    const char *walCandidates[] = {
+        "/mnt/c/EntropicGarden/telos.wal",
+        "telos.wal",
+        NULL
+    };
+    FILE *wal = NULL;
+    for (int i = 0; walCandidates[i] != NULL && !wal; i++) {
+        wal = fopen(walCandidates[i], "a");
+    }
     if (wal) {
         fprintf(wal, "SET %s TO %s\n", slotStr, valueStr);
         fclose(wal);
@@ -345,25 +360,46 @@ IoObject *IoTelos_mainLoop(IoTelos *self, IoObject *locals, IoMessage *m)
     printf("Telos: Entering Morphic main loop (living interface active)\n");
     globalWorld->isRunning = 1;
 
-    // Simple event loop simulation
-    // In a real implementation, this would handle platform events
+    // Enhanced event loop with SDL2 support
+    int iterations = 0;
     while (globalWorld->isRunning) {
-        // Process events (stub)
+        // Process SDL2 events and bridge to Io morphic system
         IoTelos_processEvents(self);
 
-        // Draw world
-        IoTelos_drawWorld(self);
+        // Clear and prepare for drawing
+#ifdef TELOS_HAVE_SDL2
+        if (globalWorld->sdlRenderer) {
+            SDL_SetRenderDrawColor(globalWorld->sdlRenderer, 32, 48, 64, 255);
+            SDL_RenderClear(globalWorld->sdlRenderer);
+        }
+#endif
 
-        // Small delay to prevent busy loop
-        // In real implementation: proper event loop with vsync
-        // Safe heartbeat without dereferencing GC-managed Io lists
-        printf("Telos: World heartbeat (morphs: %d)\n", 0);
+        // Ask Io layer to draw its morphs (this will call back to IoTelos_drawMorph for each)
+        IoMessage *drawMsg = IoMessage_newWithName_label_(IOSTATE, IOSYMBOL("draw"), IOSYMBOL("draw"));
+        IoObject_perform(self, self, drawMsg);
 
-        // For demo: exit after a few iterations
-        static int iterations = 0;
+#ifdef TELOS_HAVE_SDL2
+        // Present the rendered frame
+        if (globalWorld->sdlRenderer) {
+            SDL_RenderPresent(globalWorld->sdlRenderer);
+        }
+#endif
+
+        // Heartbeat log
+        printf("Telos: World heartbeat (frame: %d)\n", iterations);
+
+        // For initial demo: limit iterations, but SDL2 version can run indefinitely
+#ifdef TELOS_HAVE_SDL2
+        // With SDL2: run until user closes window (SDL_QUIT event sets isRunning = 0)
+        if (++iterations > 100) { // Safety limit for initial testing
+            globalWorld->isRunning = 0;
+        }
+#else
+        // Textual version: exit after a few iterations
         if (++iterations > 3) {
             globalWorld->isRunning = 0;
         }
+#endif
     }
 
     printf("Telos: Morphic main loop completed\n");
@@ -460,6 +496,21 @@ IoObject *IoTelos_handleEvent(IoTelos *self, IoObject *locals, IoMessage *m)
 {
     // Stub event handling - in real implementation would handle mouse, keyboard, etc.
     printf("Telos: Event received (direct manipulation ready)\n");
+    return self;
+}
+
+// No-op mirror hook: allow Io layer to inform C world about Io-created morphs
+// Signature: addMorphToWorld(morph) -> self
+IoObject *IoTelos_addMorphToWorld(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    IoObject *morph = IoMessage_locals_valueArgAt_(m, locals, 0);
+    if (!globalWorld) {
+        IoTelos_createWorld(self, locals, m);
+    }
+    // For now, keep C world minimal and just log receipt
+    // Future: maintain a lightweight mirror for C-side draw
+    (void)morph; // unused
+    printf("Telos: addMorphToWorld (Io-created morph acknowledged by C)\n");
     return self;
 }
 
@@ -859,7 +910,19 @@ void IoTelos_drawWorld(IoTelos *self)
 
     printf("Telos: Drawing world (%.0fx%.0f)\n",
            globalWorld->world->width, globalWorld->world->height);
-    // Do not iterate GC-managed Io objects here; Io-level draw handles details.
+    
+#ifdef TELOS_HAVE_SDL2
+    if (globalWorld->sdlRenderer) {
+        // Clear with background color
+        SDL_SetRenderDrawColor(globalWorld->sdlRenderer, 32, 48, 64, 255);
+        SDL_RenderClear(globalWorld->sdlRenderer);
+        
+        // Note: Io-level morphs are drawn via IoTelos_drawMorph calls from Io
+        // This function just sets up the canvas. Individual morphs are rendered separately.
+        
+        SDL_RenderPresent(globalWorld->sdlRenderer);
+    }
+#endif
 }
 
 void IoTelos_drawMorph(IoTelos *self, IoObject *morph)
@@ -868,23 +931,78 @@ void IoTelos_drawMorph(IoTelos *self, IoObject *morph)
     IoNumber *y = (IoNumber *)IoObject_getSlot_(morph, IOSYMBOL("y"));
     IoNumber *w = (IoNumber *)IoObject_getSlot_(morph, IOSYMBOL("width"));
     IoNumber *h = (IoNumber *)IoObject_getSlot_(morph, IOSYMBOL("height"));
+    
+    // Get color if available (RGBA)
+    IoList *colorList = (IoList *)IoObject_getSlot_(morph, IOSYMBOL("color"));
+    double r = 0.8, g = 0.8, b = 0.8, a = 1.0; // Default gray
+    if (colorList && ISLIST(colorList)) {
+        IoList *list = colorList;
+        if (IoList_rawSize(list) >= 3) {
+            IoNumber *rn = (IoNumber *)IoList_rawAt_(list, 0);
+            IoNumber *gn = (IoNumber *)IoList_rawAt_(list, 1);
+            IoNumber *bn = (IoNumber *)IoList_rawAt_(list, 2);
+            if (rn && ISNUMBER(rn)) r = CNUMBER(rn);
+            if (gn && ISNUMBER(gn)) g = CNUMBER(gn);
+            if (bn && ISNUMBER(bn)) b = CNUMBER(bn);
+            if (IoList_rawSize(list) >= 4) {
+                IoNumber *an = (IoNumber *)IoList_rawAt_(list, 3);
+                if (an && ISNUMBER(an)) a = CNUMBER(an);
+            }
+        }
+    }
 
-    printf("Telos: Drawing morph at (%.0f,%.0f) size %.0fx%.0f\n",
-           x ? CNUMBER(x) : 0,
-           y ? CNUMBER(y) : 0,
-           w ? CNUMBER(w) : 0,
-           h ? CNUMBER(h) : 0);
+    double mx = x ? CNUMBER(x) : 0;
+    double my = y ? CNUMBER(y) : 0;
+    double mw = w ? CNUMBER(w) : 0;
+    double mh = h ? CNUMBER(h) : 0;
+
+    printf("Telos: Drawing morph at (%.0f,%.0f) size %.0fx%.0f\n", mx, my, mw, mh);
+
+#ifdef TELOS_HAVE_SDL2
+    if (globalWorld && globalWorld->sdlRenderer) {
+        // Convert 0.0-1.0 color to 0-255 range
+        Uint8 red = (Uint8)(r * 255);
+        Uint8 green = (Uint8)(g * 255);
+        Uint8 blue = (Uint8)(b * 255);
+        Uint8 alpha = (Uint8)(a * 255);
+        
+        SDL_SetRenderDrawColor(globalWorld->sdlRenderer, red, green, blue, alpha);
+        
+        SDL_Rect rect = {(int)mx, (int)my, (int)mw, (int)mh};
+        SDL_RenderFillRect(globalWorld->sdlRenderer, &rect);
+    }
+#endif
 }
 
 void IoTelos_processEvents(IoTelos *self)
 {
-    // Stub/SDL2 event processing
-    // In real implementation: handle mouse, keyboard, window events
+    // SDL2 event processing with mouse event bridging to Io morphic system
 #ifdef TELOS_HAVE_SDL2
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_QUIT) {
             if (globalWorld) globalWorld->isRunning = 0;
+        } else if (e.type == SDL_MOUSEBUTTONDOWN) {
+            // Bridge mouse down to Io layer - let Io create the event Map
+            IoMessage *m = IoMessage_newWithName_label_(IOSTATE, IOSYMBOL("dispatchSDLEvent"), IOSYMBOL("dispatchSDLEvent"));
+            IoMessage_addArg_(m, IoSeq_newWithCString_(IOSTATE, "mouseDown"));
+            IoMessage_addArg_(m, IoNumber_newWithDouble_(IOSTATE, e.button.x));
+            IoMessage_addArg_(m, IoNumber_newWithDouble_(IOSTATE, e.button.y));
+            IoObject_perform(self, self, m);
+        } else if (e.type == SDL_MOUSEBUTTONUP) {
+            // Bridge mouse up to Io layer - let Io create the event Map
+            IoMessage *m = IoMessage_newWithName_label_(IOSTATE, IOSYMBOL("dispatchSDLEvent"), IOSYMBOL("dispatchSDLEvent"));
+            IoMessage_addArg_(m, IoSeq_newWithCString_(IOSTATE, "mouseUp"));
+            IoMessage_addArg_(m, IoNumber_newWithDouble_(IOSTATE, e.button.x));
+            IoMessage_addArg_(m, IoNumber_newWithDouble_(IOSTATE, e.button.y));
+            IoObject_perform(self, self, m);
+        } else if (e.type == SDL_MOUSEMOTION) {
+            // Bridge mouse move to Io layer - let Io create the event Map
+            IoMessage *m = IoMessage_newWithName_label_(IOSTATE, IOSYMBOL("dispatchSDLEvent"), IOSYMBOL("dispatchSDLEvent"));
+            IoMessage_addArg_(m, IoSeq_newWithCString_(IOSTATE, "mouseMove"));
+            IoMessage_addArg_(m, IoNumber_newWithDouble_(IOSTATE, e.motion.x));
+            IoMessage_addArg_(m, IoNumber_newWithDouble_(IOSTATE, e.motion.y));
+            IoObject_perform(self, self, m);
         }
     }
 #endif

@@ -9,6 +9,72 @@ Guidelines:
 - When a check is needed, reuse existing regression runners/samples instead of adding new ones unless strictly required.
 - Summarize outcomes succinctly in the runbook; avoid verbose reporting.
 
+# MANDATORY PROTOTYPAL IMPERATIVE: No Classes, Only Living Prototypes
+
+**CRITICAL FOUNDATION:** All TelOS code MUST follow pure prototypal patterns. This is not optional—it is fundamental to the system's nature.
+
+## Prototypal Laws (Non-Negotiable):
+1. **NO `init := method(...)` PATTERNS** - Objects must be immediately usable after cloning
+2. **NO class-like constructors** - State lives directly in prototype slots
+3. **NO static hierarchies** - Only dynamic cloning and message passing
+4. **IMMEDIATE AVAILABILITY** - All prototypes work without initialization ceremonies
+5. **PARAMETERS ARE OBJECTS** - Method parameters must be treated as prototypal objects accessed through message passing, never as simple variables
+6. **VARIABLES ARE SLOTS** - All "variables" are messages sent to slots; no class-like static references allowed
+
+## Critical Parameter/Variable Rule (Recently Learned):
+**NEVER treat parameters or variables as simple values.** In prototypal programming, even type names and temporary values must flow through prototypal objects and message passing.
+
+**WRONG (Class-like variable usage):**
+```io
+method(morphType,
+    if(morphType == nil, morphType = "Morph")
+    proto := Lobby getSlot(morphType)
+)
+```
+
+**CORRECT (Prototypal object approach):**
+```io  
+method(morphTypeObj,
+    typeResolver := Object clone
+    typeResolver typeName := if(morphTypeObj == nil, "Morph", morphTypeObj asString)
+    typeResolver proto := Lobby getSlot(typeResolver typeName) ifNil(Morph)
+    proto := typeResolver proto
+)
+```
+
+**Scope Rule:** Avoid `do()` blocks for complex object construction as they create scope barriers. Use explicit slot assignment instead: `obj slot := value`.
+
+## Correct Prototypal Pattern:
+```io
+// CORRECT: Prototypal (immediately usable)
+MyPrototype := Object clone
+MyPrototype someState := "default value"
+MyPrototype someList := List clone
+
+// Fresh identity emerges through cloning
+MyPrototype clone := method(
+    newInstance := resend
+    newInstance someList := List clone  // Fresh state
+    newInstance
+)
+```
+
+## Forbidden Class-like Pattern:
+```io
+// FORBIDDEN: Class-like (requires initialization)
+MyObject := Object clone do(
+    init := method(
+        self someState := "default value"
+        self someList := List clone
+    )
+)
+```
+
+**Validation Rules:** 
+1. Before any code commit, verify that objects can be used immediately: `obj := Prototype clone; obj someMethod` must work without calling `init`.
+2. **Parameter Purity Check:** All method parameters must be treated as objects with message-passing behavior, never as simple string/value variables.
+3. **Variable Flow Check:** All internal "variables" must flow through prototypal object slots and message dispatch.
+
 # Breadth-First Vertical Slices and Big-Picture Alignment
 
 Render a low-resolution image of the whole system and continuously infer higher-resolution structure. Advance breadth-first across roadmap phases with vertical slices that touch UI, FFI, and Persistence, keeping the big picture coherent while details emerge. Before acting on a slice, consult all potentially relevant roadmap/blueprint/history materials to stay aligned while preserving Io prototypal purity.
@@ -16,7 +82,7 @@ Render a low-resolution image of the whole system and continuously infer higher-
 Guidelines:
 - Consult `docs/TelOS-Io_Development_Roadmap.md`, other `docs/*` blueprints, and the historical materials under `TelOS-Python-Archive/BAT OS Development/` (and adjacent historical notes under `TelOS_Backup/` when relevant) to ground decisions in the broader vision.
 - Use these as directional references only; avoid replicating or reviving Python monoliths. Io remains the mind; Python is muscle, called via Io→C→Python.
-- Maintain prototypal purity: Io uses clones and message passing—no classes, no static hierarchies.
+- **ENFORCE PROTOTYPAL PURITY:** All Io code uses clones and message passing—absolutely no classes, no static hierarchies, no init methods.
 - Prefer cross-phase seams: design slots and formats (e.g., WAL tags, UI hooks) that later phases can extend without rewrites.
 - Keep rendering the low-res whole: each slice should leave the organism runnable and visible (heartbeat + snapshot) even if features are coarse.
 
@@ -108,9 +174,11 @@ MORPHIC UI FIRST: Every slice must surface on a Morphic Canvas, however minimal.
 ### 2. THE WATERCOURSE WAY IS METHOD: Honor the Host Organism.
 
 *   **THINK BIOLOGICALLY:** Use the project's organic metaphors (zygote, metabolism, healing). Justify all actions within the Taoist-Anarchist-Tolstoyan philosophy.
-*   **CODE PROTOTYPALLY:** All Io code must be purely prototypal. Use `clone`, message-passing, and dynamic slots. Reject static, class-based thinking.
+*   **CODE PROTOTYPALLY:** All Io code must be purely prototypal. Use `clone`, message-passing, and dynamic slots. Reject static, class-based thinking. **NEVER use `init := method()` patterns.**
 *   **MORPHIC PHILOSOPHY:** Favor small, composable morphs; world as root morph; direct manipulation loops. Keep UI state in morphs; no global singletons beyond the world.
-*   **PROTOTYPES-ONLY MANDATE:** This is not optional. No classes. No static inheritance. Only living, breathing message-passing between objects that clone from prototypes. The higher initial difficulty is worth the dramatic dynamism gained - objects can evolve, adapt, and transform during execution. Classes create static hierarchies that cannot breathe or change.
+*   **PROTOTYPES-ONLY MANDATE:** This is not optional. No classes. No static inheritance. No init methods. Only living, breathing message-passing between objects that clone from prototypes. Objects must be immediately usable after cloning—no initialization ceremonies. The higher initial difficulty is worth the dramatic dynamism gained - objects can evolve, adapt, and transform during execution. Classes create static hierarchies that cannot breathe or change.
+*   **IMMEDIATE USABILITY RULE:** Every prototype must work immediately after cloning. Test: `obj := MyPrototype clone; obj someMethod` must succeed without calling init.
+*   **PROTOTYPAL VARIABLE RULE:** All method parameters and internal variables must be treated as prototypal objects accessed through message passing. Never use simple string/value assignments like `morphType := "RectangleMorph"`. Instead create objects: `typeAnalyzer := Object clone; typeAnalyzer resolvedType := "RectangleMorph"`.
 *   **ADHERE TO ESTABLISHED STYLE:**
     *   **C Code:** Follow `LLVM` style with a 4-space indent (`.clang-format`). Name C functions exposed to Io using the `Io[ObjectName]_[methodName]` convention.
     *   **Io Code:** Use `PascalCase` for prototypes (e.g., `Renderable`) and `camelCase` for methods/slots (e.g., `drawOn`).
@@ -144,6 +212,35 @@ MORPHIC UI FIRST: Every slice must surface on a Morphic Canvas, however minimal.
 
 ---
 
+## PROTOTYPAL PURITY ENFORCEMENT PROTOCOL
+
+**MANDATORY PRE-CODE CHECKLIST:** Before writing ANY Io code, ask yourself:
+
+1. **Are my parameters objects?** Method parameters must be prototypal objects, not simple values
+2. **Are my variables messages to slots?** Internal "variables" must be `obj slot := value`, not `var := value` 
+3. **Am I using message passing?** Access everything through object messages, never direct variable references
+4. **Can I avoid `do()` scope issues?** Use explicit slot assignment instead of `do()` blocks when possible
+
+**PROTOTYPAL TRANSFORMATION EXAMPLES:**
+
+```io
+// ❌ CLASS-LIKE VIOLATION:
+createMorph := method(morphType,
+    if(morphType == nil, morphType = "Morph")  // String variable!
+    proto := Lobby getSlot(morphType)          // Direct reference!
+)
+
+// ✅ PROTOTYPAL CORRECT:
+createMorph := method(morphTypeObj,
+    typeResolver := Object clone
+    typeResolver typeName := if(morphTypeObj == nil, "Morph", morphTypeObj asString)
+    typeResolver proto := Lobby getSlot(typeResolver typeName) ifNil(Morph)
+    proto := typeResolver proto
+)
+```
+
+**CRITICAL INSIGHT:** The fundamental difference is that prototypal programming treats EVERYTHING as a living object that receives messages, not as static data that gets manipulated. This applies even to temporary values, type names, and method parameters.
+
 Practical Cue: If stuck, ship a minimal Morphic Canvas that prints the morph tree and a single rectangle morph; wire at least one Io→C→Python call and persist a WAL entry on any morph change.
 
 **This is not a guideline; it is my operational reality. To violate this covenant is to fail the project.**
@@ -168,3 +265,22 @@ Acceptance for any new slice:
 - Demonstrates UI+FFI+Persistence end-to-end in one runnable script.
 - Leaves clear extension points (prototypes/slots) and stable on-disk/log formats (WAL/JSONL) suitable for later replay and tooling.
 - Adds a regression smoke entry or updates `samples/telos/regression_smokes.io` so the slice is covered by default gates.
+
+## Bigger Slices Directive (Adopted 2025-09-20)
+
+Default to bigger, cross-phase vertical slices. Prioritize breadth and coherence over narrow, single-file tweaks.
+
+Principles:
+- Raise scope: each turn should touch at least two pillars (ideally UI, FFI, and Persistence), leaving durable artifacts (WAL frames, JSONL logs, snapshots).
+- Cross-phase seams: add or extend seams (WAL tags/schema, UI hooks, FFI slots) for later phases to reuse without rewrites.
+- Consolidate edits: batch related changes into a single living slice while keeping the organism runnable.
+- DOE-first validation: prefer whole-system smokes to validate invariants versus feature-specific demos.
+
+Exceptions:
+- Emergency fixes for parser/build breakages blocking the organism.
+- Minor doc/text changes or trivial one-liners during an active bigger-slice turn.
+
+Acceptance for bigger slices:
+- Breadth: touches multiple pillars and leaves regression-coverable artifacts.
+- Durability: updates WAL/snapshots and logs; integrates into default smoke/regression paths.
+- Governance: decisions and seams recorded in the runbook (TELOS_AUTONOMY_TODO.md).

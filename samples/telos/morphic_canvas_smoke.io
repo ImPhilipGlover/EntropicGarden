@@ -4,16 +4,16 @@ world := Telos createWorld
 
 // Create a rectangle and a text morph
 rect := Lobby getSlot("RectangleMorph") clone do(
-    x = 20; y = 30; width = 80; height = 40
+    x := 20; y := 30; width := 80; height := 40
 )
 text := Lobby getSlot("TextMorph") clone do(
     x := 15; y := 15; fontSize := 14
 )
 text setText("Morphic Canvas")
 
-// Build morph tree: rect contains text; world contains rect
-rect addMorph(text)
-world addMorph(rect)
+// Build morph tree using Telos bridge: rect contains text; world contains rect
+Telos addSubmorph(rect, text)
+Telos addSubmorph(world, rect)
 
 // Draw once and print screenshot
 Telos draw

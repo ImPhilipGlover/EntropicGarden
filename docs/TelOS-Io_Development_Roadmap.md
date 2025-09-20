@@ -16,6 +16,14 @@ It also charts the longer path to a self-hosting organism on a formally verified
 - Antifragility: Favor systems that learn from perturbations (metabolize failure) over brittle transactional rollbacks; add recovery and healing rather than “erase and reset.”
 - Path to Genode/seL4: Target organizational closure (self-updating while live) and a formally verified kernel boundary.
 
+### Fractal Low-Res, Whole-System Direction (DOE mindset)
+
+- Maintain a runnable “low-resolution whole” at all times: every slice touches UI (Morphic heartbeat), FFI (Io→C→Python), and Persistence (WAL + snapshot).
+- Prefer breadth-first vertical slices that keep seams extensible (WAL tags, UI hooks, FFI slots) over deep, isolated subsystems.
+- Run end-to-end smokes instead of micro-demos; allow crashes to inform the next iteration. Reuse existing smokes where possible.
+- WSL-first execution: build and run inside Ubuntu WSL; use the WSL-built `io` at `/mnt/c/EntropicGarden/build/_build/binaries/io`.
+- Record decisions and deltas in `TELOS_AUTONOMY_TODO.md`; keep exactly one in-progress item, and ensure WAL/snapshot invariants after edits.
+
 ## Current Status (baseline)
 
 - Io VM builds and runs in WSL; main coroutine return handling fixed to avoid abort on normal script completion.
@@ -278,6 +286,36 @@ Outcome:
 - Io API stable and documented in-line.
 - Logs clear; errors return as Io exceptions (no aborts).
 - Persistence either no-ops safely or commits atomically with recovery.
+
+## Overnight Slice: BAT OS Development Dive (BABS WING loop)
+
+Objective: Ingest the historical “BAT OS Development” archives into Context/Concept Fractals, persist JSONL logs and WAL frames, index into the offline memory substrate, and validate RAG query demos. This slice cements the low-res whole (UI+FFI+Persistence) while seeding VSA-NN rRAG seams.
+
+Scope and seams:
+- UI: Maintain Morphic heartbeat lines and save a textual snapshot to `logs/ui_snapshot.txt` at the end of ingestion.
+- FFI: Keep `Telos.llmCall` and `Telos.pyEval` as offline stubs with JSONL logging to `logs/persona_llm.jsonl` and `logs/tool_use.jsonl`.
+- Persistence: Wrap ingestion in WAL frames with `BEGIN ingest:...` and `END ingest:...`; rotate WAL when large; append JSONL records:
+  - `logs/babs/contexts.jsonl` for chunked ContextFractals
+  - `logs/babs/concepts.jsonl` for coarse ConceptFractal summaries
+- Memory seam (Phase 7 placeholder): `Telos.memory.addContext(text)` and `Telos.memory.search(query, k)` remain in-memory but stable in Io; Python/FAISS will later replace internals behind the same Io API.
+
+Artifacts and commands (WSL):
+- Ingestion driver: `samples/telos/babs_ingest_batos.io`
+  - Configure roots and caps inside the file; defaults target `/mnt/c/EntropicGarden/TelOS-Python-Archive/BAT OS Development`.
+  - Run:
+    - `wsl -d Ubuntu /mnt/c/EntropicGarden/build/_build/binaries/io /mnt/c/EntropicGarden/samples/telos/babs_ingest_batos.io`
+- RAG demos:
+  - `rag_skeleton_demo.io` and `rag_on_canvas_demo.io` expect `Telos.rag.query` to return lines of `rank\tscore\ttext`; `IoTelos.io` formats results accordingly.
+  - Run:
+    - `wsl -d Ubuntu /mnt/c/EntropicGarden/build/_build/binaries/io /mnt/c/EntropicGarden/samples/telos/rag_skeleton_demo.io`
+    - `wsl -d Ubuntu /mnt/c/EntropicGarden/build/_build/binaries/io /mnt/c/EntropicGarden/samples/telos/rag_on_canvas_demo.io`
+
+Acceptance criteria (overnight):
+- Ingestion finds >1k files, writes >1k context chunks over time (caps may throttle per-run), and appends concept summaries; WAL shows framed transactions.
+- Morphic heartbeat prints at least once; `logs/ui_snapshot.txt` is saved.
+- `rag_skeleton_demo.io` runs without exceptions; top-k hits are printed (string lines with `\t` separators).
+- `Telos.memory.search` is stable (no scoping errors), returns a List of Maps: `{text, score}`; `rag.query` stringifies for demos.
+- Logs exist and grow during the run: `logs/babs/*.jsonl`, `logs/persona_llm.jsonl`, `logs/tool_use.jsonl`, `telos.wal`.
 
 ---
 This document is a living artifact. Update it with each completed slice, recording actual acceptance evidence (commands/outputs), deltas, and any deviations from plan.

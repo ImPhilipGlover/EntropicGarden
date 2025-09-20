@@ -29,10 +29,22 @@ run("samples/telos/curation_flush_filtered.io")
 run("samples/telos/rag_skeleton_demo.io")
 run("samples/telos/rag_on_canvas_demo.io")
 
+// Fractals ingest + memory smoke
+run("samples/telos/concept_fractals_ingest_demo.io")
+
+// Fractals refinement smoke
+run("samples/telos/concept_fractals_refine_demo.io")
+
+// BAT OS directory mining
+run("samples/telos/fractals_mine_batos.io")
+
 // Ollama LLM bridge (requires Ollama server)
 run("samples/telos/persona_chat_console_demo.io")
 
 // Python eval bridge
 run("samples/telos/python_eval_demo.io")
+
+// Generative Kernel
+run("samples/telos/generative_kernel_demo.io")
 
 writeln("TelOS regression smokes: end")

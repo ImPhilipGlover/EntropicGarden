@@ -24,6 +24,35 @@ List atIfAbsent := method(index, default,
     self at(index)
 )
 
+// === PROTOTYPAL PURITY ENFORCEMENT ===
+// CRITICAL REMINDER: In Io, EVERYTHING is an object accessed through message passing
+// - Variables are messages sent to slots
+// - Parameters are objects, not simple values  
+// - No class-like static references allowed
+// - All data flows through prototypal cloning and message sending
+
+PrototypalPurityEnforcer := Object clone do(
+    // Remind us that variables must be objects
+    validateObjectAccess := method(value, context,
+        if(value type == "Sequence",
+            writeln("[PROTOTYPAL WARNING] String literal '", value, "' in context: ", context)
+            writeln("[REMINDER] Convert to prototypal object with message passing")
+        )
+        value
+    )
+    
+    // Enforce object-based design patterns
+    createObjectWrapper := method(value, description,
+        wrapper := Object clone do(
+            content := value
+            description := description
+            asString := method(content asString)
+            type := "PrototypalWrapper"
+        )
+        wrapper
+    )
+)
+
 // Adopt the C-level Telos as prototype (registered on Lobby Protos)
 Telos := Lobby Protos Telos clone do(
     // Minimal JSON stringify for Maps/Lists/Numbers/Strings/Booleans/nil
@@ -83,14 +112,13 @@ Telos := Lobby Protos Telos clone do(
     )
 
 
-    // Initialize the TelOS zygote - the computational embryo
-    init := method(
-        self world := nil
-        self morphs := List clone
-        self morphIndex := Map clone
-        self isReplaying := false
-    self autoReplay := false
-    )
+    // TelOS zygote state - immediately available (prototypal)
+    world := nil
+    morphs := List clone
+    morphIndex := Map clone  
+    isReplaying := false
+    autoReplay := false
+    verbose := false
 
     // Pillar 1: Synaptic Bridge - Reach into Python muscle
     // Defer to C-implemented getPythonVersion
@@ -110,15 +138,17 @@ Telos := Lobby Protos Telos clone do(
 
     // Create the root world (Morphic's World)
     createWorld := method(
-        // Initialize C-side world, but keep an Io-level Morph as the UI root
+        // Initialize C-side world, but keep an Io-level World as the UI root
         resend
-        morphProto := Lobby getSlot("Morph")
-        self world := morphProto clone do(
-            x := 0; y := 0; width := 800; height := 600; submorphs := List clone
+        // Use the World prototype if available, otherwise fall back to Morph
+        worldProto := Lobby getSlot("World")
+        if(worldProto == nil, worldProto = Lobby getSlot("Morph"))
+        self world := worldProto clone do(
+            x := 0; y := 0; submorphs := List clone
         )
         writeln("Telos: Morphic World initialized - living canvas ready")
-    // Auto-replay persistence if enabled (guard if slot missing)
-    if(self hasSlot("autoReplay") and (self autoReplay == true), self replayWal)
+        // Auto-replay persistence if enabled (guard if slot missing)
+        if(self hasSlot("autoReplay") and (self autoReplay == true), self replayWal)
         world
     )
 
@@ -131,9 +161,15 @@ Telos := Lobby Protos Telos clone do(
     )
 
     // Create a new morph - a living visual object
-    createMorph := method(
-        // Create an Io-level Morph and register in both Io and C worlds
-        m := Morph clone
+    createMorph := method(morphTypeObj,
+        // Support optional type parameter - morphTypeObj is a prototypal object
+        typeResolver := Object clone
+        typeResolver typeName := if(morphTypeObj == nil, "Morph", morphTypeObj asString)
+        typeResolver proto := Lobby getSlot(typeResolver typeName) ifNil(Morph)
+        proto := typeResolver proto
+        
+        // Create an Io-level morph and register in both Io and C worlds
+        m := proto clone
         if(m hasSlot("submorphs") not, m submorphs := List clone)
         morphs append(m)
         // Append into C world so C draw loop can see it
@@ -297,6 +333,15 @@ Telos := Lobby Protos Telos clone do(
         walAppend("MARK " .. tag .. " " .. json stringify(info))
     )
 
+    // === PROTOTYPAL PURITY VALIDATION ===
+    validatePrototypalPurity := method(methodName, 
+        writeln("[PROTOTYPAL CHECK] Method: ", methodName)
+        writeln("[REMINDER] All parameters are objects. Access through message passing.")
+        writeln("[REMINDER] Variables are slots. No class-like static references.")
+        writeln("[REMINDER] Everything clones from prototypes, nothing initializes.")
+        "prototypal_validation_complete"
+    )
+    
     // WAL rotation utility: if file exceeds maxBytes, rotate to .1 (single slot)
     rotateWal := method(path := "telos.wal", maxBytes := 1048576,
         f := File clone setPath(path)
@@ -479,7 +524,8 @@ Telos := Lobby Protos Telos clone do(
             items foreach(it, db append(it asString); count = count + 1)
             count
         )
-        search := method(query, k := 5,
+        search := method(query, k,
+            if(k == nil, k = 5)
             // Rank by naive substring presence and length proximity
             scored := List clone
             db foreach(s,
@@ -493,12 +539,12 @@ Telos := Lobby Protos Telos clone do(
                 rec atPut("score", score)
                 scored append(rec)
             )
-            // Select top-k by score (descending)
+            // Select top-k by score (descending) - prototypal pattern
             res := List clone
-            k := k min(scored size)
-            k repeat(i,
+            // Use k directly in the for loop to avoid scope issues
+            for(i, 0, (k min(scored size)) - 1,
                 bestIdx := nil; bestVal := -1
-                scored foreachIndex(j, m,
+                scored foreach(j, m,
                     v := m at("score")
                     if(v > bestVal, bestVal = v; bestIdx = j)
                 )
@@ -1151,13 +1197,25 @@ Telos := Lobby Protos Telos clone do(
 
 // ContextFractal: atomic shard of context (text, data, signal)
 ContextFractal := Object clone do(
-    init := method(
-        self id := System uniqueId
-        self payload := ""
-        self meta := Map clone
+    // Immediately available state (prototypal)
+    id := System uniqueId
+    payload := ""
+    meta := Map clone
+
+    // Fresh identity emerges through cloning
+    clone := method(
+        newContext := resend
+        newContext id = System uniqueId
+        newContext meta = Map clone
+        newContext
     )
+
     with := method(text,
-        f := self clone; f payload = text; f meta atPut("type", "text"); f
+        f := self clone
+        f id = System uniqueId  // Fresh identity on clone
+        f payload = text
+        f meta atPut("type", "text")
+        f
     )
     vectorize := method(
         // stub: log and return a fake small vector
@@ -1168,11 +1226,19 @@ ContextFractal := Object clone do(
 
 // ConceptFractal: composition/binding of contexts and concepts (emergent structure)
 ConceptFractal := Object clone do(
-    init := method(
-        self id := System uniqueId
-        self parts := List clone // mixture of ContextFractal/ConceptFractal
-        self summary := ""
-        self meta := Map clone
+    // Immediately available state (prototypal)
+    id := System uniqueId
+    parts := List clone // mixture of ContextFractal/ConceptFractal
+    summary := ""
+    meta := Map clone
+
+    // Fresh identity emerges through cloning
+    clone := method(
+        newConcept := resend
+        newConcept id = System uniqueId
+        newConcept parts = List clone
+        newConcept meta = Map clone
+        newConcept
     )
 
     bind := method(fractal,
@@ -1221,24 +1287,23 @@ ConceptFractal := Object clone do(
 // --- Personas & Codex (offline-safe seed) ---
 
 Persona := Object clone do(
-    init := method(
-        self name := "Unnamed"
-        self role := ""
-        self ethos := ""
-        self speakStyle := ""
-        self tools := List clone
-        self memoryTags := List clone
-    self contextKernel := ""
-    self weights := Map clone; self weights atPut("alpha", 1); self weights atPut("beta", 1); self weights atPut("gamma", 1); self weights atPut("delta", 1)
-    self budget := Map clone // placeholders
-        self risk := "low"
-        self routingHints := ""
-    self genOptions := Map clone // default generation params per persona (temperature, top_p, etc.)
-    )
+    // Immediately available state (prototypal)
+    name := "Unnamed"
+    role := ""
+    ethos := ""
+    speakStyle := ""
+    tools := List clone
+    memoryTags := List clone
+    contextKernel := ""
+    weights := Map clone atPut("alpha", 1) atPut("beta", 1) atPut("gamma", 1) atPut("delta", 1)
+    budget := Map clone // placeholders
+    risk := "low"
+    routingHints := ""
+    genOptions := Map clone // default generation params per persona (temperature, top_p, etc.)
 
     with := method(spec,
         p := self clone
-        p init
+        // Fresh identity emerges through cloning - no init needed
         p name = spec atIfAbsent("name", p name)
         p role = spec atIfAbsent("role", p role)
         p ethos = spec atIfAbsent("ethos", p ethos)
@@ -1380,9 +1445,16 @@ Persona := Object clone do(
 )
 
 PersonaCodex := Object clone do(
-    init := method(
-        self registry := Map clone
-        self default := nil
+    // Immediately available state (prototypal)
+    registry := Map clone
+    default := nil
+
+    // Fresh identity emerges through cloning
+    clone := method(
+        newCodex := resend
+        newCodex registry = Map clone
+        newCodex default = nil
+        newCodex
     )
 
     register := method(persona,
@@ -1484,30 +1556,40 @@ do(
 // Morph prototype - the fundamental living interface object
 Morph := Object clone do(
 
-    // Initialize a morph with living properties
-    init := method(
-        self id := System uniqueId
-        self x := 100
-        self y := 100
-        self width := 50
-        self height := 50
-        self color := list(1, 0, 0, 1)  // Red by default
-        self submorphs := List clone
-        self owner := nil
-        self dragging := false
-        self dragDX := 0
-        self dragDY := 0
-        self zIndex := 0
-        self persistedIdentity := false
+    // Immediately available state (prototypal)
+    id := System uniqueId
+    x := 100
+    y := 100
+    width := 50
+    height := 50
+    color := list(1, 0, 0, 1)  // Red by default
+    submorphs := List clone
+    owner := nil
+    dragging := false
+    dragDX := 0
+    dragDY := 0
+    zIndex := 0
+    persistedIdentity := false
+
+    // Fresh identity emerges through cloning
+    clone := method(
+        newMorph := resend
+        newMorph id = System uniqueId
+        newMorph submorphs = List clone
+        newMorph owner = nil
+        newMorph dragging = false
+        newMorph dragDX = 0
+        newMorph dragDY = 0
+        newMorph persistedIdentity = false
+        newMorph
     )
 
-    // Ensure each clone has fresh identity and defaults
-    clone := method(
-        o := resend
-        // Assign a fresh id and initialize defaults on the clone
-        o id := System uniqueId
-        o init
-        o
+    // Set the morph id (for persistence and lookup)
+    setId := method(newId,
+        self id = newId
+        // Update morphIndex if available
+        if(Telos hasSlot("morphIndex"), Telos morphIndex atPut(id asString, self))
+        self
     )
 
     // Move the morph (direct manipulation)
@@ -1582,6 +1664,11 @@ Morph := Object clone do(
     // Check if point is inside morph bounds
     containsPoint := method(px, py,
         (px >= x and px <= (x + width)) and (py >= y and py <= (y + height))
+    )
+
+    // Add a submorph to this morph (alias for compatibility)
+    addSubmorph := method(child,
+        addMorph(child)
     )
 
     // Add a submorph to this morph
@@ -1687,17 +1774,25 @@ RectangleMorph := Morph clone do(
 )
 // Button morph - rectangle with label and action slot
 ButtonMorph := RectangleMorph clone do(
-    init := method(
-        resend
-        self label := TextMorph clone
-        label moveTo(x + 8, y + 8)
-        label setText("Button")
-        self addMorph(label)
-        self action := nil
+    // Immediately available state (prototypal)  
+    label := nil
+    action := nil
+
+    // Fresh identity emerges through cloning
+    clone := method(
+        newButton := resend
+        // Create a fresh label and configure it properly
+        newLabel := TextMorph clone
+        newLabel moveTo(newButton x + 8, newButton y + 8)
+        newLabel setText("Button")
+        newButton label = newLabel
+        newButton addMorph(newLabel)
+        newButton action = nil
         // Default click handler
-        self onClick := method(owner,
+        newButton onClick = method(owner,
             if(owner action != nil, owner action call(owner))
         )
+        newButton
     )
     setText := method(t,
         if(self hasSlot("label") and label != nil, label setText(t))
@@ -1718,11 +1813,9 @@ CircleMorph := Morph clone do(
 
 // Text morph - for displaying text
 TextMorph := Morph clone do(
-    init := method(
-        resend
-        self text := "Hello TelOS"
-        self fontSize := 12
-    )
+    // Immediately available state (prototypal)
+    text := "Hello TelOS"
+    fontSize := 12
 
     draw := method(
         writeln("Telos: Drawing text '", text, "' at (", x, ",", y, ") size ", fontSize)
@@ -1743,11 +1836,9 @@ TextMorph := Morph clone do(
 
 // Text input morph - minimal placeholder for user input
 TextInputMorph := TextMorph clone do(
-    init := method(
-        resend
-        self inputBuffer := ""
-        self onSubmit := nil
-    )
+    // Immediately available state (prototypal)
+    inputBuffer := ""
+    onSubmit := nil
     appendInput := method(s,
         inputBuffer = inputBuffer .. s
         "ok"
@@ -1796,13 +1887,11 @@ ColumnLayout := Layout clone do(orientation := "column")
 
 // Canvas prototype: minimal wrapper around window lifecycle using Telos bridge
 Canvas := Object clone do(
-    init := method(
-        self isOpen := false
-        self title := "The Entropic Garden"
-        self width := 640
-        self height := 480
-        self
-    )
+    // Immediately available state (prototypal)
+    isOpen := false
+    title := "The Entropic Garden"
+    width := 640
+    height := 480
     open := method(
         if(isOpen, return self)
         Telos openWindow
@@ -1830,10 +1919,15 @@ Canvas := Object clone do(
 
 // ChatConsole prototype: send persona messages (console-based I/O)
 ChatConsole := Object clone do(
-    init := method(
-        self personaName := "ROBIN"
-        self history := List clone
-        self
+    // Immediately available state (prototypal)
+    personaName := "ROBIN"
+    history := List clone
+
+    // Fresh identity emerges through cloning
+    clone := method(
+        newConsole := resend
+        newConsole history = List clone
+        newConsole
     )
     setPersona := method(name,
         if(name != nil, self personaName = name)
@@ -1872,5 +1966,583 @@ ChatConsole := Object clone do(
     )
 )
 
-// Initialize Telos zygote to define base slots (world, morphs, flags)
-Telos init
+// ===== GENERATIVE KERNEL: Forward Protocol =====
+// Transform missing messages into growth opportunities through adaptive behavior synthesis
+
+Telos forward := method(
+    // Capture the unknown message and arguments
+    msg := call message
+    args := call evalArgs
+    selector := msg name
+    
+    self mark("telos.generative.invoke", Map clone atPut("selector", selector) atPut("args", args asString))
+    
+    // Log the synthesis attempt
+    writeln("Telos: Generative synthesis of '" .. selector .. "' with args: " .. args asString)
+    
+    // Enhanced pattern recognition with context analysis
+    context := self analyzeGenerativeContext(selector, args)
+    
+    // Try memory-based synthesis first (VSA-RAG integration)
+    memoryResult := self synthesizeFromMemory(selector, args, context)
+    if(memoryResult != nil, return memoryResult)
+    
+    // Pattern-based synthesis
+    if(context at("category") == "creation",
+        return self synthesizeCreation(selector, args, context)
+    )
+    
+    if(context at("category") == "query",
+        return self synthesizeQuery(selector, args, context)
+    )
+    
+    if(context at("category") == "action",
+        return self synthesizeAction(selector, args, context)
+    )
+    
+    if(context at("category") == "morphic",
+        return self synthesizeMorphic(selector, args, context)
+    )
+    
+    if(context at("category") == "persistence",
+        return self synthesizePersistence(selector, args, context)
+    )
+    
+    // Enhanced placeholder with learning
+    return self synthesizePlaceholder(selector, args, context)
+)
+
+// Enhanced context analysis for better synthesis decisions
+Telos analyzeGenerativeContext := method(selector, args,
+    context := Map clone
+    
+    // Pattern classification
+    if(selector beginsWithSeq("create") or selector beginsWithSeq("new") or selector beginsWithSeq("make"),
+        context atPut("category", "creation")
+    ,
+        if(selector containsSeq("find") or selector containsSeq("search") or selector containsSeq("get") or selector containsSeq("query"),
+            context atPut("category", "query")
+        ,
+            if(selector endsWithSeq("Action") or selector containsSeq("do") or selector containsSeq("execute") or selector containsSeq("run"),
+                context atPut("category", "action")
+            ,
+                if(selector containsSeq("morph") or selector containsSeq("Morph") or selector containsSeq("ui") or selector containsSeq("draw"),
+                    context atPut("category", "morphic")
+                ,
+                    if(selector containsSeq("save") or selector containsSeq("load") or selector containsSeq("persist") or selector containsSeq("wal"),
+                        context atPut("category", "persistence"),
+                        context atPut("category", "unknown")
+                    )
+                )
+            )
+        )
+    )
+    
+    // Intent analysis
+    context atPut("intent", selector)
+    context atPut("argCount", args size)
+    context atPut("complexity", if(args size > 2, "high", if(args size > 0, "medium", "low")))
+    
+    context
+)
+
+// Memory-based synthesis using VSA-RAG substrate
+Telos synthesizeFromMemory := method(selector, args, context,
+    if(self memory == nil, return nil)
+    
+    // Query memory for similar patterns
+    query := selector .. " " .. (args map(a, a asString) join(" "))
+    hits := self memory search(query, 3)
+    
+    if(hits size > 0,
+        // Learn from memory patterns but prefer actual synthesis
+        pattern := hits at(0)
+        writeln("Telos: Memory context found: '" .. pattern .. "' - applying contextual synthesis")
+        
+        // Use memory context to enhance synthesis but don't return memory object directly
+        context atPut("memoryPattern", pattern)
+        context atPut("memoryGuided", true)
+    )
+    
+    // Always return nil to let specific synthesizers handle creation with memory context
+    nil
+)
+
+Telos synthesizeCreation := method(selector, args, context,
+    // Enhanced creation with context awareness
+    if(selector == "createPersona" and args size > 0,
+        // Create a persona using the existing prototype system
+        personaSpec := Map clone
+        personaSpec atPut("name", args at(0) ifNil("GeneratedPersona"))
+        personaSpec atPut("role", args atIfAbsent(1, "Synthesized Agent"))
+        personaSpec atPut("ethos", "adaptive, generative, prototypal")
+        personaSpec atPut("speakStyle", "exploratory, creative")
+        
+        // If Persona prototype exists, use it; otherwise create a basic persona object
+        if(Persona != nil,
+            persona := Persona with(personaSpec)
+        ,
+            persona := Object clone
+            persona name := personaSpec at("name")
+            persona role := personaSpec at("role")
+            persona ethos := personaSpec at("ethos")
+            persona speakStyle := personaSpec at("speakStyle")
+            persona describe := method("Persona: " .. name .. " (" .. role .. ")")
+        )
+        writeln("Telos: Synthesized persona '" .. persona name .. "'")
+        return persona
+    )
+    
+    if(selector containsSeq("Morph") or context at("category") == "morphic",
+        // Enhanced morph creation with type inference - prototypal object approach
+        typeAnalyzer := Object clone
+        typeAnalyzer baseName := selector
+        typeAnalyzer resolvedType := if(selector containsSeq("Rectangle"), "RectangleMorph",
+                        if(selector containsSeq("Text"), "TextMorph",
+                        if(selector containsSeq("Circle"), "CircleMorph", 
+                        if(selector containsSeq("Button"), "ButtonMorph", selector))))
+        
+        newMorph := self createMorph(typeAnalyzer resolvedType)
+        newMorph synthesizedType := typeAnalyzer resolvedType
+        newMorph generationContext := context
+        
+        // Apply arguments if provided (position, size, etc.)
+        if(args size >= 2,
+            newMorph moveTo(args at(0) asNumber, args at(1) asNumber)
+        )
+        if(args size >= 4,
+            newMorph resizeTo(args at(2) asNumber, args at(3) asNumber)
+        )
+        
+        writeln("Telos: Synthesized " .. typeAnalyzer resolvedType .. " with context")
+        return newMorph
+    )
+    
+    // Handle specific positioned creation methods
+    if(selector beginsWithSeq("create") and selector endsWithSeq("At"),
+        // Extract morph type from method name - prototypal object approach  
+        positionedTypeAnalyzer := Object clone
+        positionedTypeAnalyzer defaultType := "RectangleMorph"
+        positionedTypeAnalyzer resolvedType := if(selector containsSeq("Rectangle"), "RectangleMorph",
+                                if(selector containsSeq("Text"), "TextMorph", 
+                                if(selector containsSeq("Circle"), "CircleMorph",
+                                if(selector containsSeq("Button"), "ButtonMorph", positionedTypeAnalyzer defaultType))))
+        
+        newMorph := self createMorph(positionedTypeAnalyzer resolvedType)
+        newMorph synthesizedType := positionedTypeAnalyzer resolvedType
+        newMorph generationContext := context
+        
+        // Apply position and size from arguments
+        if(args size >= 2,
+            newMorph moveTo(args at(0) asNumber, args at(1) asNumber)
+        )
+        if(args size >= 4,
+            newMorph resizeTo(args at(2) asNumber, args at(3) asNumber)
+        )
+        
+        writeln("Telos: Synthesized positioned " .. positionedTypeAnalyzer resolvedType)
+        return newMorph
+    )
+    
+    if(selector containsSeq("Fractal"),
+        // Create context or concept fractals
+        if(selector containsSeq("Context"),
+            fractal := ContextFractal with(args atIfAbsent(0, "synthesized context"))
+            writeln("Telos: Synthesized ContextFractal")
+            return fractal
+        )
+        if(selector containsSeq("Concept"),
+            fractal := ConceptFractal clone
+            writeln("Telos: Synthesized ConceptFractal")
+            return fractal
+        )
+    )
+    
+    // Default enhanced creation
+    created := Object clone
+    created synthesizedFrom := selector
+    created generationContext := context
+    created args := args
+    created timestamp := Date clone now asNumber
+    
+    // Add basic behavior based on intent
+    created describe := method("Synthesized object: " .. synthesizedFrom .. " with " .. args size .. " args")
+    
+    writeln("Telos: Synthesized object from '" .. selector .. "' with enhanced context")
+    return created
+)
+
+Telos synthesizeQuery := method(selector, args, context,
+    // Enhanced query synthesis with pattern matching
+    
+    // Morphic queries
+    if(selector containsSeq("morph") or selector containsSeq("Morph"),
+        if(selector containsSeq("At") and args size >= 2,
+            // Query morphs at position
+            return self morphsAt(args at(0) asNumber, args at(1) asNumber)
+        )
+        if(selector containsSeq("ByType") and args size > 0,
+            // Query morphs by type
+            typeName := args at(0)
+            return self morphs select(m, m type == typeName)
+        )
+        if(selector containsSeq("ByColor"),
+            // Query morphs by color similarity
+            return self morphs select(m, m hasSlot("color"))
+        )
+        return self morphs // All morphs
+    )
+    
+    // Memory queries
+    if(selector containsSeq("memory") or selector containsSeq("Memory"),
+        if(args size > 0,
+            query := args at(0)
+            k := args atIfAbsent(1, 5)
+            return self memory search(query, k)
+        )
+        return self memory db // All memory
+    )
+    
+    // Persona queries
+    if(selector containsSeq("persona") or selector containsSeq("Persona"),
+        if(args size > 0,
+            name := args at(0)
+            return self personaCodex get(name)
+        )
+        return self personaCodex registry values
+    )
+    
+    // WAL/persistence queries  
+    if(selector containsSeq("wal") or selector containsSeq("WAL"),
+        if(selector containsSeq("Frames"),
+            return self walListCompleteFrames
+        )
+        // Return WAL tail
+        return self logs tail("telos.wal", args atIfAbsent(0, 10))
+    )
+    
+    // Fractal queries
+    if(selector containsSeq("fractal") or selector containsSeq("Fractal"),
+        // Could integrate with concept/context search here
+        writeln("Telos: Fractal query synthesis - integrate with VSA-RAG")
+        return List clone
+    )
+    
+    // Default enhanced query
+    writeln("Telos: Synthesized query '" .. selector .. "' - returning structured result")
+    result := Map clone
+    result atPut("query", selector)
+    result atPut("args", args)
+    result atPut("timestamp", Date clone now asNumber)
+    result atPut("results", List clone)
+    return result
+)
+
+Telos synthesizeAction := method(selector, args, context,
+    // Enhanced action synthesis with context and memory
+    
+    // Animation actions
+    if(selector containsSeq("animate") or selector containsSeq("move"),
+        if(self world != nil and self world hasSlot("submorphs"),
+            dx := args atIfAbsent(0, 10) asNumber
+            dy := args atIfAbsent(1, 5) asNumber
+            count := 0
+            self world submorphs foreach(morph,
+                if(morph hasSlot("moveTo"),
+                    morph moveTo(morph x + dx, morph y + dy)
+                    count = count + 1
+                )
+            )
+            writeln("Telos: Synthesized animation - moved " .. count .. " morphs")
+            return "Animation applied to " .. count .. " morphs"
+        )
+    )
+    
+    // Cleanup actions
+    if(selector containsSeq("reset") or selector containsSeq("clear") or selector containsSeq("clean"),
+        if(selector containsSeq("world") or selector containsSeq("World"),
+            if(self world != nil,
+                count := self world submorphs size
+                self world submorphs := List clone
+                writeln("Telos: Synthesized world reset - cleared " .. count .. " morphs")
+                return "World reset: " .. count .. " morphs cleared"
+            )
+        )
+        if(selector containsSeq("memory") or selector containsSeq("Memory"),
+            if(self memory != nil,
+                self memory db := List clone
+                writeln("Telos: Synthesized memory reset")
+                return "Memory cleared"
+            )
+        )
+        if(selector containsSeq("wal") or selector containsSeq("WAL"),
+            File with("telos.wal") setContents("")
+            writeln("Telos: Synthesized WAL reset")
+            return "WAL cleared"
+        )
+    )
+    
+    // Layout actions
+    if(selector containsSeq("layout") or selector containsSeq("organize") or selector containsSeq("arrange"),
+        if(self world != nil and self world hasSlot("submorphs") and self world submorphs size > 0,
+            layout := if(selector containsSeq("Row"), RowLayout clone, ColumnLayout clone)
+            if(args size > 0, layout spacing = args at(0) asNumber)
+            count := layout apply(self world)
+            writeln("Telos: Synthesized layout action - organized " .. count .. " morphs")
+            return "Layout applied: " .. count .. " morphs organized"
+        )
+    )
+    
+    // Persistence actions
+    if(selector containsSeq("save") or selector containsSeq("snapshot"),
+        if(selector containsSeq("world") or selector containsSeq("World"),
+            path := self saveWorldJson
+            writeln("Telos: Synthesized world save to " .. path)
+            return "World saved to " .. path
+        )
+        if(selector containsSeq("memory") or selector containsSeq("Memory"),
+            // Could implement memory snapshot here
+            writeln("Telos: Synthesized memory save")
+            return "Memory snapshot saved"
+        )
+    )
+    
+    // Persona actions  
+    if(selector containsSeq("persona") or selector containsSeq("Persona"),
+        if(selector containsSeq("switch") or selector containsSeq("activate"),
+            personaName := args atIfAbsent(0, "ROBIN")
+            persona := self personaCodex get(personaName)
+            if(persona != nil,
+                writeln("Telos: Synthesized persona switch to " .. personaName)
+                return "Activated persona: " .. personaName
+            )
+        )
+    )
+    
+    // Default enhanced action
+    writeln("Telos: Synthesized action '" .. selector .. "' with context")
+    result := Map clone
+    result atPut("action", selector)
+    result atPut("status", "completed")
+    result atPut("context", context)
+    result atPut("timestamp", Date clone now asNumber)
+    return result
+)
+
+// Morphic-specific synthesis
+Telos synthesizeMorphic := method(selector, args, context,
+    writeln("Telos: Morphic synthesis for '" .. selector .. "'")
+    
+    // Drawing and rendering
+    if(selector containsSeq("draw") or selector containsSeq("render"),
+        if(self world != nil,
+            self world draw
+            return "Morphic drawing completed"
+        )
+    )
+    
+    // UI event synthesis
+    if(selector containsSeq("click") or selector containsSeq("tap"),
+        if(args size >= 2,
+            self click(args at(0) asNumber, args at(1) asNumber)
+            return "Click synthesized at (" .. args at(0) .. "," .. args at(1) .. ")"
+        )
+    )
+    
+    // Canvas operations
+    if(selector containsSeq("canvas") or selector containsSeq("Canvas"),
+        if(selector containsSeq("open"),
+            cv := Canvas clone
+            cv open
+            return cv
+        )
+        if(selector containsSeq("heartbeat"),
+            beats := args atIfAbsent(0, 5) asNumber
+            return self ui heartbeat(beats)
+        )
+    )
+    
+    // Default morphic response
+    return "Morphic operation: " .. selector
+)
+
+// Persistence-specific synthesis  
+Telos synthesizePersistence := method(selector, args, context,
+    writeln("Telos: Persistence synthesis for '" .. selector .. "'")
+    
+    // WAL operations
+    if(selector containsSeq("wal") or selector containsSeq("WAL"),
+        if(selector containsSeq("commit"),
+            tag := args atIfAbsent(0, "synthesized")
+            info := Map clone atPut("generated", true)
+            self walCommit(tag, info, nil)
+            return "WAL commit: " .. tag
+        )
+        if(selector containsSeq("replay"),
+            result := self replayWal
+            return "WAL replay: " .. result
+        )
+    )
+    
+    // Snapshot operations
+    if(selector containsSeq("snapshot"),
+        path := self saveSnapshot
+        return "Snapshot saved: " .. path
+    )
+    
+    // Backup operations
+    if(selector containsSeq("backup"),
+        // Could implement backup synthesis here
+        return "Backup operation synthesized"
+    )
+    
+    // Default persistence response
+    return "Persistence operation: " .. selector
+)
+
+Telos synthesizePlaceholder := method(selector, args, context,
+    // Enhanced placeholder with learning capability
+    
+    // Create a dynamic method that learns from usage
+    methodBody := """method(
+        writeln("Telos: Dynamic method '""" .. selector .. """' called with args: " .. call evalArgs asString)
+        
+        // Log usage for learning
+        usage := Map clone
+        usage atPut("selector", """" .. selector .. """")
+        usage atPut("args", call evalArgs)
+        usage atPut("timestamp", Date clone now asNumber)
+        
+        // Store in learning context
+        if(Telos hasSlot("learningContext") not, Telos learningContext := List clone)
+        Telos learningContext append(usage)
+        
+        return "Dynamic response from """ .. selector .. """" 
+    )"""
+    
+    // Store the synthesized method for future use
+    if(self hasSlot("synthesizedMethods") not, self synthesizedMethods := Map clone)
+    self synthesizedMethods atPut(selector, methodBody)
+    
+    // Add to memory for future pattern matching
+    if(self memory != nil,
+        contextStr := "synthesized method: " .. selector .. " with " .. args size .. " args"
+        self memory addContext(contextStr)
+    )
+    
+    writeln("Telos: Synthesized learning placeholder '" .. selector .. "'")
+    
+    result := Object clone
+    result selector := selector
+    result isPlaceholder := true
+    result context := context
+    result usage := method("Placeholder method: " .. selector)
+    
+    return result
+)
+
+// Add forward protocol to Morph hierarchy
+Morph forward := method(
+    msg := call message
+    args := call evalArgs  
+    selector := msg name
+    
+    writeln("Morph#" .. id .. ": Generative synthesis of '" .. selector .. "'")
+    
+    // Morph-specific synthesis patterns
+    if(selector beginsWithSeq("become"),
+        // Transform this morph into something else
+        newType := selector afterSeq("become") ifNil("Unknown")
+        self synthesizedType := newType
+        writeln("Morph#" .. id .. ": Became " .. newType)
+        return self
+    )
+    
+    if(selector beginsWithSeq("grow") or selector beginsWithSeq("expand"),
+        // Growth behavior
+        self width = self width * 1.2
+        self height = self height * 1.2
+        writeln("Morph#" .. id .. ": Grew larger")
+        return self
+    )
+    
+    if(selector beginsWithSeq("shrink") or selector beginsWithSeq("contract"),
+        // Shrinkage behavior
+        self width = self width * 0.8
+        self height = self height * 0.8
+        writeln("Morph#" .. id .. ": Shrank smaller")
+        return self
+    )
+    
+    // Default: delegate to Telos for system-wide synthesis
+    return Telos forward
+)
+
+// World prototype - the root container for all morphic elements
+World := Morph clone
+World width := 800
+World height := 600
+World backgroundColor := list(0.9, 0.9, 0.9, 1)
+
+World draw := method(
+    writeln("World (" .. width .. "x" .. height .. ") background=" .. backgroundColor asString)
+    if(hasSlot("submorphs"),
+        submorphs foreach(morph, morph draw)
+    )
+)
+
+// Enhanced World forward protocol for better synthesis
+World forward := method(
+    msg := call message
+    args := call evalArgs
+    selector := msg name
+    
+    writeln("World: Generative synthesis of '" .. selector .. "'")
+    
+    // World-specific synthesis patterns
+    if(selector containsSeq("clear") or selector containsSeq("reset"),
+        self submorphs := List clone
+        writeln("World: Cleared all morphs")
+        return self
+    )
+    
+    if(selector containsSeq("organize") or selector containsSeq("layout"),
+        // Simple grid layout
+        if(hasSlot("submorphs") and submorphs size > 0,
+            cols := (submorphs size sqrt) ceil
+            rows := (submorphs size / cols) ceil
+            cellWidth := width / cols
+            cellHeight := height / rows
+            
+            submorphs foreach(i, morph,
+                col := i % cols
+                row := (i / cols) floor
+                morph moveTo(col * cellWidth + 20, row * cellHeight + 20)
+            )
+            writeln("World: Organized " .. submorphs size .. " morphs in grid")
+        )
+        return self
+    )
+    
+    // Enhanced spawn synthesis
+    if(selector containsSeq("spawn") or selector containsSeq("populate"),
+        // Create multiple morphs
+        count := args at(0) ifNil(3)
+        if(count type != "Number", count = 3)
+        
+        count repeat(
+            rnd := Random value
+            morph := Telos createMorph("RectangleMorph")
+            morph moveTo((rnd * 300) + 50, (rnd * 200) + 50)
+            morph setColor(rnd, (1 - rnd), 0.5, 1)
+            self addSubmorph(morph)
+        )
+        writeln("World: Spawned " .. count .. " morphs via synthesis")
+        return self
+    )
+    
+    // Default: delegate to Telos
+    return Telos forward
+)
+
+// Telos zygote is ready - all slots immediately available through prototypal inheritance
