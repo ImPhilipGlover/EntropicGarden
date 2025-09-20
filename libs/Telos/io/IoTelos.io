@@ -518,6 +518,27 @@ Telos := Lobby Protos Telos clone do(
         atPut("useOllama", false)
     )
 
+    // Generic Python eval (FFI maturation) — pass a short expression or statements
+    pyEval := method(code,
+        if(code == nil, code = "")
+        started := Date clone now asNumber
+        out := if(self hasSlot("Telos_rawPyEval"), Telos_rawPyEval(code), "")
+        ended := Date clone now asNumber
+        // Log as a tool use for provenance
+        rec := Map clone
+        rec atPut("t", ended)
+        rec atPut("tool", "py.eval")
+        rec atPut("code", code)
+        dur := ((ended - started) * 1000) floor
+        rec atPut("duration_ms", dur)
+        rec atPut("result", out)
+        Telos logs append(Telos logs tools, Telos json stringify(rec))
+        // WAL mark for traceability (no SET inside)
+        info := Map clone; info atPut("ms", dur)
+        mark("py.eval", info)
+        out
+    )
+
     // Persona → model mapping for Ollama (local model names created via Modelfiles)
     personaModels := Map clone do(
         atPut("BRICK", "telos/brick")

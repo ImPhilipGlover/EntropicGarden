@@ -158,6 +158,8 @@ Append a short entry after each meaningful action batch.
 
 - 2025-09-20: WAL Integrity v1 — added `Telos walCommit(tag, info, block)` and made `Telos replayWal(path)` frame-aware: groups `BEGIN <tag> ... END <tag>` frames and applies only complete frames; falls back to legacy unframed `SET` scanning if no frames present. Added `samples/telos/wal_recovery_demo.io` and wired it into `samples/telos/regression_smokes.io`. Validated in WSL with `/mnt/c/EntropicGarden/build/_build/binaries/io /mnt/c/EntropicGarden/samples/telos/wal_recovery_demo.io`: Snapshot B reflected only the completed frame (e.g., `rect1` moved to `(25,35)` with green color; `rect2` resized to `60x40`, ignoring later incomplete-frame moves/colors). No GC assertions; run exited 0.
 
+- 2025-09-20: FFI maturation (pyEval v0) — added `Telos_rawPyEval` C bridge and Io wrapper `Telos pyEval(code)` that logs to tools JSONL and WAL-marks an event. Added `samples/telos/python_eval_demo.io`. Current behavior: returns empty string in demo environment (per-run isolated Python env; expressions/exec succeed silently). Functional seam is established; result marshalling will be refined (Phase 4 Roadmap).
+
 ## Decisions Log
 - 2025-09-19: Minimal, non-invasive GUI path — reintroduced windowing as an optional addon seam using SDL2, keeping existing textual Morphic invariants intact. All GUI work runs under WSLg; no Windows-native path is required.
 - 2025-09-19: Standardized map construction — avoid named-argument `map(...)` forms due to parser/shim brittleness; use explicit `Map clone` + `atPut` everywhere for stability and clarity.
@@ -186,6 +188,8 @@ Record structural choices and rationale; reference related commits/patches.
 - 2025-09-20: Ollama bridge strategy — execute embedded Python with a shared env dict (globals==locals) to persist imports; try `/api/chat` first (with optional `system` as first message), then `/api/generate`, and finally strip `:latest` if needed. Keep `keep_alive` set to `"0s"` to avoid lingering models. Retain enriched error messages for DOE diagnostics. This keeps the Io→C→Python seam robust while preserving prototypal Io purity.
 
 - 2025-09-20: WAL framing and recovery — Treat `BEGIN/END` as commit boundaries and ignore trailing incomplete frames during replay to improve durability after crashes. Preserve legacy behavior by scanning for `SET` lines when no frames are found to maintain backward compatibility with older WALs. Implemented purely in Io to avoid GC instability; no Io VM/C changes needed.
+
+- 2025-09-20: pyEval seam minimalism — Implemented a minimal eval/exec bridge returning stringified results or empty string, prioritizing a stable Io→C→Python seam over rich result types. We will iterate on environment persistence and richer marshaling (JSON in/out) under Roadmap Phase 4.
 
 ## References
 - Copilot Ops Guide: `.github/copilot-instructions.md`

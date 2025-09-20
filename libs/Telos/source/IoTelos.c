@@ -59,6 +59,8 @@ void IoTelos_initPython(void) {
 
 // Forward declaration for Ollama bridge
 IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m);
+// Forward declaration for generic Python eval
+IoObject *IoTelos_pyEval(IoTelos *self, IoObject *locals, IoMessage *m);
 // Forward declaration for simple logger
 IoObject *IoTelos_logAppend(IoTelos *self, IoObject *locals, IoMessage *m);
 // Forward declarations for RAG skeleton
@@ -97,6 +99,7 @@ IoTelos *IoTelos_proto(void *state)
 			{"draw", IoTelos_draw},
 			{"handleEvent", IoTelos_handleEvent},
             {"ollamaGenerate", IoTelos_ollamaGenerate},
+            {"pyEval", IoTelos_pyEval},
             {"logAppend", IoTelos_logAppend},
             {"ragIndex", IoTelos_ragIndex},
             {"ragQuery", IoTelos_ragQuery},
@@ -172,6 +175,9 @@ void IoTelosInit(IoState *state, IoObject *context)
     // Expose Ollama HTTP bridge (via embedded Python)
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawOllamaGenerate"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_ollamaGenerate, NULL, "Telos_rawOllamaGenerate"));
+
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawPyEval"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_pyEval, NULL, "Telos_rawPyEval"));
 
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawLogAppend"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_logAppend, NULL, "Telos_rawLogAppend"));
@@ -628,6 +634,74 @@ IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m)
         result = IoSeq_newWithCString_(IOSTATE, "[OLLAMA_ERROR] request failed");
     }
 
+    return result;
+}
+
+// --- Generic Python Eval ---
+// Io signature: Telos_rawPyEval(code) -> string result or empty string
+IoObject *IoTelos_pyEval(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    IoSeq *codeSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 0);
+    const char *code = codeSeq ? IoSeq_asCString(codeSeq) : NULL;
+    if (!code) {
+        return IoSeq_newWithCString_(IOSTATE, "");
+    }
+
+    IoTelos_initPython();
+    IoObject *result = NULL;
+    PyGILState_STATE gstate = PyGILState_Ensure();
+
+    PyObject *globals = PyDict_New();
+    PyObject *localsDict = globals ? globals : PyDict_New();
+    if (globals && localsDict) {
+        PyDict_SetItemString(globals, "__builtins__", PyEval_GetBuiltins());
+
+        // Try eval first
+        PyObject *pyRes = PyRun_StringFlags(code, Py_eval_input, globals, localsDict, NULL);
+        if (pyRes) {
+            PyObject *s = PyObject_Str(pyRes);
+            if (s && PyUnicode_Check(s)) {
+                const char *cstr = PyUnicode_AsUTF8(s);
+                if (cstr) {
+                    result = IoSeq_newWithCString_(IOSTATE, cstr);
+                }
+            }
+            Py_XDECREF(s);
+            Py_DECREF(pyRes);
+        } else {
+            // Clear the error and attempt exec (statements)
+            PyErr_Clear();
+            PyObject *pyExec = PyRun_StringFlags(code, Py_file_input, globals, localsDict, NULL);
+            if (pyExec) {
+                Py_DECREF(pyExec);
+                result = IoSeq_newWithCString_(IOSTATE, "");
+            } else {
+                // Return error string
+                PyObject *ptype=NULL, *pvalue=NULL, *ptrace=NULL;
+                PyErr_Fetch(&ptype, &pvalue, &ptrace);
+                PyErr_NormalizeException(&ptype, &pvalue, &ptrace);
+                const char *err = "[PY_ERROR]";
+                if (pvalue) {
+                    PyObject *s = PyObject_Str(pvalue);
+                    if (s && PyUnicode_Check(s)) {
+                        err = PyUnicode_AsUTF8(s);
+                    }
+                    Py_XDECREF(s);
+                }
+                if (!err) err = "[PY_ERROR] unknown";
+                result = IoSeq_newWithCString_(IOSTATE, err);
+                Py_XDECREF(ptype); Py_XDECREF(pvalue); Py_XDECREF(ptrace);
+            }
+        }
+    }
+
+    Py_XDECREF(globals);
+    if (localsDict && localsDict != globals) Py_XDECREF(localsDict);
+    PyGILState_Release(gstate);
+
+    if (!result) {
+        result = IoSeq_newWithCString_(IOSTATE, "");
+    }
     return result;
 }
 

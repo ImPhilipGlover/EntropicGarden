@@ -32,4 +32,7 @@ run("samples/telos/rag_on_canvas_demo.io")
 // Ollama LLM bridge (requires Ollama server)
 run("samples/telos/persona_chat_console_demo.io")
 
+// Python eval bridge
+run("samples/telos/python_eval_demo.io")
+
 writeln("TelOS regression smokes: end")
