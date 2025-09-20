@@ -48,6 +48,15 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "(OpenBSD|FreeBSD|Linux|NetBSD|DragonFly)")
 	list(APPEND LIBS "-lm")
 endif(${CMAKE_SYSTEM_NAME} MATCHES "(OpenBSD|FreeBSD|Linux|NetBSD|DragonFly)")
 
+# If Telos was built with SDL2, link SDL2 into final executables to satisfy static refs
+option(TELOS_WITH_SDL2 "Build Telos with SDL2 window support" ON)
+if(TELOS_WITH_SDL2)
+	find_package(SDL2 QUIET)
+	if(SDL2_FOUND)
+		list(APPEND LIBS ${SDL2_LIBRARIES})
+	endif()
+endif()
+
 # Add curses library for readline needs it
 if(${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD")
 	list(APPEND LIBS "-lcurses")

@@ -24,6 +24,7 @@ void IoTelosInit(IoState *self, IoObject *context);
 IoObject *IoTelos_getPythonVersion(IoTelos *self, IoObject *locals, IoMessage *m);
 IoObject *IoTelos_transactional_setSlot(IoTelos *self, IoObject *locals, IoMessage *m);
 IoObject *IoTelos_openWindow(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_closeWindow(IoTelos *self, IoObject *locals, IoMessage *m);
 
 // Morphic API methods
 IoObject *IoTelos_createWorld(IoTelos *self, IoObject *locals, IoMessage *m);

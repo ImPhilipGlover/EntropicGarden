@@ -15,6 +15,9 @@
 #include <Python.h> // FFI Pillar: Include Python C API
 #include <sys/stat.h>
 #include <errno.h>
+#ifdef TELOS_HAVE_SDL2
+#include <SDL.h>
+#endif
 
 static const char *protoId = "Telos";
 
@@ -31,6 +34,10 @@ typedef struct {
     void *windowHandle; // Platform-specific window handle
     MorphicMorph *world; // Root morph (the world)
     int isRunning;      // Main loop flag
+#ifdef TELOS_HAVE_SDL2
+    SDL_Window *sdlWindow;
+    SDL_Renderer *sdlRenderer;
+#endif
 } MorphicWorld;
 
 // Global world state
@@ -80,7 +87,8 @@ IoTelos *IoTelos_proto(void *state)
 		IoMethodTable methodTable[] = {
 			{"getPythonVersion", IoTelos_getPythonVersion},
 			{"transactional_setSlot", IoTelos_transactional_setSlot},
-			{"openWindow", IoTelos_openWindow},
+            {"openWindow", IoTelos_openWindow},
+            {"closeWindow", IoTelos_closeWindow},
 			{"createWorld", IoTelos_createWorld},
 			{"mainLoop", IoTelos_mainLoop},
 			{"createMorph", IoTelos_createMorph},
@@ -245,6 +253,49 @@ IoObject *IoTelos_transactional_setSlot(IoTelos *self, IoObject *locals, IoMessa
 IoObject *IoTelos_openWindow(IoTelos *self, IoObject *locals, IoMessage *m)
 {
     printf("UI: Opening a 640x480 window titled 'The Entropic Garden'\n");
+#ifdef TELOS_HAVE_SDL2
+    if (!globalWorld) {
+        IoTelos_createWorld(self, locals, m);
+    }
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        printf("Telos SDL2: SDL_Init error: %s\n", SDL_GetError());
+        return self;
+    }
+    globalWorld->sdlWindow = SDL_CreateWindow("The Entropic Garden",
+                                             SDL_WINDOWPOS_CENTERED,
+                                             SDL_WINDOWPOS_CENTERED,
+                                             640, 480,
+                                             SDL_WINDOW_SHOWN);
+    if (!globalWorld->sdlWindow) {
+        printf("Telos SDL2: SDL_CreateWindow error: %s\n", SDL_GetError());
+        return self;
+    }
+    globalWorld->sdlRenderer = SDL_CreateRenderer(globalWorld->sdlWindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!globalWorld->sdlRenderer) {
+        printf("Telos SDL2: SDL_CreateRenderer error: %s\n", SDL_GetError());
+        return self;
+    }
+    SDL_SetRenderDrawColor(globalWorld->sdlRenderer, 32, 48, 64, 255);
+    SDL_RenderClear(globalWorld->sdlRenderer);
+    SDL_RenderPresent(globalWorld->sdlRenderer);
+#endif
+    return self;
+}
+
+IoObject *IoTelos_closeWindow(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+#ifdef TELOS_HAVE_SDL2
+    if (globalWorld && globalWorld->sdlRenderer) {
+        SDL_DestroyRenderer(globalWorld->sdlRenderer);
+        globalWorld->sdlRenderer = NULL;
+    }
+    if (globalWorld && globalWorld->sdlWindow) {
+        SDL_DestroyWindow(globalWorld->sdlWindow);
+        globalWorld->sdlWindow = NULL;
+    }
+    SDL_Quit();
+#endif
+    printf("UI: Closed window\n");
     return self;
 }
 
@@ -440,15 +491,12 @@ IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m)
         snprintf(fullPrompt, len, "%s", prompt);
     }
 
-    // Compose URL for generate endpoint
-    char *url = NULL;
-    size_t urlLen = strlen(baseUrl) + strlen("/api/generate") + 2;
-    url = (char *)malloc(urlLen);
+    // Use base URL; Python code will choose endpoint (/api/generate then fallback to /api/chat)
+    char *url = strdup(baseUrl);
     if (!url) {
         free(fullPrompt);
         return IoSeq_newWithCString_(IOSTATE, "[OLLAMA_ERROR] out of memory");
     }
-    snprintf(url, urlLen, "%s/api/generate", baseUrl);
 
     // Ensure Python is initialized
     IoTelos_initPython();
@@ -456,11 +504,11 @@ IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m)
     IoObject *result = NULL;
 
     PyGILState_STATE gstate = PyGILState_Ensure();
-    PyObject *globals = PyDict_New();
-    PyObject *localsDict = PyDict_New();
-    if (globals && localsDict) {
+    // Use a single shared dict for globals and locals to ensure imports are visible
+    PyObject *env = PyDict_New();
+    if (env) {
         // Inject builtins
-        PyDict_SetItemString(globals, "__builtins__", PyEval_GetBuiltins());
+        PyDict_SetItemString(env, "__builtins__", PyEval_GetBuiltins());
 
         // Prepare Python objects
         PyObject *pyUrl = PyUnicode_FromString(url);
@@ -493,24 +541,64 @@ IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m)
         if (pyOptions) {
             PyDict_SetItemString(payload, "options", pyOptions);
         }
+        // Add system prompt if provided
+        if (system && strlen(system) > 0) {
+            PyObject *pySystem = PyUnicode_FromString(system);
+            PyDict_SetItemString(payload, "system", pySystem);
+            Py_XDECREF(pySystem);
+        }
+    // Encourage Ollama to unload model post-call on constrained VRAM setups (explicit duration string)
+    PyDict_SetItemString(payload, "keep_alive", PyUnicode_FromString("0s"));
 
         if (pyUrl && payload) {
-            PyDict_SetItemString(localsDict, "url", pyUrl);
-            PyDict_SetItemString(localsDict, "payload", payload);
+            PyDict_SetItemString(env, "url", pyUrl);
+            PyDict_SetItemString(env, "payload", payload);
 
             const char *code =
                 "import urllib.request, json\n"
-                "data = json.dumps(payload).encode('utf-8')\n"
-                "req = urllib.request.Request(url, data=data, headers={'Content-Type':'application/json'})\n"
-                "with urllib.request.urlopen(req, timeout=60) as resp:\n"
-                "    body = resp.read().decode('utf-8')\n"
-                "obj = json.loads(body)\n"
-                "out = obj.get('response', body)\n";
+                "def post(u, payload):\n"
+                "    data = json.dumps(payload).encode('utf-8')\n"
+                "    req = urllib.request.Request(u, data=data, headers={'Content-Type':'application/json'})\n"
+                "    with urllib.request.urlopen(req, timeout=60) as resp:\n"
+                "        return resp.read().decode('utf-8')\n"
+                "out = None\n"
+                "base = url.rstrip('/')\n"
+                "# Try /api/chat first (more broadly supported for instruct models)\n"
+                "try:\n"
+                "    msgs = []\n"
+                "    sys = payload.get('system')\n"
+                "    if sys:\n"
+                "        msgs.append({'role':'system','content':sys})\n"
+                "    msgs.append({'role':'user','content':payload.get('prompt','')})\n"
+                "    chatPayload = {'model': payload['model'], 'messages': msgs, 'stream': False}\n"
+                "    if 'options' in payload:\n"
+                "        chatPayload['options'] = payload['options']\n"
+                "    body = post(base + '/api/chat', chatPayload)\n"
+                "    obj = json.loads(body)\n"
+                "    out = (obj.get('message') or {}).get('content', body)\n"
+                "except Exception as e:\n"
+                "    err1 = str(e)\n"
+                "    # Fallback to /api/generate with prompt string\n"
+                "    try:\n"
+                "        body = post(base + '/api/generate', payload)\n"
+                "        obj = json.loads(body)\n"
+                "        out = obj.get('response', body)\n"
+                "    except Exception as e2:\n"
+                "        # Try removing ':latest' tag in case server expects bare name\n"
+                "        try:\n"
+                "            mod = payload.get('model','')\n"
+                "            if mod.endswith(':latest'):\n"
+                "                payload['model'] = mod[:-7]\n"
+                "            body = post(base + '/api/generate', payload)\n"
+                "            obj = json.loads(body)\n"
+                "            out = obj.get('response', body)\n"
+                "        except Exception as e3:\n"
+                "            out = '[OLLAMA_ERROR] request failed: ' + err1 + ' | ' + str(e2) + ' | ' + str(e3)\n";
 
-            PyObject *execRes = PyRun_StringFlags(code, Py_file_input, globals, localsDict, NULL);
+            PyObject *execRes = PyRun_StringFlags(code, Py_file_input, env, env, NULL);
             if (execRes) {
                 Py_DECREF(execRes);
-                PyObject *out = PyDict_GetItemString(localsDict, "out"); // borrowed
+                PyObject *out = PyDict_GetItemString(env, "out"); // borrowed
                 if (out && PyUnicode_Check(out)) {
                     Py_ssize_t size;
                     const char *cstr = PyUnicode_AsUTF8AndSize(out, &size);
@@ -530,8 +618,7 @@ IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m)
     Py_XDECREF(pyOptions);
     }
 
-    Py_XDECREF(globals);
-    Py_XDECREF(localsDict);
+    Py_XDECREF(env);
     PyGILState_Release(gstate);
 
     free(fullPrompt);
@@ -717,8 +804,16 @@ void IoTelos_drawMorph(IoTelos *self, IoObject *morph)
 
 void IoTelos_processEvents(IoTelos *self)
 {
-    // Stub event processing
+    // Stub/SDL2 event processing
     // In real implementation: handle mouse, keyboard, window events
+#ifdef TELOS_HAVE_SDL2
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+        if (e.type == SDL_QUIT) {
+            if (globalWorld) globalWorld->isRunning = 0;
+        }
+    }
+#endif
 }
 
 // Morph-specific methods

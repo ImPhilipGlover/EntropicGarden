@@ -19,6 +19,11 @@ Act as a co-evolving partner. Build vertical slices that breathe: UI (Canvas) + 
 - Keep changes minimal and focused. Prefer incremental, vertical slices.
 - All execution MUST occur inside WSL (Ubuntu). Use the WSL-built `io`.
 
+Orientation (mandatory before each slice):
+- Read `docs/TelOS-Io_Development_Roadmap.md` and quickly skim related blueprints in `docs/` to identify the Roadmap phase/subphase being advanced.
+- Record the targeted phase and acceptance criteria in the Decisions Log before coding.
+- Extract any cross-phase seams (WAL tags, UI hooks, FFI slots) and plan to wire them as extension points.
+
 ## Quick Start (WSL)
 If you’re starting fresh or resuming a session:
 
@@ -95,10 +100,27 @@ Conventions: [not-started] → [in-progress] → [completed]. Keep one [in-progr
 7. [not-started] SDL2 Interactive UI Spike
    - Goal: Replace stub Morphic loop with clickable/keyboard input via SDL2; retain textual snapshot for logs
 
+8. [completed] LLM bridge v1 (Ollama)
+   - Goal: Io→C→Python HTTP call to Ollama using `telos/brick:latest`; log JSONL; heartbeat visible; WAL intact.
+   - Acceptance:
+     - `samples/telos/persona_chat_console_demo.io` prints BRICK replies sourced from Ollama
+     - `logs/persona_llm.jsonl` has `provider:"ollama"` entries with `model:"telos/brick:latest"`
+     - Window breathes (heartbeats before/after), no GC assertions, run exits 0
+     - WAL file present (e.g., prior `SET` entries) and UI snapshot files written
+
+9. [completed] WAL Integrity v1: Frame-Scoped Replay
+    - Goal: Apply only complete BEGIN/END frames during WAL replay; ignore trailing partial frames; keep legacy behavior when no frames exist.
+    - Acceptance:
+       - `Telos.walCommit(tag, info, block)` writes framed transactions around sets
+       - `Telos.replayWal(path)` applies only complete frames; trailing incomplete frame operations are ignored
+       - Demo `samples/telos/wal_recovery_demo.io` shows that only the first, completed frame is applied after a simulated crash
+
 ## Next Up (Active Focus)
 - Harden Morphic interaction samples and add simple UI regression checks for click/drag and replay across runs; then consider a minimal SDL2 spike without disturbing Io invariants.
 
 ## Work Log
+- 2025-09-19: SDL2 window smoke — added optional SDL2 bridge in Telos addon (guarded by `TELOS_HAVE_SDL2`), linked SDL2 into executables, and created `samples/telos/ui_window_smoke.io`. Built and ran under WSL: a 640x480 window appeared via WSLg; Morphic heartbeat printed; window closed cleanly; run exited 0.
+ - 2025-09-19: Regression stabilization pass — fixed Io event dispatch nil-call by guarding `Telos.dispatchEvent` to fall back to C `handleEvent` safely; removed brittle named-arg `map(...)` usage across IoTelos by switching to `Map clone` + `atPut` (affecting logs/curation/LLM stubs and RAG query logging); simplified `Telos.memory.search` scoring/select loop to avoid symbol collisions. Validated in WSL with `samples/telos/regression_smokes.io`: Morphic heartbeat/snapshots/WAL writes are green; rRAG demos pass; run exited 0.
 - 2025-09-19: Telos Io layer extended: added `Telos.mark(tag, info)` WAL marker, `logs.tail(path,n)`, a minimal textual `commands.run(name, args)` router, and clipboard-based selection copy/paste with morph spec export/import (`toSpec`/`fromSpec`). Added samples: `samples/telos/command_router_demo.io`, `samples/telos/clipboard_demo.io`, and `samples/telos/logs_tail_demo.io`. Ran command router and clipboard demos in WSL: world created, WAL writes observed, heartbeat and snapshots printed; logs tail demo pending minor fix in tail on some environments.
 Append a short entry after each meaningful action batch.
 
@@ -132,7 +154,15 @@ Append a short entry after each meaningful action batch.
  - 2025-09-19: Fixed IoTelos API alignment — Io now calls C methods without `_raw` suffix and added C method `addMorphToWorld` to mirror Io morphs into the C world's submorphs so C draw/loop shows them. Implemented Io-level `createMorph` to use `Morph` prototype, maintain `Telos.morphIndex`, and append to C world. Updated sample `samples/telos/lowres_whole_slice_demo.io` to exercise UI+FFI+WAL+snapshot JSON.
  - 2025-09-19: Added world JSON export/import scaffold (`Telos.saveWorldJson`, `Telos.loadWorldJson`) leveraging specs; introduced `ButtonMorph` with `action` and generic `onClick`; enriched command router (`newRect`, `newText`, `move`, `resize`, `color`, `front`, `toggleGrid`, `export.json`, `import.json`). Added `samples/telos/command_script_demo.io` to script scene creation and manipulation.
 
+- 2025-09-20: Ollama bridge v1 online — fixed embedded Python execution to use a single shared `env` dict for both globals/locals so `import json` is visible across calls; prefer `/api/chat` first, then fallback to `/api/generate`, then retry without `:latest` tag. Set `keep_alive` to `"0s"` and enriched error strings. Built in WSL and ran `samples/telos/persona_chat_console_demo.io`: window opened, heartbeats printed before/after calls, BRICK returned multi-turn replies; no GC assertions; run exited 0. Verified `logs/persona_llm.jsonl` now contains `provider:"ollama"` entries with `model:"telos/brick:latest"`; `telos.wal` present with prior `SET` lines.
+
+- 2025-09-20: WAL Integrity v1 — added `Telos walCommit(tag, info, block)` and made `Telos replayWal(path)` frame-aware: groups `BEGIN <tag> ... END <tag>` frames and applies only complete frames; falls back to legacy unframed `SET` scanning if no frames present. Added `samples/telos/wal_recovery_demo.io` and wired it into `samples/telos/regression_smokes.io`. Validated in WSL with `/mnt/c/EntropicGarden/build/_build/binaries/io /mnt/c/EntropicGarden/samples/telos/wal_recovery_demo.io`: Snapshot B reflected only the completed frame (e.g., `rect1` moved to `(25,35)` with green color; `rect2` resized to `60x40`, ignoring later incomplete-frame moves/colors). No GC assertions; run exited 0.
+
 ## Decisions Log
+- 2025-09-19: Minimal, non-invasive GUI path — reintroduced windowing as an optional addon seam using SDL2, keeping existing textual Morphic invariants intact. All GUI work runs under WSLg; no Windows-native path is required.
+- 2025-09-19: Standardized map construction — avoid named-argument `map(...)` forms due to parser/shim brittleness; use explicit `Map clone` + `atPut` everywhere for stability and clarity.
+- 2025-09-19: Event dispatch safety — never send `call` to potentially-nil slots; route Io-first then guarded C fallback in `Telos.dispatchEvent` to prevent nil-call regressions.
+- 2025-09-19: rRAG selection heuristic — prefer simple list of tuples or maps with plain numeric compare; avoid reusing short variable names (`t`, `m`) across nested blocks to reduce shadowing errors. Next step is to finalize top-k selection structure to remove `'score'` lookup fragility.
 - 2025-09-19: Avoided registering command blocks at load-time to prevent early resolution errors; implemented runtime dispatch for `Telos.commands.run`. Simplified `ui.heartbeat` to a single print to sidestep Io loop scoping quirks during DOE smokes. Implemented `logs.tail` without early returns or semicolon sequencing to keep Io parser stable across versions.
 Record structural choices and rationale; reference related commits/patches.
 
@@ -153,6 +183,10 @@ Record structural choices and rationale; reference related commits/patches.
 - 2025-09-19: Scoring heuristic chosen for offline safety: token overlap against persona ethos/style/routing hints plus a small brevity bonus when persona favors precision; bounded to [0,1]. Avoids JSON parsing in flush by naive field extraction to keep dependencies minimal.
  - 2025-09-19: Explicit Io receiver usage for raw C slots — call `Telos Telos_rawRagIndex`/`Telos Telos_rawRagQuery` to avoid lookup on `Protos`. Avoid default parameters in Io method signatures; set defaults inside method body. Guard optional slots via `hasSlot` (e.g., `autoReplay`).
 
+- 2025-09-20: Ollama bridge strategy — execute embedded Python with a shared env dict (globals==locals) to persist imports; try `/api/chat` first (with optional `system` as first message), then `/api/generate`, and finally strip `:latest` if needed. Keep `keep_alive` set to `"0s"` to avoid lingering models. Retain enriched error messages for DOE diagnostics. This keeps the Io→C→Python seam robust while preserving prototypal Io purity.
+
+- 2025-09-20: WAL framing and recovery — Treat `BEGIN/END` as commit boundaries and ignore trailing incomplete frames during replay to improve durability after crashes. Preserve legacy behavior by scanning for `SET` lines when no frames are found to maintain backward compatibility with older WALs. Implemented purely in Io to avoid GC instability; no Io VM/C changes needed.
+
 ## References
 - Copilot Ops Guide: `.github/copilot-instructions.md`
 - Logging & Curation: `docs/Logging_and_Curation.md`
@@ -168,8 +202,26 @@ You are GitHub Copilot operating inside a private repository to build TelOS. Fol
    - Living slice: each step integrates UI (Canvas), FFI (Io→C→Python), and Persistence (state/logging).
    - Prototypal Io: use clones/message passing; no classes.
    - Maintain the checklist: exactly one item in-progress; update after each tool batch with deltas in Work Log; record Decisions.
+   - Orientation: Before coding, review `docs/TelOS-Io_Development_Roadmap.md` and any relevant `docs/*` blueprints. State which Roadmap phase your slice implements and its acceptance criteria; then proceed.
 3) Start by validating the current in-progress checklist item and continue autonomously until it’s completed. Then proceed to the next.
 4) Keep edits minimal and targeted; run small smoke tests after substantive changes.
 5) If blocked by missing info, make the most reasonable assumption, proceed, and document it in the Decisions Log.
 
 When ready, begin by updating the Live Checklist status for the current item to in-progress (if not already), then perform the next concrete action.
+
+---
+
+## Work Log (2025-09-20)
+- Fixed Persona.converse default-argument pitfall by moving defaults into method body and explicitly calling `self composeSystemPrompt`.
+- Added `contextKernel` initialization in `Persona.init` and lazy load in `composeSystemPrompt` to avoid missing-slot errors.
+- Rebuilt in WSL and ran `samples/telos/persona_chat_console_demo.io`: window opened via WSLg, two chat turns printed `[OFFLINE_STUB_COMPLETION]`, window closed cleanly.
+ - Canvas heartbeat made loopable: `Canvas.heartbeat(n)` now calls `Telos.mainLoop` n times to keep the window alive longer during demos.
+ - Persona chat demo updated to wait: added extra `cv heartbeat` calls before and after each LLM request and before closing, so the window stays open long enough to observe output.
+ - Repaired stray Io source corruption: removed accidental `"ollama serve"` fragment in `libs/Telos/io/IoTelos.io` that caused a `Block does not respond to 'ollama'` exception.
+ - Verified telos models registered in WSL (`/api/tags` shows `telos/{alfred,babs,brick,robin}:latest`). Demo now opens and breathes; LLM calls still return `[OLLAMA_ERROR] request failed` (bridge payload/endpoint investigation next).
+
+## Decisions Log (2025-09-20)
+- Avoid Io default arguments in method signatures; set defaults inside the method body to prevent parser misinterpretation.
+- Initialize persona context eagerly and guard with lazy-load in `composeSystemPrompt`.
+ - Keep UI visible: prefer loopable heartbeats over sleeps to stay within Morphic invariants; use `Canvas.heartbeat(n)` around I/O.
+ - Source hygiene: protect Io files from stray terminal text; added a check to grep for unexpected tokens when demo exceptions appear.

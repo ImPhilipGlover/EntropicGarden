@@ -32,6 +32,7 @@ target_link_libraries(IoTelos
     basekit
     iovmall
     ${PYTHON_LIBRARIES}
+    ${SDL2_LIBRARIES}
     # ${GLUT_LIBRARIES}
     # ${OPENGL_LIBRARIES}
 )
@@ -43,6 +44,21 @@ target_link_libraries(IoTelos_static
     basekit
     iovmall_static
     ${PYTHON_LIBRARIES}
+    ${SDL2_LIBRARIES}
     # ${GLUT_LIBRARIES}
     # ${OPENGL_LIBRARIES}
 )
+
+# Optional SDL2 integration (best-effort)
+option(TELOS_WITH_SDL2 "Build Telos with SDL2 window support" ON)
+if(TELOS_WITH_SDL2)
+    find_package(SDL2 QUIET)
+    if(SDL2_FOUND)
+        message(STATUS "Telos: SDL2 found, enabling window support")
+        include_directories(${SDL2_INCLUDE_DIRS})
+        target_compile_definitions(IoTelos PRIVATE TELOS_HAVE_SDL2=1)
+        target_compile_definitions(IoTelos_static PRIVATE TELOS_HAVE_SDL2=1)
+    else()
+        message(STATUS "Telos: SDL2 not found; window support disabled")
+    endif()
+endif()

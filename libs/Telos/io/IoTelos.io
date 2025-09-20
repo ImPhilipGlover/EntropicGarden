@@ -71,7 +71,12 @@ Telos := Lobby Protos Telos clone do(
             if(q == nil, q = "")
             if(k == nil, k = 3)
             hits := Telos memory search(q, k)
-            Telos logs append(Telos logs tools, Telos json stringify(map(tool: "rag.query", q: q, k: k, t: Date clone now asNumber)))
+            rec := Map clone
+            rec atPut("tool", "rag.query")
+            rec atPut("q", q)
+            rec atPut("k", k)
+            rec atPut("t", Date clone now asNumber)
+            Telos logs append(Telos logs tools, Telos json stringify(rec))
             Telos transactional_setSlot(Telos, "lastRagQuery", q)
             hits
         )
@@ -173,8 +178,8 @@ Telos := Lobby Protos Telos clone do(
             handled := world handleEvent(event)
             if(handled == true, writeln("Telos: Io handled event ", event))
         )
-        // Forward to C's handleEvent for logging/stub
-        getSlot("handleEvent") call(event)
+        // Forward to C's handleEvent for logging/stub (guarded)
+        if(self hasSlot("Telos_rawHandleEvent"), Telos_rawHandleEvent(event))
         "ok"
     )
 
@@ -238,6 +243,52 @@ Telos := Lobby Protos Telos clone do(
         walAppend("END " .. tag)
     )
 
+    // Convenience: write a BEGIN/END framed transaction around a block
+    walCommit := method(tag, info, block,
+        if(tag == nil, tag = "tx")
+        walBegin(tag, info)
+        if(block != nil, block call)
+        walEnd(tag)
+    )
+
+    // Inspect WAL and return only complete frames: List of Maps with {tag, setCount}
+    walListCompleteFrames := method(path,
+        if(path == nil, path = "telos.wal")
+        out := List clone
+        f := File with(path)
+        if(f exists not, return out)
+        content := f contents
+        if(content == nil, return out)
+        lines := content split("\n")
+        current := nil
+        currentTag := nil
+        setCount := 0
+        lines foreach(line,
+            if(line beginsWithSeq("BEGIN "),
+                rest := line exSlice(6)
+                t := rest split(" ") atIfAbsent(0, rest) strip
+                current = true
+                currentTag = t
+                setCount = 0
+            ,
+                if(line beginsWithSeq("END ") and current == true,
+                    endRest := line exSlice(4)
+                    t2 := endRest strip split(" ") atIfAbsent(0, endRest) strip
+                    if(t2 == currentTag,
+                        m := Map clone; m atPut("tag", currentTag); m atPut("setCount", setCount)
+                        out append(m)
+                        current = nil; currentTag = nil; setCount = 0
+                    )
+                ,
+                    if(current == true and line beginsWithSeq("SET "),
+                        setCount = setCount + 1
+                    )
+                )
+            )
+        )
+        out
+    )
+
     // Single-line WAL marker
     mark := method(tag, info,
         if(tag == nil, tag = "mark")
@@ -278,82 +329,121 @@ Telos := Lobby Protos Telos clone do(
             if(m hasSlot("submorphs"), m submorphs foreach(sm, collect(sm)))
         )
         collect(world)
-        // Read WAL and apply SET lines: SET <id>.<slot> TO <value>
+        // Read WAL and group into complete frames (BEGIN ... END)
         content := (File with(path)) contents
-        if(content == nil, return "[empty-wal]")
+        if(content == nil, self isReplaying = prev; return "[empty-wal]")
         lines := content split("\n")
+        frames := List clone
+        current := nil
+        currentTag := nil
+        sawBegin := false
         lines foreach(line,
-            if(line beginsWithSeq("SET "),
-                rest := line exSlice(4) // after 'SET '
-                parts := rest split(" TO ")
-                if(parts size == 2,
-                    lhs := parts at(0)
-                    rhs := parts at(1)
-                    lhsParts := lhs split(".")
-                    if(lhsParts size >= 2,
-                        mid := lhsParts at(0)
-                        slot := lhsParts at(1)
-                        m := index at(mid)
-                        // Create missing morphs if type specified earlier or if we're setting type now
-                        if(m != nil,
-                            if(slot == "position",
-                                s := rhs strip
-                                s = s afterSeq("(")
-                                s = s beforeSeq(")")
-                                nums := s split(",")
-                                if(nums size == 2,
-                                    nx := nums at(0) asNumber
-                                    ny := nums at(1) asNumber
-                                    m moveTo(nx, ny)
-                                )
-                            )
-                            if(slot == "size",
-                                s := rhs strip
-                                s = s afterSeq("(")
-                                s = s beforeSeq(")")
-                                nums := s split("x")
-                                if(nums size == 2,
-                                    nw := nums at(0) asNumber
-                                    nh := nums at(1) asNumber
-                                    m resizeTo(nw, nh)
-                                )
-                            )
-                            if(slot == "color",
-                                s := rhs strip
-                                s = s afterSeq("[")
-                                s = s beforeSeq("]")
-                                nums := s split(",")
-                                if(nums size >= 3,
-                                    r := nums at(0) asNumber
-                                    g := nums at(1) asNumber
-                                    b := nums at(2) asNumber
-                                    a := if(nums size > 3, nums at(3) asNumber, 1)
-                                    m setColor(r, g, b, a)
-                                )
-                            )
-                            if(slot == "zIndex",
-                                z := rhs asNumber
-                                m setZIndex(z)
-                            )
-                            if(slot == "text",
-                                m setText(rhs)
-                            )
-                        ,
-                            // m is nil; maybe this line declares type, or we need to create now
-                            if(slot == "type",
-                                // rhs is a type name, create morph and index it
-                                tname := rhs strip
-                                proto := Lobby getSlot(tname) ifNil(Lobby getSlot("Morph"))
-                                nm := proto clone
-                                nm setSlot("id", mid)
-                                // Attach without C stub
-                                nm owner = world
-                                world submorphs append(nm)
-                                index atPut(mid, nm)
-                            )
-                        )
+            if(line beginsWithSeq("BEGIN "),
+                // Start new frame; capture tag after 'BEGIN '
+                sawBegin = true
+                // Extract tag up to first space after BEGIN
+                rest := line exSlice(6)
+                tag := rest split(" ") atIfAbsent(0, rest) strip
+                current = List clone
+                currentTag = tag
+            ,
+                if(line beginsWithSeq("END ") and current != nil,
+                    // Close only if tags match; otherwise treat as stray
+                    endRest := line exSlice(4)
+                    endTag := endRest strip split(" ") atIfAbsent(0, endRest) strip
+                    if(endTag == currentTag,
+                        frames append(current)
+                        current = nil
+                        currentTag = nil
+                    )
+                ,
+                    if(current != nil,
+                        current append(line)
                     )
                 )
+            )
+        )
+
+        // Helper: apply a SET line to the index/world
+        applySet := method(lineStr,
+            rest := lineStr exSlice(4) // after 'SET '
+            parts := rest split(" TO ")
+            if(parts size != 2, return nil)
+            lhs := parts at(0)
+            rhs := parts at(1)
+            lhsParts := lhs split(".")
+            if(lhsParts size < 2, return nil)
+            mid := lhsParts at(0)
+            slot := lhsParts at(1)
+            m := index at(mid)
+            if(m != nil,
+                if(slot == "position",
+                    s := rhs strip
+                    s = s afterSeq("(")
+                    s = s beforeSeq(")")
+                    nums := s split(",")
+                    if(nums size == 2,
+                        nx := nums at(0) asNumber
+                        ny := nums at(1) asNumber
+                        m moveTo(nx, ny)
+                    )
+                )
+                if(slot == "size",
+                    s := rhs strip
+                    s = s afterSeq("(")
+                    s = s beforeSeq(")")
+                    nums := s split("x")
+                    if(nums size == 2,
+                        nw := nums at(0) asNumber
+                        nh := nums at(1) asNumber
+                        m resizeTo(nw, nh)
+                    )
+                )
+                if(slot == "color",
+                    s := rhs strip
+                    s = s afterSeq("[")
+                    s = s beforeSeq("]")
+                    nums := s split(",")
+                    if(nums size >= 3,
+                        r := nums at(0) asNumber
+                        g := nums at(1) asNumber
+                        b := nums at(2) asNumber
+                        a := if(nums size > 3, nums at(3) asNumber, 1)
+                        m setColor(r, g, b, a)
+                    )
+                )
+                if(slot == "zIndex",
+                    z := rhs asNumber
+                    m setZIndex(z)
+                )
+                if(slot == "text",
+                    m setText(rhs)
+                )
+            ,
+                // m is nil; maybe this line declares type
+                if(slot == "type",
+                    tname := rhs strip
+                    proto := Lobby getSlot(tname) ifNil(Lobby getSlot("Morph"))
+                    nm := proto clone
+                    nm setSlot("id", mid)
+                    nm owner = world
+                    world submorphs append(nm)
+                    index atPut(mid, nm)
+                )
+            )
+        )
+
+        if(sawBegin == true and frames size > 0,
+            // Apply only complete frames in order
+            frames foreach(f,
+                f foreach(l,
+                    if(l beginsWithSeq("SET "), applySet(l))
+                )
+            )
+        ,
+            // Legacy fallback: no frames; scan whole file for SET lines
+            lines foreach(line,
+                if(line beginsWithSeq("SET "), applySet(line))
             )
         )
         // Restore flag and finish
@@ -391,18 +481,19 @@ Telos := Lobby Protos Telos clone do(
         )
         search := method(query, k := 5,
             // Rank by naive substring presence and length proximity
-            q := query asString asLowercase
             scored := List clone
             db foreach(s,
-                t := s asLowercase
                 score := 0
-                if(t containsSeq(q), score = score + 2)
+                // presence boost
+                if((s asLowercase) containsSeq(query asString asLowercase), score = score + 2)
                 // smaller length diff yields slight bonus
-                score = score + (1 / (1 + (s size - q size) abs))
-                scored append(map(text: s, score: score))
+                score = score + (1 / (1 + (s size - (query asString) size) abs))
+                rec := Map clone
+                rec atPut("text", s)
+                rec atPut("score", score)
+                scored append(rec)
             )
-            // Sort descending by score
-            // Io List sortInPlace by comparator not in base; do simple selection of top-k
+            // Select top-k by score (descending)
             res := List clone
             k := k min(scored size)
             k repeat(i,
@@ -545,10 +636,11 @@ Telos := Lobby Protos Telos clone do(
     curator := Object clone do(
         enqueue := method(entryMap,
             // Wrap and include the full record for later processing
-            env := map(kind: entryMap atIfAbsent("kind", "llm"),
-                       key: entryMap atIfAbsent("key", System uniqueId),
-                       path: entryMap atIfAbsent("path", Telos logs llm),
-                       record: entryMap atIfAbsent("record", entryMap))
+            env := Map clone
+            env atPut("kind", entryMap atIfAbsent("kind", "llm"))
+            env atPut("key", entryMap atIfAbsent("key", System uniqueId))
+            env atPut("path", entryMap atIfAbsent("path", Telos logs llm))
+            env atPut("record", entryMap atIfAbsent("record", entryMap))
             // Ensure logs directory exists
             d := Directory with(Telos logs base)
             if(d exists not, d create)
@@ -625,46 +717,97 @@ Telos := Lobby Protos Telos clone do(
         )
     )
 
-    // Offline-only LLM call stub (no network). Logs and enqueues records.
+    // LLM call: routes to Ollama when configured; otherwise offline stub. Logs JSONL and enqueues for curation.
     llmCall := method(spec,
         if(spec == nil, spec = Map clone)
         personaName := spec atIfAbsent("persona", nil)
-        model := spec atIfAbsent("model", "offline")
+        // Determine provider
+        useOllama := (llmProvider atIfAbsent("useOllama", false) == true)
+        baseUrl := llmProvider atIfAbsent("baseUrl", "http://localhost:11434")
+        // Select model: explicit > persona mapping > default
+        model := spec atIfAbsent("model", nil)
+        if(model == nil and personaName != nil and personaModels hasSlot(personaName),
+            model = personaModels at(personaName)
+        )
+        if(model == nil, model = "telos/robin")
         prompt := spec atIfAbsent("prompt", "")
         system := spec atIfAbsent("system", "")
-        // Merge generation options: use only per-call overrides safely
+
+        // Merge generation options: persona defaults (if available) + per-call overrides
         options := Map clone
+        if(personaName != nil,
+            p := personaCodex get(personaName)
+            if(p and p hasSlot("genOptions"),
+                go := p genOptions; if(go, go foreach(k, v, options atPut(k, v)))
+            )
+        )
         if(spec hasSlot("temperature"), options atPut("temperature", spec at("temperature")))
         if(spec hasSlot("top_p"), options atPut("top_p", spec at("top_p")))
+
         startedAt := Date clone now asNumber
-        out := "[OFFLINE_STUB_COMPLETION]"
-        endedAt := Date clone now asNumber
-        score := consistencyScoreFor(personaName, out)
-        entry := map(
-            t: endedAt,
-            persona: personaName ifNil(""),
-            provider: "offline",
-            model: model ifNil(""),
-            prompt: prompt,
-            system: system,
-            options: options,
-            duration_ms: ((endedAt - startedAt) * 1000) floor,
-            output: out,
-            consistencyScore: score
+        out := nil
+
+        if(useOllama == true,
+            // Send to C bridge (embedded Python HTTP)
+            // NOTE: options are JSON-encoded; keep minimal to avoid parser fragility
+            optsJson := "{}"
+            if(options size > 0,
+                // naive stringify for flat maps (numbers only typical here)
+                parts := List clone
+                options foreach(k, v,
+                    parts append("\"" .. k .. "\":" .. v asString)
+                )
+                optsJson = "{" .. parts join(",") .. "}"
+            )
+            if(Telos hasSlot("Telos_rawOllamaGenerate"),
+                out = Telos_rawOllamaGenerate(baseUrl, model, prompt, system, optsJson),
+                out = "[OLLAMA_ERROR] bridge missing"
+            )
+        ,
+            // Offline fallback
+            out = "[OFFLINE_STUB_COMPLETION]"
         )
+
+        endedAt := Date clone now asNumber
+        providerName := if(useOllama, "ollama", "offline")
+        score := consistencyScoreFor(personaName, out)
+        entry := Map clone
+        entry atPut("t", endedAt)
+        entry atPut("persona", personaName ifNil(""))
+        entry atPut("provider", providerName)
+        entry atPut("model", model ifNil(""))
+        entry atPut("prompt", prompt)
+        entry atPut("system", system)
+        entry atPut("options", options)
+        entry atPut("duration_ms", ((endedAt - startedAt) * 1000) floor)
+        entry atPut("output", out)
+        entry atPut("consistencyScore", score)
         Telos logs append(Telos logs llm, Telos json stringify(entry))
-        curator enqueue(map(kind: "llm", key: (personaName ifNil("")) .. ":offline:" .. System uniqueId, path: Telos logs llm, record: entry))
+        ce := Map clone
+        ce atPut("kind", "llm")
+        ce atPut("key", (personaName ifNil("") ) .. ":" .. providerName .. ":" .. System uniqueId)
+        ce atPut("path", Telos logs llm)
+        ce atPut("record", entry)
+        curator enqueue(ce)
         out
     )
 
     toolUse := method(toolSpec,
         writeln("[tools] offline stub: ", toolSpec)
         // echo back a dummy result
-        res := map(result: "OK", tool: toolSpec)
+        res := Map clone; res atPut("result", "OK"); res atPut("tool", toolSpec)
         // Log tool use for future curation
-        entry := map(t: Date clone now asNumber, tool: toolSpec, result: res)
+        entry := Map clone
+        entry atPut("t", Date clone now asNumber)
+        entry atPut("tool", toolSpec)
+        entry atPut("result", res)
         Telos logs append(Telos logs tools, Telos json stringify(entry))
-        curator enqueue(map(kind: "tool", key: "tool:" .. System uniqueId, path: Telos logs tools, record: entry))
+        ce := Map clone
+        ce atPut("kind", "tool")
+        ce atPut("key", "tool:" .. System uniqueId)
+        ce atPut("path", Telos logs tools)
+        ce atPut("record", entry)
+        curator enqueue(ce)
         res
     )
 
@@ -679,7 +822,11 @@ Telos := Lobby Protos Telos clone do(
         // Dummy components
         S := 0.5; C := 0.2; I := 0.1; R := 0.1
         G := alpha*S - beta*C - gamma*I - delta*R
-        map(S: S, C: C, I: I, R: R, G_hat: G, alpha: alpha, beta: beta, gamma: gamma, delta: delta)
+        m := Map clone
+        m atPut("S", S); m atPut("C", C); m atPut("I", I); m atPut("R", R)
+        m atPut("G_hat", G)
+        m atPut("alpha", alpha); m atPut("beta", beta); m atPut("gamma", gamma); m atPut("delta", delta)
+        m
     )
 
     // UI capture for ROBIN's vision: textual description of morph tree
@@ -1019,7 +1166,10 @@ ConceptFractal := Object clone do(
     summarize := method(
         // Use LLM stub to form a natural-language summary from components
         txt := parts map(f, f payload ifNil("[cf]")) join(" | ")
-        res := Telos llmCall(map(prompt: "Summarize: " .. txt, provider: "offline"))
+        spec := Map clone
+        spec atPut("prompt", "Summarize: " .. txt)
+        spec atPut("provider", "offline")
+        res := Telos llmCall(spec)
         summary = res; res
     )
 
@@ -1057,6 +1207,7 @@ Persona := Object clone do(
         self speakStyle := ""
         self tools := List clone
         self memoryTags := List clone
+    self contextKernel := ""
     self weights := Map clone; self weights atPut("alpha", 1); self weights atPut("beta", 1); self weights atPut("gamma", 1); self weights atPut("delta", 1)
     self budget := Map clone // placeholders
         self risk := "low"
@@ -1084,7 +1235,7 @@ Persona := Object clone do(
     think := method(prompt,
         // condition prompt with persona voice and ethos as constraints/flavor
         full := "[" .. name .. ":" .. role .. "]\nEthos: " .. ethos .. "\nPrompt: " .. prompt
-        Telos llmCall(map(prompt: full, persona: name))
+        spec := Map clone; spec atPut("prompt", full); spec atPut("persona", name); Telos llmCall(spec)
     )
 
     recall := method(query, k := 5,
@@ -1114,13 +1265,17 @@ Persona := Object clone do(
     // Meta: allow one persona to comment on another's output
     commentOn := method(otherPersona, text,
         review := "[" .. name .. " commentary on " .. otherPersona name .. "]\n" .. text
-        Telos llmCall(map(prompt: review, persona: name))
+        spec := Map clone; spec atPut("prompt", review); spec atPut("persona", name); Telos llmCall(spec)
     )
 
     // Contract checking stub
     checkContracts := method(artifact,
         // offline: return a structured OK result
-        map(status: "OK", notes: "Contracts respected (stub)", artifact: artifact)
+        m := Map clone
+        m atPut("status", "OK")
+        m atPut("notes", "Contracts respected (stub)")
+        m atPut("artifact", artifact)
+        m
     )
 
     // Load persona-specific context from codex (stubbed)
@@ -1132,7 +1287,9 @@ Persona := Object clone do(
 
     // Compose a system prompt from kernel + vows
     composeSystemPrompt := method(
-        kernel := contextKernel ifNil("")
+        // Ensure context kernel is initialized
+        if(self hasSlot("contextKernel") not or self contextKernel == nil or self contextKernel size == 0, self loadPersonaContext)
+        kernel := self contextKernel ifNil("")
         "You are " .. name .. " (" .. role .. ").\n" ..
         "Ethos: " .. ethos .. "\n" ..
         "Style: " .. speakStyle .. "\n" ..
@@ -1140,16 +1297,26 @@ Persona := Object clone do(
     )
 
     // Converse with user using persona system prompt
-    converse := method(userMsg, history := List clone,
-        sys := composeSystemPrompt
-        Telos llmCall(map(system: sys, prompt: userMsg, history: history, persona: name))
+    converse := method(userMsg, history,
+        if(history == nil, history = List clone)
+        s := self composeSystemPrompt
+        spec := Map clone
+        spec atPut("system", s)
+        spec atPut("prompt", userMsg)
+        spec atPut("history", history)
+        spec atPut("persona", name)
+        Telos llmCall(spec)
     )
 
     // ROBIN-specific: analyze UI and propose changes
     proposeUiChanges := method(goalText,
         snapshot := Telos captureScreenshot
         prompt := "Given this UI snapshot, propose morph changes: \n" .. snapshot .. "\nGoal: " .. goalText
-        Telos llmCall(map(prompt: prompt, persona: name, model: "telos/robin"))
+        spec := Map clone
+        spec atPut("prompt", prompt)
+        spec atPut("persona", name)
+        spec atPut("model", "telos/robin")
+        Telos llmCall(spec)
     )
 
     // RESEARCH LOOP (BABS primary)
@@ -1220,61 +1387,77 @@ PersonaCodex := Object clone do(
 
 // Seed default personas from docs/Personas_Codex.md schema
 Telos personaCodex = PersonaCodex clone
-Telos personaCodex register(Persona with(map(
-    name: "BRICK",
-    role: "The Architect",
-    ethos: "autopoiesis, prototypal purity, watercourse way, antifragility",
-    speakStyle: "precise, concise, reflective",
-    tools: list("summarizer", "diff", "planner"),
-    memoryTags: list("architecture", "invariants", "roadmap"),
-    weights: map(alpha: 1.25, beta: 0.8, gamma: 1.0, delta: 0.6),
-    budget: map(mode: "offline"),
-    risk: "low-moderate",
-    routingHints: "design, refactors, codex",
-    genOptions: map(temperature: 0.4, top_p: 0.9, top_k: 40, repeat_penalty: 1.1)
-)))
+do(
+    spec := Map clone
+    spec atPut("name", "BRICK")
+    spec atPut("role", "The Architect")
+    spec atPut("ethos", "autopoiesis, prototypal purity, watercourse way, antifragility")
+    spec atPut("speakStyle", "precise, concise, reflective")
+    spec atPut("tools", list("summarizer", "diff", "planner"))
+    spec atPut("memoryTags", list("architecture", "invariants", "roadmap"))
+    w := Map clone; w atPut("alpha", 1.25); w atPut("beta", 0.8); w atPut("gamma", 1.0); w atPut("delta", 0.6)
+    spec atPut("weights", w)
+    b := Map clone; b atPut("mode", "offline"); spec atPut("budget", b)
+    spec atPut("risk", "low-moderate")
+    spec atPut("routingHints", "design, refactors, codex")
+    go := Map clone; go atPut("temperature", 0.4); go atPut("top_p", 0.9); go atPut("top_k", 40); go atPut("repeat_penalty", 1.1)
+    spec atPut("genOptions", go)
+    Telos personaCodex register(Persona with(spec))
+)
 
-Telos personaCodex register(Persona with(map(
-    name: "ROBIN",
-    role: "The Gardener",
-    ethos: "direct manipulation, clarity, liveliness",
-    speakStyle: "visual-first, concrete",
-    tools: list("draw", "layout"),
-    memoryTags: list("ui", "morphic", "canvas"),
-    weights: map(alpha: 1.0, beta: 0.7, gamma: 0.85, delta: 0.7),
-    budget: map(mode: "offline"),
-    risk: "low",
-    routingHints: "ui, demos",
-    genOptions: map(temperature: 0.7, top_p: 0.95, top_k: 50, repeat_penalty: 1.05)
-)))
+do(
+    spec := Map clone
+    spec atPut("name", "ROBIN")
+    spec atPut("role", "The Gardener")
+    spec atPut("ethos", "direct manipulation, clarity, liveliness")
+    spec atPut("speakStyle", "visual-first, concrete")
+    spec atPut("tools", list("draw", "layout"))
+    spec atPut("memoryTags", list("ui", "morphic", "canvas"))
+    w := Map clone; w atPut("alpha", 1.0); w atPut("beta", 0.7); w atPut("gamma", 0.85); w atPut("delta", 0.7)
+    spec atPut("weights", w)
+    b := Map clone; b atPut("mode", "offline"); spec atPut("budget", b)
+    spec atPut("risk", "low")
+    spec atPut("routingHints", "ui, demos")
+    go := Map clone; go atPut("temperature", 0.7); go atPut("top_p", 0.95); go atPut("top_k", 50); go atPut("repeat_penalty", 1.05)
+    spec atPut("genOptions", go)
+    Telos personaCodex register(Persona with(spec))
+)
 
-Telos personaCodex register(Persona with(map(
-    name: "BABS",
-    role: "The Archivist-Researcher",
-    ethos: "single source of truth; disciplined inquiry; bridge known↔unknown",
-    speakStyle: "methodical, inquisitive",
-    tools: list("wal.write", "wal.replay", "research.prompt", "ingest.report"),
-    memoryTags: list("persistence", "recovery", "provenance", "research", "gaps"),
-    weights: map(alpha: 0.9, beta: 0.6, gamma: 1.2, delta: 1.0),
-    budget: map(mode: "offline"),
-    risk: "low",
-    routingHints: "durability, recovery, research triage",
-    genOptions: map(temperature: 0.3, top_p: 0.85, top_k: 40, repeat_penalty: 1.15)
-)))
+do(
+    spec := Map clone
+    spec atPut("name", "BABS")
+    spec atPut("role", "The Archivist-Researcher")
+    spec atPut("ethos", "single source of truth; disciplined inquiry; bridge known↔unknown")
+    spec atPut("speakStyle", "methodical, inquisitive")
+    spec atPut("tools", list("wal.write", "wal.replay", "research.prompt", "ingest.report"))
+    spec atPut("memoryTags", list("persistence", "recovery", "provenance", "research", "gaps"))
+    w := Map clone; w atPut("alpha", 0.9); w atPut("beta", 0.6); w atPut("gamma", 1.2); w atPut("delta", 1.0)
+    spec atPut("weights", w)
+    b := Map clone; b atPut("mode", "offline"); spec atPut("budget", b)
+    spec atPut("risk", "low")
+    spec atPut("routingHints", "durability, recovery, research triage")
+    go := Map clone; go atPut("temperature", 0.3); go atPut("top_p", 0.85); go atPut("top_k", 40); go atPut("repeat_penalty", 1.15)
+    spec atPut("genOptions", go)
+    Telos personaCodex register(Persona with(spec))
+)
 
-Telos personaCodex register(Persona with(map(
-    name: "ALFRED",
-    role: "The Butler of Contracts",
-    ethos: "alignment, consent, clarity; steward of invariants and budgets",
-    speakStyle: "courteous, surgical, meta-aware",
-    tools: list("contract.check", "policy.inspect", "summarizer"),
-    memoryTags: list("contracts", "policies", "alignment"),
-    weights: map(alpha: 0.95, beta: 0.7, gamma: 1.2, delta: 1.1),
-    budget: map(mode: "offline"),
-    risk: "low",
-    routingHints: "contract checks, risk analysis, meta-commentary",
-    genOptions: map(temperature: 0.2, top_p: 0.8, top_k: 40, repeat_penalty: 1.2)
-)))
+do(
+    spec := Map clone
+    spec atPut("name", "ALFRED")
+    spec atPut("role", "The Butler of Contracts")
+    spec atPut("ethos", "alignment, consent, clarity; steward of invariants and budgets")
+    spec atPut("speakStyle", "courteous, surgical, meta-aware")
+    spec atPut("tools", list("contract.check", "policy.inspect", "summarizer"))
+    spec atPut("memoryTags", list("contracts", "policies", "alignment"))
+    w := Map clone; w atPut("alpha", 0.95); w atPut("beta", 0.7); w atPut("gamma", 1.2); w atPut("delta", 1.1)
+    spec atPut("weights", w)
+    b := Map clone; b atPut("mode", "offline"); spec atPut("budget", b)
+    spec atPut("risk", "low")
+    spec atPut("routingHints", "contract checks, risk analysis, meta-commentary")
+    go := Map clone; go atPut("temperature", 0.2); go atPut("top_p", 0.8); go atPut("top_k", 40); go atPut("repeat_penalty", 1.2)
+    spec atPut("genOptions", go)
+    Telos personaCodex register(Persona with(spec))
+)
 
 
 // Morph prototype - the fundamental living interface object
@@ -1589,6 +1772,84 @@ Layout := Object clone do(
 
 RowLayout := Layout clone do(orientation := "row")
 ColumnLayout := Layout clone do(orientation := "column")
+
+// Canvas prototype: minimal wrapper around window lifecycle using Telos bridge
+Canvas := Object clone do(
+    init := method(
+        self isOpen := false
+        self title := "The Entropic Garden"
+        self width := 640
+        self height := 480
+        self
+    )
+    open := method(
+        if(isOpen, return self)
+        Telos openWindow
+        isOpen = true
+        self
+    )
+    heartbeat := method(n,
+        // Set default inside body to avoid parser issues
+        if(n == nil, n = 1)
+        // Run the main loop n times to keep the window alive longer
+        i := 0
+        while(i < n,
+            Telos mainLoop
+            i = i + 1
+        )
+        n
+    )
+    close := method(
+        if(isOpen not, return self)
+        Telos closeWindow
+        isOpen = false
+        self
+    )
+)
+
+// ChatConsole prototype: send persona messages (console-based I/O)
+ChatConsole := Object clone do(
+    init := method(
+        self personaName := "ROBIN"
+        self history := List clone
+        self
+    )
+    setPersona := method(name,
+        if(name != nil, self personaName = name)
+        self
+    )
+    currentPersona := method(
+        Telos personaCodex get(personaName)
+    )
+    send := method(msg,
+        p := currentPersona
+        if(p == nil, return "[no-persona]")
+        // Converse using persona stub; keep lightweight history
+        out := p converse(msg, history)
+        // append minimal turn history
+        history append("U:" .. msg)
+        history append("A:" .. out)
+        out
+    )
+    run := method(
+        writeln("--- Persona Chat (type 'exit' to quit, '/p NAME' to switch persona) ---")
+        while(true,
+            "You> " print
+            line := File standardInput readLine
+            if(line == nil, break)
+            line = line asString
+            if(line == "exit", break)
+            if(line beginsWithSeq("/p "),
+                n := line exSlice(3) strip
+                if(n size > 0, personaName = n; writeln("[persona set to ", n, "]"))
+                continue
+            )
+            out := send(line)
+            writeln(personaName, "> ", out)
+        )
+        "bye"
+    )
+)
 
 // Initialize Telos zygote to define base slots (world, morphs, flags)
 Telos init

@@ -22,11 +22,13 @@ Guidelines:
 
 ## System-Wide Context Review Protocol (Before Each Slice)
 
-Always begin with a fast, breadth-first scan of the most relevant guidance to preserve big-picture alignment while keeping Io prototypal purity:
+Always begin with a fast, breadth-first scan of the most relevant guidance to preserve big-picture alignment while keeping Io prototypal purity. Treat this orientation as mandatory before writing any code:
 - Read `TELOS_AUTONOMY_TODO.md` to anchor on the current in-progress item, constraints, and decisions.
 - Review `docs/TelOS-Io_Development_Roadmap.md` and skim key blueprints in `docs/` (e.g., `BAT_OS_Concept_Fractals_to_Io.md`, `Logging_and_Curation.md`, `Personas_Codex.md`).
+    - Identify exactly which Roadmap phase/subphase your slice advances, and the acceptance criteria it must satisfy.
+    - Extract any cross-phase seams (WAL tags, UI hooks, FFI slots) and make them explicit in your design.
 - Browse historical materials under `TelOS-Python-Archive/BAT OS Development/` for durable patterns and intent; treat them as directional history, not implementation templates.
-- Capture any extracted mandates or cross-phase seams in the Runbook Decisions Log and wire minimal extension points (slots/tags) accordingly.
+- Capture any extracted mandates or cross-phase seams in the Runbook Decisions Log and wire minimal extension points (slots/tags) accordingly. Record the Roadmap link (phase/section) that the slice implements.
 - Proceed to implement a vertical slice that maintains the whole-organism invariants: Morphic heartbeat, snapshot, and WAL write (and replay when applicable).
 
 # WSL-First Execution: Build and Run Inside WSL
