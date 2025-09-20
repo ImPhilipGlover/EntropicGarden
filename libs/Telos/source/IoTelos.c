@@ -13,6 +13,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <Python.h> // FFI Pillar: Include Python C API
+#include <sys/stat.h>
+#include <errno.h>
 
 static const char *protoId = "Telos";
 
@@ -34,6 +36,8 @@ typedef struct {
 // Global world state
 static MorphicWorld *globalWorld = NULL;
 static int isPythonInitialized = 0;
+// RAG skeleton storage (Python-side list of documents)
+static PyObject *rag_docs = NULL;
 
 // --- Helper Functions ---
 void IoTelos_initPython(void) {
@@ -45,6 +49,14 @@ void IoTelos_initPython(void) {
         atexit(Py_Finalize);
     }
 }
+
+// Forward declaration for Ollama bridge
+IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m);
+// Forward declaration for simple logger
+IoObject *IoTelos_logAppend(IoTelos *self, IoObject *locals, IoMessage *m);
+// Forward declarations for RAG skeleton
+IoObject *IoTelos_ragIndex(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_ragQuery(IoTelos *self, IoObject *locals, IoMessage *m);
 
 IoTag *IoTelos_newTag(void *state)
 {
@@ -76,6 +88,10 @@ IoTelos *IoTelos_proto(void *state)
 			{"removeSubmorph", IoTelos_removeSubmorph},
 			{"draw", IoTelos_draw},
 			{"handleEvent", IoTelos_handleEvent},
+            {"ollamaGenerate", IoTelos_ollamaGenerate},
+            {"logAppend", IoTelos_logAppend},
+            {"ragIndex", IoTelos_ragIndex},
+            {"ragQuery", IoTelos_ragQuery},
 			{NULL, NULL},
 		};
 		IoObject_addMethodTable_(self, methodTable);
@@ -144,6 +160,47 @@ void IoTelosInit(IoState *state, IoObject *context)
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_draw, NULL, "Telos_rawDraw"));
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawHandleEvent"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_handleEvent, NULL, "Telos_rawHandleEvent"));
+
+    // Expose Ollama HTTP bridge (via embedded Python)
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawOllamaGenerate"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_ollamaGenerate, NULL, "Telos_rawOllamaGenerate"));
+
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawLogAppend"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_logAppend, NULL, "Telos_rawLogAppend"));
+
+    // RAG skeleton bridge
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawRagIndex"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_ragIndex, NULL, "Telos_rawRagIndex"));
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawRagQuery"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_ragQuery, NULL, "Telos_rawRagQuery"));
+
+    // Autoload Io-level TelOS layer (IoTelos.io)
+    // Try a few likely paths to support both WSL and native Windows dev layouts
+    {
+        const char *candidates[] = {
+            "/mnt/c/EntropicGarden/libs/Telos/io/IoTelos.io",              // WSL absolute path
+            "c:/EntropicGarden/libs/Telos/io/IoTelos.io",                   // Windows absolute (forward slashes)
+            "c\\\\EntropicGarden\\\\libs\\\\Telos\\\\io\\\\IoTelos.io", // Windows absolute (escaped backslashes for C string)
+            "../../libs/Telos/io/IoTelos.io",                                // Relative from build/bin
+            "../libs/Telos/io/IoTelos.io",                                  // Relative from tools binary (alt)
+            "libs/Telos/io/IoTelos.io",                                     // Relative from repo root
+            "TelOS/io/IoTelos.io",                                          // Backup location path
+            NULL
+        };
+
+        for (int i = 0; candidates[i] != NULL; i++)
+        {
+            const char *path = candidates[i];
+            FILE *f = fopen(path, "r");
+            if (f)
+            {
+                fclose(f);
+                IoState_doFile_(state, path);
+                printf("TelOS: Loaded Io layer from %s\n", path);
+                break;
+            }
+        }
+    }
 }
 
 // --- TelOS Core Functions ---
@@ -211,7 +268,8 @@ IoObject *IoTelos_createWorld(IoTelos *self, IoObject *locals, IoMessage *m)
     globalWorld->world->g = 0.8;
     globalWorld->world->b = 0.8;
     globalWorld->world->a = 1.0;
-    globalWorld->world->submorphs = IoList_new(IOSTATE);
+    // Avoid keeping raw Io objects here (GC may collect). Use Io-level morph tree instead.
+    globalWorld->world->submorphs = NULL;
     globalWorld->isRunning = 0;
 
     printf("Telos: Morphic World created (living canvas: %.0fx%.0f)\n",
@@ -241,8 +299,8 @@ IoObject *IoTelos_mainLoop(IoTelos *self, IoObject *locals, IoMessage *m)
 
         // Small delay to prevent busy loop
         // In real implementation: proper event loop with vsync
-     printf("Telos: World heartbeat (morphs: %d)\n",
-         (int)IoList_rawSize(globalWorld->world->submorphs));
+        // Safe heartbeat without dereferencing GC-managed Io lists
+        printf("Telos: World heartbeat (morphs: %d)\n", 0);
 
         // For demo: exit after a few iterations
         static int iterations = 0;
@@ -348,6 +406,290 @@ IoObject *IoTelos_handleEvent(IoTelos *self, IoObject *locals, IoMessage *m)
     return self;
 }
 
+// --- Ollama Bridge (via embedded Python stdlib) ---
+
+// Io signature: Telos_rawOllamaGenerate(baseUrl, model, prompt, system, optionsJson)
+// Returns: IoSeq of the response text (or error string)
+IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    IoSeq *baseUrlSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 0);
+    IoSeq *modelSeq   = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 1);
+    IoSeq *promptSeq  = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 2);
+    IoSeq *systemSeq  = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 3);
+    IoSeq *optionsSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 4);
+
+    const char *baseUrl = baseUrlSeq ? IoSeq_asCString(baseUrlSeq) : "http://localhost:11434";
+    const char *model   = modelSeq   ? IoSeq_asCString(modelSeq)   : NULL;
+    const char *prompt  = promptSeq  ? IoSeq_asCString(promptSeq)  : "";
+    const char *system  = systemSeq  ? IoSeq_asCString(systemSeq)  : "";
+
+    if (!model || !prompt) {
+        return IoSeq_newWithCString_(IOSTATE, "[OLLAMA_ERROR] missing model or prompt");
+    }
+
+    // Build full prompt by prefixing system guidance if provided
+    char *fullPrompt = NULL;
+    size_t len = strlen(prompt) + (system && strlen(system) > 0 ? strlen(system) + 10 : 0) + 1;
+    fullPrompt = (char *)malloc(len);
+    if (!fullPrompt) {
+        return IoSeq_newWithCString_(IOSTATE, "[OLLAMA_ERROR] out of memory");
+    }
+    if (system && strlen(system) > 0) {
+        snprintf(fullPrompt, len, "System: %s\nUser: %s", system, prompt);
+    } else {
+        snprintf(fullPrompt, len, "%s", prompt);
+    }
+
+    // Compose URL for generate endpoint
+    char *url = NULL;
+    size_t urlLen = strlen(baseUrl) + strlen("/api/generate") + 2;
+    url = (char *)malloc(urlLen);
+    if (!url) {
+        free(fullPrompt);
+        return IoSeq_newWithCString_(IOSTATE, "[OLLAMA_ERROR] out of memory");
+    }
+    snprintf(url, urlLen, "%s/api/generate", baseUrl);
+
+    // Ensure Python is initialized
+    IoTelos_initPython();
+
+    IoObject *result = NULL;
+
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyObject *globals = PyDict_New();
+    PyObject *localsDict = PyDict_New();
+    if (globals && localsDict) {
+        // Inject builtins
+        PyDict_SetItemString(globals, "__builtins__", PyEval_GetBuiltins());
+
+        // Prepare Python objects
+        PyObject *pyUrl = PyUnicode_FromString(url);
+        PyObject *pyModel = PyUnicode_FromString(model);
+        PyObject *pyPrompt = PyUnicode_FromString(fullPrompt);
+
+        // Parse options JSON if provided
+        PyObject *pyOptions = NULL;
+        if (optionsSeq) {
+            const char *opts = IoSeq_asCString(optionsSeq);
+            if (opts && strlen(opts) > 0) {
+                PyObject *jsonMod = PyImport_ImportModule("json");
+                if (jsonMod) {
+                    PyObject *loads = PyObject_GetAttrString(jsonMod, "loads");
+                    if (loads && PyCallable_Check(loads)) {
+                        PyObject *arg = PyUnicode_FromString(opts);
+                        pyOptions = PyObject_CallFunctionObjArgs(loads, arg, NULL);
+                        Py_XDECREF(arg);
+                    }
+                    Py_XDECREF(loads);
+                    Py_XDECREF(jsonMod);
+                }
+            }
+        }
+
+        PyObject *payload = Py_BuildValue("{s:O,s:O,s:O}",
+                                          "model", pyModel,
+                                          "prompt", pyPrompt,
+                                          "stream", Py_False);
+        if (pyOptions) {
+            PyDict_SetItemString(payload, "options", pyOptions);
+        }
+
+        if (pyUrl && payload) {
+            PyDict_SetItemString(localsDict, "url", pyUrl);
+            PyDict_SetItemString(localsDict, "payload", payload);
+
+            const char *code =
+                "import urllib.request, json\n"
+                "data = json.dumps(payload).encode('utf-8')\n"
+                "req = urllib.request.Request(url, data=data, headers={'Content-Type':'application/json'})\n"
+                "with urllib.request.urlopen(req, timeout=60) as resp:\n"
+                "    body = resp.read().decode('utf-8')\n"
+                "obj = json.loads(body)\n"
+                "out = obj.get('response', body)\n";
+
+            PyObject *execRes = PyRun_StringFlags(code, Py_file_input, globals, localsDict, NULL);
+            if (execRes) {
+                Py_DECREF(execRes);
+                PyObject *out = PyDict_GetItemString(localsDict, "out"); // borrowed
+                if (out && PyUnicode_Check(out)) {
+                    Py_ssize_t size;
+                    const char *cstr = PyUnicode_AsUTF8AndSize(out, &size);
+                    if (cstr) {
+                        result = IoSeq_newWithData_length_(IOSTATE, (unsigned char *)cstr, (size_t)size);
+                    }
+                }
+            } else {
+                PyErr_Print();
+            }
+        }
+
+        Py_XDECREF(pyUrl);
+        Py_XDECREF(pyModel);
+        Py_XDECREF(pyPrompt);
+    Py_XDECREF(payload);
+    Py_XDECREF(pyOptions);
+    }
+
+    Py_XDECREF(globals);
+    Py_XDECREF(localsDict);
+    PyGILState_Release(gstate);
+
+    free(fullPrompt);
+    free(url);
+
+    if (!result) {
+        result = IoSeq_newWithCString_(IOSTATE, "[OLLAMA_ERROR] request failed");
+    }
+
+    return result;
+}
+
+// --- Simple logging append (JSONL) ---
+// Io signature: Telos_rawLogAppend(path, line)
+IoObject *IoTelos_logAppend(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    IoSeq *pathSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 0);
+    IoSeq *lineSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 1);
+    if (!pathSeq || !lineSeq) return self;
+
+    const char *path = IoSeq_asCString(pathSeq);
+    const char *line = IoSeq_asCString(lineSeq);
+
+    // Best-effort: ensure logs/ exists if path starts with it
+    if (strncmp(path, "logs/", 5) == 0) {
+        if (mkdir("logs", 0777) != 0 && errno != EEXIST) {
+            // ignore failure, attempt file write anyway
+        }
+    }
+
+    FILE *f = fopen(path, "a");
+    if (f) {
+        fputs(line, f);
+        if (line[strlen(line)-1] != '\n') {
+            fputc('\n', f);
+        }
+        fclose(f);
+    } else {
+        printf("Telos: Failed to open log file %s\n", path);
+    }
+
+    return self;
+}
+
+// --- RAG Skeleton (Io->C->Python) ---
+// Telos_rawRagIndex(jsonDocs): jsonDocs is a JSON array of strings
+IoObject *IoTelos_ragIndex(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    IoSeq *jsonSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 0);
+    if (!jsonSeq) {
+        return IoSeq_newWithCString_(IOSTATE, "[RAG_ERROR] missing jsonDocs");
+    }
+    IoTelos_initPython();
+    const char *json = IoSeq_asCString(jsonSeq);
+
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    // Build: docs = json.loads(json)
+    PyObject *jsonMod = PyImport_ImportModule("json");
+    if (!jsonMod) {
+        PyGILState_Release(gstate);
+        return IoSeq_newWithCString_(IOSTATE, "[RAG_ERROR] no json module");
+    }
+    PyObject *loads = PyObject_GetAttrString(jsonMod, "loads");
+    PyObject *arg = PyUnicode_FromString(json ? json : "[]");
+    PyObject *docs = NULL;
+    if (loads && PyCallable_Check(loads)) {
+        docs = PyObject_CallFunctionObjArgs(loads, arg, NULL);
+    }
+    Py_XDECREF(loads);
+    Py_XDECREF(jsonMod);
+    Py_XDECREF(arg);
+
+    if (!docs || !PyList_Check(docs)) {
+        Py_XDECREF(docs);
+        PyGILState_Release(gstate);
+        return IoSeq_newWithCString_(IOSTATE, "[RAG_ERROR] invalid docs");
+    }
+
+    // Replace previous store
+    Py_XDECREF(rag_docs);
+    rag_docs = docs; // steal reference
+
+    PyGILState_Release(gstate);
+    return IoSeq_newWithCString_(IOSTATE, "OK");
+}
+
+// Telos_rawRagQuery(query, kNumber?) -> TSV lines: index\tscore\ttext
+IoObject *IoTelos_ragQuery(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    IoSeq *qSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 0);
+    IoNumber *kNum = (IoNumber *)IoMessage_locals_valueArgAt_(m, locals, 1);
+    const char *q = qSeq ? IoSeq_asCString(qSeq) : NULL;
+    int k = (kNum ? (int)CNUMBER(kNum) : 3);
+    if (!q || !rag_docs) {
+        return IoSeq_newWithCString_(IOSTATE, "");
+    }
+
+    IoTelos_initPython();
+    IoObject *result = NULL;
+    PyGILState_STATE gstate = PyGILState_Ensure();
+
+    // Prepare Python locals with docs and query
+    PyObject *globals = PyDict_New();
+    PyObject *localsDict = PyDict_New();
+    if (globals && localsDict) {
+        PyDict_SetItemString(globals, "__builtins__", PyEval_GetBuiltins());
+        Py_INCREF(rag_docs);
+        PyDict_SetItemString(localsDict, "docs", rag_docs);
+        PyObject *pyQ = PyUnicode_FromString(q);
+        PyDict_SetItemString(localsDict, "q", pyQ);
+        Py_DECREF(pyQ);
+        PyObject *pyK = PyLong_FromLong(k);
+        PyDict_SetItemString(localsDict, "topk", pyK);
+        Py_DECREF(pyK);
+
+        const char *code =
+            "import math\n"
+            "def toks(s):\n"
+            "    return set(w.strip().lower() for w in s.split() if w.strip())\n"
+            "qt = toks(q)\n"
+            "scores = []\n"
+            "for i, d in enumerate(docs):\n"
+            "    dt = toks(d if isinstance(d, str) else str(d))\n"
+            "    inter = len(qt & dt)\n"
+            "    union = len(qt | dt) or 1\n"
+            "    j = inter / union\n"
+            "    scores.append((j, i, d))\n"
+            "scores.sort(reverse=True)\n"
+            "out = []\n"
+            "for s, i, d in scores[:int(topk)]:\n"
+            "    out.append(f'{i}\t{s:.4f}\t{d}')\n"
+            "res='\\n'.join(out)\n";
+
+        PyObject *execRes = PyRun_StringFlags(code, Py_file_input, globals, localsDict, NULL);
+        if (execRes) {
+            Py_DECREF(execRes);
+            PyObject *pyRes = PyDict_GetItemString(localsDict, "res");
+            if (pyRes && PyUnicode_Check(pyRes)) {
+                Py_ssize_t size; const char *cstr = PyUnicode_AsUTF8AndSize(pyRes, &size);
+                if (cstr) {
+                    result = IoSeq_newWithData_length_(IOSTATE, (const unsigned char *)cstr, (size_t)size);
+                }
+            }
+        } else {
+            PyErr_Print();
+        }
+    }
+
+    Py_XDECREF(globals);
+    Py_XDECREF(localsDict);
+    PyGILState_Release(gstate);
+
+    if (!result) {
+        result = IoSeq_newWithCString_(IOSTATE, "");
+    }
+    return result;
+}
+
 // --- Helper Functions ---
 
 void IoTelos_drawWorld(IoTelos *self)
@@ -356,16 +698,7 @@ void IoTelos_drawWorld(IoTelos *self)
 
     printf("Telos: Drawing world (%.0fx%.0f)\n",
            globalWorld->world->width, globalWorld->world->height);
-
-    // Draw all submorphs
-    IoList *submorphs = globalWorld->world->submorphs;
-    if (submorphs) {
-        int count = IoList_rawSize(submorphs);
-        for (int i = 0; i < count; i++) {
-            IoObject *morph = IoList_rawAt_(submorphs, i);
-            IoTelos_drawMorph(self, morph);
-        }
-    }
+    // Do not iterate GC-managed Io objects here; Io-level draw handles details.
 }
 
 void IoTelos_drawMorph(IoTelos *self, IoObject *morph)

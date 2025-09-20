@@ -7,9 +7,7 @@
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/_build/dll)
 
 # Marvelous flags, likely compiler dependent.
-if(NOT BUILDING_IOVMALL_STATIC)
-    add_definitions("-DBUILDING_BASEKIT_DLL")
-endif()
+add_definitions("-DBUILDING_BASEKIT_DLL")
 
 # Include dirs, -I flags and whatnot
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/source/simd_cph/include)

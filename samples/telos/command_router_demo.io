@@ -1,0 +1,11 @@
+// Telos command router demo (DOE-style minimal whole run)
+Telos do(
+    println("-- command_router_demo --")
+    loadConfig(list(Map clone atPut("type","RectangleMorph") atPut("x",10) atPut("y",10) atPut("width",60) atPut("height",40) atPut("id","r1")))
+    commands run("snapshot")
+    commands run("heartbeat", list(2))
+    commands run("snapshot.json")
+    println("available commands: ")
+    println(commands list join(", "))
+    println("-- end --")
+)

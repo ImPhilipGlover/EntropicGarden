@@ -62,14 +62,9 @@ file(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/source/IoInstallPrefix.h "#define INSTALL
 
 # The custom command to generate source/IoVMInit.c which is our
 # "compiled" Io to C source code.
-if(WIN32)
-    set(IO2C_EXE "${PROJECT_BINARY_DIR}/_build/binaries/Debug/io2c.exe")
-else()
-    set(IO2C_EXE "${PROJECT_BINARY_DIR}/_build/binaries/io2c")
-endif()
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/source/IoVMInit.c
-    COMMAND ${IO2C_EXE} VMCode IoState_doString_ ${IO_SRCS} > ${CMAKE_CURRENT_SOURCE_DIR}/source/IoVMInit.c
+    COMMAND $<TARGET_FILE:io2c> VMCode IoState_doString_ ${IO_SRCS} > ${CMAKE_CURRENT_SOURCE_DIR}/source/IoVMInit.c
     DEPENDS io2c
     )
 
@@ -100,14 +95,12 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../basekit/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../coroutine/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../garbagecollector/source
-    ${CMAKE_CURRENT_SOURCE_DIR}/../Telos/source
     )
 
 # Our library sources.
 file(GLOB SRCS "source/*.c")
 list(APPEND SRCS source/IoVMInit.c)
 list(APPEND SRCS ../../deps/parson/parson.c)
-list(APPEND SRCS ../Telos/source/IoTelos.c)
 file(GLOB HEADERS "source/*.h")
 
 # Now build the shared library

@@ -33,7 +33,6 @@ typedef signed long int32_t;
  */
 typedef unsigned long long uint64_t;
 typedef long long int64_t;
-typedef ptrdiff_t ssize_t;
 #endif
 
 /* Windows stuff */
@@ -71,8 +70,19 @@ typedef ptrdiff_t ssize_t;
 #if defined(WIN32) || defined(__WINS__) || defined(__MINGW32__) ||             \
     defined(_MSC_VER)
 #define inline __inline
+// #define snprintf _snprintf  // Commented out to avoid conflicts with modern Windows SDK
 #ifndef __MINGW32__
 #define usleep(x) Sleep(((x) + 999) / 1000)
+#endif
+
+// Define ssize_t for Windows
+#ifndef _SSIZE_T_DEFINED
+#define _SSIZE_T_DEFINED
+#ifdef _WIN64
+typedef __int64 ssize_t;
+#else
+typedef long ssize_t;
+#endif
 #endif
 
 #define HAS_FIBERS 1
@@ -85,8 +95,6 @@ typedef ptrdiff_t ssize_t;
 //#if !defined(__MINGW32__)
 #if defined(BUILDING_BASEKIT_DLL) || defined(BUILDING_IOVMALL_DLL)
 #define BASEKIT_API __declspec(dllexport)
-#elif defined(BUILDING_IOVMALL_STATIC)
-#define BASEKIT_API
 #else
 #define BASEKIT_API __declspec(dllimport)
 #endif

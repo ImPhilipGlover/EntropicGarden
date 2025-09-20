@@ -21,6 +21,7 @@ SET(IoTelos_HDRS
 include_directories(
     ${CMAKE_SOURCE_DIR}/libs/basekit/source
     ${CMAKE_SOURCE_DIR}/libs/iovm/source
+    ${PYTHON_INCLUDE_DIRS}
     # ${GLUT_INCLUDE_DIRS}
     # ${OPENGL_INCLUDE_DIRS}
 )
@@ -28,7 +29,9 @@ include_directories(
 add_library(IoTelos SHARED ${IoTelos_SRCS} ${IoTelos_HDRS})
 
 target_link_libraries(IoTelos
-    iovmall_static
+    basekit
+    iovmall
+    ${PYTHON_LIBRARIES}
     # ${GLUT_LIBRARIES}
     # ${OPENGL_LIBRARIES}
 )
@@ -37,7 +40,9 @@ target_link_libraries(IoTelos
 add_library(IoTelos_static STATIC ${IoTelos_SRCS} ${IoTelos_HDRS})
 
 target_link_libraries(IoTelos_static
+    basekit
     iovmall_static
+    ${PYTHON_LIBRARIES}
     # ${GLUT_LIBRARIES}
     # ${OPENGL_LIBRARIES}
 )

@@ -302,21 +302,23 @@ void IoCoroutine_rawReturnToParent(IoCoroutine *self) {
 
     if (parent && ISCOROUTINE(parent)) {
         IoCoroutine_rawResume(parent);
+        return; // Should not be reached, but for safety
     } else {
         if (self == IOSTATE->mainCoroutine) {
-            // main coro shouldn't return, but if it does, just ignore
+            // The main coroutine has finished. This is a clean exit, not an error.
+            // We can simply return, and the Coro context switch will fall through.
             return;
         }
-
-        if (!ISNIL(IoCoroutine_rawException(self))) {
-            IoCoroutine_rawPrintBackTrace(self);
-        }
-
-        printf("IoCoroutine error: unable to auto abort coro %p by resuming parent "
-               "coro %s_%p\n",
-               (void *)self, IoObject_name(parent), (void *)parent);
-        exit(-1);
     }
+
+    if (!ISNIL(IoCoroutine_rawException(self))) {
+        IoCoroutine_rawPrintBackTrace(self);
+    }
+
+    printf("IoCoroutine error: unable to auto abort coro %p by resuming parent "
+           "coro %s_%p\n",
+           (void *)self, IoObject_name(parent), (void *)parent);
+    exit(-1);
 }
 
 void IoCoroutine_coroStart(void *context) // Called by Coro_Start()

@@ -35,6 +35,10 @@ endif()
 # spaces, or anything silly like that please.
 project(IoLanguage C)
 
+# Find Python for FFI Bridge
+find_package(PythonLibs REQUIRED)
+include_directories(${PYTHON_INCLUDE_DIRS})
+
 # Enable ASM language for ARM64 coroutine support
 enable_language(ASM)
 

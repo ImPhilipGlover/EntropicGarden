@@ -48,8 +48,6 @@
 #if defined(WIN32)
 #if defined(BUILDING_CORO_DLL) || defined(BUILDING_IOVMALL_DLL)
 #define CORO_API __declspec(dllexport)
-#elif defined(BUILDING_IOVMALL_STATIC)
-#define CORO_API
 #else
 #define CORO_API __declspec(dllimport)
 #endif
