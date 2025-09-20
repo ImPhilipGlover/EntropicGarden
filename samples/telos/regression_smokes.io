@@ -14,7 +14,8 @@ run := method(relPath,
 // Core smoke
 run("samples/telos/smoke.io")
 
-// Morphic canvas & WAL
+// Morphic UI tests (visual window-based - our native interface)
+run("samples/telos/morphic_streaming_test.io")
 run("samples/telos/morphic_canvas_smoke.io")
 run("samples/telos/morphic_persistence_smoke.io")
 run("samples/telos/morphic_wal_replay_smoke.io")
@@ -40,6 +41,9 @@ run("samples/telos/fractals_mine_batos.io")
 
 // Ollama LLM bridge (requires Ollama server)
 run("samples/telos/persona_chat_console_demo.io")
+
+// Streaming LLM bridge 
+run("samples/telos/streaming_llm_demo.io")
 
 // Python eval bridge
 run("samples/telos/python_eval_demo.io")
