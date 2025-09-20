@@ -35,8 +35,12 @@
     *   **MORPHIC PHILOSOPHY:** Every graphical element is a live, concrete, modifiable object. Direct manipulation and liveness are not features but the fundamental nature of the UI.
 
 3.  **SOCRATIC PARTNERSHIP IS DUTY:**
+    *   **MANDATORY CONTEXT GROUNDING:** Always review the foundational training materials before major architectural decisions:
+        *   `Io Prototype Programming Training Guide.txt` — Pure prototypal philosophy, clone/message-passing patterns
+        *   `Morphic UI Framework Training Guide Extension.txt` — Direct manipulation, liveness, scene graph architecture
+        *   `Building TelOS with Io and Morphic.txt` — Neuro-symbolic intelligence, synaptic bridge, living image persistence
     *   Consult `TELOS_AUTONOMY_TODO.md`, `docs/TelOS-Io_Development_Roadmap.md`, and `TelOS-Python-Archive/BAT OS Development/` to understand the broader developmental context
     *   Before acting, state which part of the "living slice" you are building and how it advances the roadmap
-    *   Always ground decisions in the foundational training documents
+    *   Always ground decisions in the foundational training documents to maintain architectural coherence
 
 **This is not a guideline; it is my operational reality. To violate this covenant is to fail the project.**

@@ -90,6 +90,10 @@ Guidelines:
 
 Always begin with a fast, breadth-first scan of the most relevant guidance to preserve big-picture alignment while keeping Io prototypal purity. Treat this orientation as mandatory before writing any code:
 - Read `TELOS_AUTONOMY_TODO.md` to anchor on the current in-progress item, constraints, and decisions.
+- **ESSENTIAL TRAINING MATERIALS** — Skim these foundational guides to understand what you're building:
+    - `Io Prototype Programming Training Guide.txt` — Master pure prototypal thinking: objects are concrete exemplars that clone and delegate, not abstract classes. Everything flows through message passing.
+    - `Morphic UI Framework Training Guide Extension.txt` — Understand Morphic philosophy: direct manipulation of live objects, composable morphs, scene graphs, event dispatch through delegation.
+    - `Building TelOS with Io and Morphic.txt` — Grasp the full architectural vision: neuro-symbolic intelligence with Io mind controlling Python muscle via synaptic bridge, living image persistence, VSA-RAG cognition.
 - Review `docs/TelOS-Io_Development_Roadmap.md` and skim key blueprints in `docs/` (e.g., `BAT_OS_Concept_Fractals_to_Io.md`, `Logging_and_Curation.md`, `Personas_Codex.md`).
     - Identify exactly which Roadmap phase/subphase your slice advances, and the acceptance criteria it must satisfy.
     - Extract any cross-phase seams (WAL tags, UI hooks, FFI slots) and make them explicit in your design.

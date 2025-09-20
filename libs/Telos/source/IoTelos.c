@@ -60,6 +60,7 @@ void IoTelos_initPython(void) {
 
 // Forward declaration for Ollama bridge
 IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_ollamaGenerateStream(IoTelos *self, IoObject *locals, IoMessage *m);
 // Forward declaration for generic Python eval
 IoObject *IoTelos_pyEval(IoTelos *self, IoObject *locals, IoMessage *m);
 // Forward declaration for simple logger
@@ -181,6 +182,9 @@ void IoTelosInit(IoState *state, IoObject *context)
     // Expose Ollama HTTP bridge (via embedded Python)
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawOllamaGenerate"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_ollamaGenerate, NULL, "Telos_rawOllamaGenerate"));
+    
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawOllamaGenerateStream"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_ollamaGenerateStream, NULL, "Telos_rawOllamaGenerateStream"));
 
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawPyEval"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_pyEval, NULL, "Telos_rawPyEval"));
@@ -686,6 +690,165 @@ IoObject *IoTelos_ollamaGenerate(IoTelos *self, IoObject *locals, IoMessage *m)
     }
 
     return result;
+}
+
+// --- Ollama Streaming Bridge ---
+// Io signature: Telos_rawOllamaGenerateStream(baseUrl, model, prompt, system, optionsJson)
+// Returns: IoList of response chunks (or single error chunk)
+IoObject *IoTelos_ollamaGenerateStream(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    IoSeq *baseUrlSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 0);
+    IoSeq *modelSeq   = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 1);
+    IoSeq *promptSeq  = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 2);
+    IoSeq *systemSeq  = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 3);
+    IoSeq *optionsSeq = (IoSeq *)IoMessage_locals_valueArgAt_(m, locals, 4);
+
+    const char *baseUrl = baseUrlSeq ? IoSeq_asCString(baseUrlSeq) : "http://localhost:11434";
+    const char *model   = modelSeq   ? IoSeq_asCString(modelSeq)   : NULL;
+    const char *prompt  = promptSeq  ? IoSeq_asCString(promptSeq)  : "";
+    const char *system  = systemSeq  ? IoSeq_asCString(systemSeq)  : "";
+
+    if (!model || !prompt) {
+        IoList *errorList = IoList_new(IOSTATE);
+        IoList_rawAppend_(errorList, IoSeq_newWithCString_(IOSTATE, "[OLLAMA_STREAM_ERROR] missing model or prompt"));
+        return errorList;
+    }
+
+    // Build full prompt
+    char *fullPrompt = NULL;
+    size_t len = strlen(prompt) + (system && strlen(system) > 0 ? strlen(system) + 10 : 0) + 1;
+    fullPrompt = (char *)malloc(len);
+    if (!fullPrompt) {
+        IoList *errorList = IoList_new(IOSTATE);
+        IoList_rawAppend_(errorList, IoSeq_newWithCString_(IOSTATE, "[OLLAMA_STREAM_ERROR] out of memory"));
+        return errorList;
+    }
+    if (system && strlen(system) > 0) {
+        snprintf(fullPrompt, len, "System: %s\nUser: %s", system, prompt);
+    } else {
+        snprintf(fullPrompt, len, "%s", prompt);
+    }
+
+    char *url = strdup(baseUrl);
+    if (!url) {
+        free(fullPrompt);
+        IoList *errorList = IoList_new(IOSTATE);
+        IoList_rawAppend_(errorList, IoSeq_newWithCString_(IOSTATE, "[OLLAMA_STREAM_ERROR] out of memory"));
+        return errorList;
+    }
+
+    IoTelos_initPython();
+    IoList *chunks = IoList_new(IOSTATE);
+
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyObject *env = PyDict_New();
+    if (env) {
+        PyDict_SetItemString(env, "__builtins__", PyEval_GetBuiltins());
+
+        PyObject *pyUrl = PyUnicode_FromString(url);
+        PyObject *pyModel = PyUnicode_FromString(model);
+        PyObject *pyPrompt = PyUnicode_FromString(fullPrompt);
+
+        // Parse options JSON if provided
+        PyObject *pyOptions = NULL;
+        if (optionsSeq) {
+            const char *opts = IoSeq_asCString(optionsSeq);
+            if (opts && strlen(opts) > 0) {
+                PyObject *jsonMod = PyImport_ImportModule("json");
+                if (jsonMod) {
+                    PyObject *loads = PyObject_GetAttrString(jsonMod, "loads");
+                    if (loads && PyCallable_Check(loads)) {
+                        PyObject *arg = PyUnicode_FromString(opts);
+                        pyOptions = PyObject_CallFunctionObjArgs(loads, arg, NULL);
+                        Py_XDECREF(arg);
+                    }
+                    Py_XDECREF(loads); 
+                    Py_XDECREF(jsonMod);
+                }
+            }
+        }
+
+        PyObject *payload = Py_BuildValue("{s:O,s:O,s:O}",
+                                          "model", pyModel,
+                                          "prompt", pyPrompt,
+                                          "stream", Py_True);
+        if (pyOptions) {
+            PyDict_SetItemString(payload, "options", pyOptions);
+        }
+        if (system && strlen(system) > 0) {
+            PyObject *pySystem = PyUnicode_FromString(system);
+            PyDict_SetItemString(payload, "system", pySystem);
+            Py_XDECREF(pySystem);
+        }
+        PyDict_SetItemString(payload, "keep_alive", PyUnicode_FromString("0s"));
+
+        if (pyUrl && payload) {
+            PyDict_SetItemString(env, "url", pyUrl);
+            PyDict_SetItemString(env, "payload", payload);
+
+            const char *code =
+                "import urllib.request, json\n"
+                "import time\n"
+                "def stream_post(u, payload):\n"
+                "    data = json.dumps(payload).encode('utf-8')\n"
+                "    req = urllib.request.Request(u, data=data, headers={'Content-Type':'application/json'})\n"
+                "    resp = urllib.request.urlopen(req, timeout=120)\n"
+                "    chunks = []\n"
+                "    for line_bytes in resp:\n"
+                "        line = line_bytes.decode('utf-8').strip()\n"
+                "        if line:\n"
+                "            try:\n"
+                "                obj = json.loads(line)\n"
+                "                chunk = obj.get('response', obj.get('message', {}).get('content', ''))\n"
+                "                if chunk:\n"
+                "                    chunks.append(chunk)\n"
+                "                if obj.get('done', False):\n"
+                "                    break\n"
+                "            except:\n"
+                "                chunks.append(line)\n"
+                "    return chunks\n"
+                "chunks = []\n"
+                "base = url.rstrip('/')\n"
+                "try:\n"
+                "    chunks = stream_post(base + '/api/generate', payload)\n"
+                "except Exception as e:\n"
+                "    chunks = ['[OLLAMA_STREAM_ERROR] request failed: ' + str(e)]\n";
+
+            PyRun_String(code, Py_file_input, env, env);
+
+            PyObject *pyChunks = PyDict_GetItemString(env, "chunks");
+            if (pyChunks && PyList_Check(pyChunks)) {
+                Py_ssize_t size = PyList_Size(pyChunks);
+                for (Py_ssize_t i = 0; i < size; i++) {
+                    PyObject *item = PyList_GetItem(pyChunks, i);
+                    if (item && PyUnicode_Check(item)) {
+                        const char *chunk = PyUnicode_AsUTF8(item);
+                        if (chunk) {
+                            IoList_rawAppend_(chunks, IoSeq_newWithCString_(IOSTATE, chunk));
+                        }
+                    }
+                }
+            }
+        }
+
+        Py_XDECREF(payload);
+        Py_XDECREF(pyPrompt);
+        Py_XDECREF(pyModel);
+        Py_XDECREF(pyUrl);
+        Py_XDECREF(pyOptions);
+        Py_DECREF(env);
+    }
+    PyGILState_Release(gstate);
+
+    free(fullPrompt);
+    free(url);
+
+    // If no chunks were added, add an error chunk
+    if (IoList_rawSize(chunks) == 0) {
+        IoList_rawAppend_(chunks, IoSeq_newWithCString_(IOSTATE, "[OLLAMA_STREAM_ERROR] no response"));
+    }
+
+    return chunks;
 }
 
 // --- Generic Python Eval ---

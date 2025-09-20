@@ -597,6 +597,7 @@ Telos := Lobby Protos Telos clone do(
     logs := Object clone do(
         base := "logs"
         llm := base .. "/persona_llm.jsonl"
+        streamingLlm := base .. "/streaming_llm.jsonl"
         tools := base .. "/tool_use.jsonl"
         curation := base .. "/curation_queue.jsonl"
         ui := base .. "/ui_snapshot.txt"
@@ -642,6 +643,11 @@ Telos := Lobby Protos Telos clone do(
                 )
             )
             out
+        )
+        
+        streamingLlm := method(logObj,
+            json := Telos json stringify(logObj)
+            self append(streamingLlm, json)
         )
     )
 
@@ -782,6 +788,106 @@ Telos := Lobby Protos Telos clone do(
 
             "flushed: " .. kept .. "/" .. total
         )
+    )
+
+    // Prototypal streaming response object - yields chunks through message passing
+    StreamingResponse := Object clone
+    StreamingResponse with := method(provider, chunks,
+        response := self clone
+        response provider := provider
+        response chunks := chunks clone
+        response currentIndex := 0
+        response isComplete := false
+        response
+    )
+    StreamingResponse nextChunk := method(
+        if(currentIndex >= chunks size,
+            isComplete = true
+            return nil
+        )
+        chunk := chunks at(currentIndex)
+        currentIndex = currentIndex + 1
+        chunk
+    )
+    StreamingResponse hasMore := method(isComplete not)
+    StreamingResponse getAllChunks := method(chunks)
+    StreamingResponse getFullText := method(chunks join(""))
+
+    // LLM streaming call: yields partial responses through prototypal streaming object
+    llmCallStream := method(spec,
+        if(spec == nil, spec = Map clone)
+        personaName := spec atIfAbsent("persona", nil)
+        // Determine provider
+        useOllama := (llmProvider atIfAbsent("useOllama", false) == true)
+        baseUrl := llmProvider atIfAbsent("baseUrl", "http://localhost:11434")
+        // Select model: explicit > persona mapping > default
+        model := spec atIfAbsent("model", nil)
+        if(model == nil and personaName != nil and personaModels hasSlot(personaName),
+            model = personaModels at(personaName)
+        )
+        if(model == nil, model = "telos/robin")
+        prompt := spec atIfAbsent("prompt", "")
+        system := spec atIfAbsent("system", "")
+
+        // Merge generation options
+        options := Map clone
+        if(personaName != nil,
+            p := personaCodex get(personaName)
+            if(p and p hasSlot("genOptions"),
+                go := p genOptions; if(go, go foreach(k, v, options atPut(k, v)))
+            )
+        )
+        if(spec hasSlot("temperature"), options atPut("temperature", spec at("temperature")))
+        if(spec hasSlot("top_p"), options atPut("top_p", spec at("top_p")))
+
+        startedAt := Date clone now asNumber
+        chunks := List clone
+
+        if(useOllama == true,
+            optsJson := "{}"
+            if(options size > 0,
+                parts := List clone
+                options foreach(k, v,
+                    parts append("\"" .. k .. "\":" .. v asString)
+                )
+                optsJson = "{" .. parts join(",") .. "}"
+            )
+            if(Telos hasSlot("Telos_rawOllamaGenerateStream"),
+                chunksResult := Telos_rawOllamaGenerateStream(baseUrl, model, prompt, system, optsJson)
+                if(chunksResult type == "List",
+                    chunks = chunksResult,
+                    chunks append(chunksResult asString)
+                )
+            ,
+                chunks append("[OLLAMA_STREAM_ERROR] bridge missing")
+            )
+        ,
+            // Offline fallback with simulated streaming chunks
+            chunks append("[OFFLINE")
+            chunks append("_STUB")
+            chunks append("_STREAMING")
+            chunks append("_COMPLETION]")
+        )
+
+        response := StreamingResponse with("ollama", chunks)
+        
+        // Log streaming event to JSONL
+        durationMs := (Date clone now asNumber - startedAt) * 1000
+        logObj := Map clone
+        logObj atPut("timestamp", Date clone now asString)
+        logObj atPut("provider", if(useOllama, "ollama", "offline"))
+        logObj atPut("model", model)
+        logObj atPut("persona", personaName)
+        logObj atPut("prompt", prompt exSlice(0, 200))
+        logObj atPut("system", system exSlice(0, 100))
+        logObj atPut("streaming", true)
+        logObj atPut("chunkCount", chunks size)
+        logObj atPut("fullText", response getFullText exSlice(0, 500))
+        logObj atPut("durationMs", durationMs)
+        
+        logs streamingLlm(logObj)
+        
+        response
     )
 
     // LLM call: routes to Ollama when configured; otherwise offline stub. Logs JSONL and enqueues for curation.
