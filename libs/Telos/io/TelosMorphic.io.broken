@@ -1,0 +1,495 @@
+/*
+   TelosMorphic.io - Direct Manipulation UI: Living Objects in Visual Space
+   The tangible interface: where thoughts become shapes and shapes respond to touch
+   
+   This module provides:
+   - World, Morph, and UI prototype hierarchies with pure prototypal design
+   - Event dispatch and interaction handling through message passing
+   - Canvas operations and rendering coordination
+   - Layout systems and morph composition
+   
+   Roadmap Alignment: Phase 2 (Real Window/Canvas), Phase 5 (Morphic Substrate)
+*/
+
+// === TELOS MORPHIC MODULE ===
+
+TelosMorphic := Object clone
+TelosMorphic version := "1.0.0 (modular-prototypal)"
+TelosMorphic loadTime := Date clone now
+
+// Load method required by TelosCore
+TelosMorphic load := method(
+    writeln("TelOS Morphic: Direct Manipulation UI module loaded - visual interface ready")
+    self
+)
+
+// === CORE MORPHIC PROTOTYPES ===
+
+// World: The root container for all visual objects
+World := Object clone
+World width := 800
+World height := 600
+World color := "white"
+World submorphs := List clone
+World isWorld := true
+
+// Fresh identity emerges through cloning - no init needed
+World clone := method(
+    newWorld := resend
+    newWorld submorphs := List clone
+    newWorld
+)
+
+World addSubmorph := method(morphParam,
+    submorphProcessor := Object clone
+    submorphProcessor morph := morphParam
+    
+    if(submorphProcessor morph == nil, return false)
+    
+    self submorphs append(submorphProcessor morph)
+    submorphProcessor morph parent := self
+    
+    // WAL persistence
+    // Safe WAL logging - only if persistence is available
+    logProcessor := Object clone
+    logProcessor canLog := Telos hasSlot("walAppend") and Telos hasSlot("json")
+    if(logProcessor canLog,
+        morphDetails := Map clone
+        morphDetails atPut("action", "addSubmorph")
+        morphDetails atPut("morphType", submorphProcessor morph type)
+        logProcessor jsonStr := Telos json stringify(morphDetails)
+        Telos walAppend("MARK morph.add " .. logProcessor jsonStr)
+    )
+    
+    return true
+)
+
+World removeSubmorph := method(morphParam,
+    removalProcessor := Object clone
+    removalProcessor morph := morphParam
+    removalProcessor found := false
+    
+    self submorphs foreach(i, morph,
+        if(morph == removalProcessor morph,
+            self submorphs removeAt(i)
+            removalProcessor morph parent := nil
+            removalProcessor found := true
+            break
+        )
+    )
+    
+    // WAL persistence
+    // Safe WAL logging for removal
+    if(removalProcessor found and Telos hasSlot("walAppend"),
+        Telos walAppend("MARK morph.remove")
+    )
+    
+    return removalProcessor found
+)
+
+World draw := method(
+    drawProcessor := Object clone
+    drawProcessor logLines := List clone
+    
+    drawProcessor logLines append("TelOS Morphic: Drawing world (" .. self width .. "x" .. self height .. ")")
+    
+    self submorphs foreach(morph,
+        morphDrawResult := morph draw
+        if(morphDrawResult != nil,
+            drawProcessor logLines append(morphDrawResult)
+        )
+    )
+    
+    drawResult := drawProcessor logLines join("\n")
+    writeln(drawResult)
+    return drawResult
+)
+
+World handleEvent := method(eventParam,
+    eventProcessor := Object clone
+    eventProcessor event := eventParam
+    eventProcessor handled := false
+    
+    // Dispatch to submorphs first (front to back)
+    submorphsReversed := self submorphs clone reverse
+    submorphsReversed foreach(morph,
+        if(eventProcessor handled not,
+            morphResult := morph handleEvent(eventProcessor event)
+            if(morphResult,
+                eventProcessor handled := true
+            )
+        )
+    )
+    
+    return eventProcessor handled
+)
+
+// === BASE MORPH PROTOTYPE ===
+
+Morph := Object clone
+Morph position := List clone append(0, 0)
+Morph size := List clone append(100, 100)
+Morph color := "gray"
+Morph parent := nil
+Morph submorphs := List clone
+Morph isDragging := false
+Morph visible := true
+
+Morph clone := method(
+    newMorph := resend
+    newMorph position := List clone append(0, 0)
+    newMorph size := List clone append(100, 100)
+    newMorph submorphs := List clone
+    newMorph
+)
+
+Morph moveTo := method(xParam, yParam,
+    positionProcessor := Object clone
+    positionProcessor x := xParam asNumber
+    positionProcessor y := yParam asNumber
+    
+    self position atPut(0, positionProcessor x)
+    self position atPut(1, positionProcessor y)
+    
+    // WAL persistence
+    // Safe transactional update - only if persistence is available
+    if(Telos hasSlot("transactional_setSlot"),
+        Telos transactional_setSlot(self, "position", List clone append(positionProcessor x, positionProcessor y))
+    )
+    
+    return self
+)
+
+Morph resizeTo := method(widthParam, heightParam,
+    sizeProcessor := Object clone
+    sizeProcessor width := widthParam asNumber
+    sizeProcessor height := heightParam asNumber
+    
+    self size atPut(0, sizeProcessor width)
+    self size atPut(1, sizeProcessor height)
+    
+    // WAL persistence
+    // Safe transactional update - only if persistence is available  
+    if(Telos hasSlot("transactional_setSlot"),
+        Telos transactional_setSlot(self, "size", List clone append(sizeProcessor width, sizeProcessor height))
+    )
+    
+    return self
+)
+
+Morph setColor := method(colorParam,
+    colorProcessor := Object clone
+    colorProcessor newColor := colorParam asString
+    
+    self color := colorProcessor newColor
+    
+    // WAL persistence
+    // Safe transactional update - only if persistence is available
+    if(Telos hasSlot("transactional_setSlot"),
+        Telos transactional_setSlot(self, "color", colorProcessor newColor)
+    )
+    
+    return self
+)
+
+Morph draw := method(
+    drawInfo := Object clone
+    drawInfo x := self position at(0)
+    drawInfo y := self position at(1)
+    drawInfo w := self size at(0)
+    drawInfo h := self size at(1)
+    
+    drawDescription := "  " .. self type .. " at (" .. drawInfo x .. "," .. drawInfo y .. 
+                      ") size " .. drawInfo w .. "x" .. drawInfo h .. " color " .. self color
+    
+    return drawDescription
+)
+
+Morph hitTest := method(xParam, yParam,
+    hitProcessor := Object clone
+    hitProcessor x := xParam asNumber
+    hitProcessor y := yParam asNumber
+    hitProcessor morphX := self position at(0)
+    hitProcessor morphY := self position at(1)
+    hitProcessor morphW := self size at(0)
+    hitProcessor morphH := self size at(1)
+    
+    hitResult := (hitProcessor x >= hitProcessor morphX) and 
+                 (hitProcessor x <= (hitProcessor morphX + hitProcessor morphW)) and
+                 (hitProcessor y >= hitProcessor morphY) and 
+                 (hitProcessor y <= (hitProcessor morphY + hitProcessor morphH))
+    
+    return hitResult
+)
+
+Morph handleEvent := method(eventParam,
+    eventProcessor := Object clone
+    eventProcessor event := eventParam
+    eventProcessor handled := false
+    
+    if(eventProcessor event hasSlot("type"),
+        eventType := eventProcessor event at("type")
+        
+        if(eventType == "mouseDown",
+            eventProcessor x := eventProcessor event at("x")
+            eventProcessor y := eventProcessor event at("y")
+            
+            if(self hitTest(eventProcessor x, eventProcessor y),
+                self mouseDown(eventProcessor event)
+                eventProcessor handled := true
+            )
+        )
+        
+        if(eventType == "mouseMove" and self isDragging,
+            self mouseMove(eventProcessor event)
+            eventProcessor handled := true
+        )
+        
+        if(eventType == "mouseUp" and self isDragging,
+            self mouseUp(eventProcessor event)
+            eventProcessor handled := true
+        )
+    )
+    
+    return eventProcessor handled
+)
+
+Morph mouseDown := method(eventParam,
+    self isDragging := true
+    dragStartProcessor := Object clone
+    dragStartProcessor x := eventParam at("x")
+    dragStartProcessor y := eventParam at("y")
+    
+    writeln("TelOS Morphic: " .. self type .. " drag started at (" .. dragStartProcessor x .. "," .. dragStartProcessor y .. ")")
+    return true
+)
+
+Morph mouseMove := method(eventParam,
+    if(self isDragging,
+        moveProcessor := Object clone
+        moveProcessor newX := eventParam at("x")
+        moveProcessor newY := eventParam at("y")
+        
+        self moveTo(moveProcessor newX, moveProcessor newY)
+        return true
+    )
+    return false
+)
+
+Morph mouseUp := method(eventParam,
+    if(self isDragging,
+        self isDragging := false
+        upProcessor := Object clone
+        upProcessor x := eventParam at("x")
+        upProcessor y := eventParam at("y")
+        
+        writeln("TelOS Morphic: " .. self type .. " drag ended at (" .. upProcessor x .. "," .. upProcessor y .. ")")
+        return true
+    )
+    return false
+)
+
+// === SPECIALIZED MORPH TYPES ===
+
+RectangleMorph := Morph clone
+RectangleMorph type := "RectangleMorph"
+RectangleMorph color := "blue"
+
+RectangleMorph draw := method(
+    baseDescription := resend
+    return baseDescription .. " [Rectangle]"
+)
+
+TextMorph := Morph clone
+TextMorph type := "TextMorph"
+TextMorph text := "Text"
+TextMorph color := "black"
+
+TextMorph clone := method(
+    newTextMorph := resend
+    newTextMorph text := "Text"
+    newTextMorph
+)
+
+TextMorph setText := method(textParam,
+    textProcessor := Object clone
+    textProcessor newText := textParam asString
+    
+    self text := textProcessor newText
+    
+    // WAL persistence
+    if(Telos hasSlot("transactional_setSlot"),
+        Telos transactional_setSlot(self, "text", textProcessor newText)
+    )
+    
+    return self
+)
+
+TextMorph draw := method(
+    baseDescription := resend
+    return baseDescription .. " text:'" .. self text .. "' [Text]"
+)
+
+// === MORPHIC WORLD MANAGEMENT ===
+
+Telos world := nil
+
+Telos createWorld := method(
+    worldProcessor := Object clone
+    worldProcessor newWorld := World clone
+    
+    Telos world := worldProcessor newWorld
+    
+    // WAL persistence
+    if(Telos hasSlot("walAppend"),
+        Telos walAppend("MARK world.create")
+    )
+    
+    writeln("TelOS Morphic: World created (" .. Telos world width .. "x" .. Telos world height .. ")")
+    return Telos world
+)
+
+Telos createMorph := method(morphTypeParam,
+    morphProcessor := Object clone
+    
+    // PROTOTYPAL PURITY: Parameters as objects
+    typeResolver := Object clone
+    typeResolver typeName := if(morphTypeParam == nil, "Morph", morphTypeParam asString)
+    
+    // Resolve the prototype
+    typeResolver proto := nil
+    if(typeResolver typeName == "Rectangle" or typeResolver typeName == "RectangleMorph",
+        typeResolver proto := RectangleMorph
+    )
+    if(typeResolver typeName == "Text" or typeResolver typeName == "TextMorph",
+        typeResolver proto := TextMorph
+    )
+    if(typeResolver proto == nil,
+        typeResolver proto := Morph
+    )
+    
+    morphProcessor newMorph := typeResolver proto clone
+    
+    // Ensure world exists
+    if(Telos world == nil,
+        Telos createWorld
+    )
+    
+    // Add to world
+    Telos world addSubmorph(morphProcessor newMorph)
+    
+    writeln("TelOS Morphic: Created " .. typeResolver typeName .. " morph")
+    return morphProcessor newMorph
+)
+
+// === CANVAS AND RENDERING ===
+
+Telos canvas := Object clone
+Telos canvas heartbeat := method(iterationsParam,
+    canvasProcessor := Object clone
+    canvasProcessor iterations := if(iterationsParam == nil, 1, iterationsParam asNumber)
+    
+    canvasProcessor iterations repeat(i,
+        if(Telos world != nil,
+    // Basic heartbeat
+            morphCount := Telos world submorphs size
+            writeln("TelOS Morphic: Canvas heartbeat #" .. (i + 1) .. " (morphs: " .. morphCount .. ")")
+            
+    // Optional draw call
+            if(i == 0, // Only draw on first iteration to avoid spam
+                Telos world draw
+            )
+        ,
+            writeln("TelOS Morphic: Canvas heartbeat #" .. (i + 1) .. " (no world)")
+        )
+        
+    // Simple timing
+        System sleep(0.1)
+    )
+    
+    return canvasProcessor iterations
+)
+
+Telos captureScreenshot := method(
+    screenshotProcessor := Object clone
+    screenshotProcessor snapshot := Map clone
+    
+    if(Telos world != nil,
+        worldInfo := Map clone
+        worldInfo atPut("width", Telos world width)
+        worldInfo atPut("height", Telos world height) 
+        worldInfo atPut("color", Telos world color)
+        worldInfo atPut("morphCount", Telos world submorphs size)
+        
+        morphList := List clone
+        Telos world submorphs foreach(morph,
+            morphInfo := Map clone
+            morphInfo atPut("type", morph type)
+            morphInfo atPut("position", morph position)
+            morphInfo atPut("size", morph size)
+            morphInfo atPut("color", morph color)
+            if(morph hasSlot("text"),
+                morphInfo atPut("text", morph text)
+            )
+            morphList append(morphInfo)
+        )
+        worldInfo atPut("morphs", morphList)
+        
+        screenshotProcessor snapshot atPut("world", worldInfo)
+    ,
+        screenshotProcessor snapshot atPut("world", nil)
+    )
+    
+    screenshotProcessor snapshot atPut("timestamp", Date now asNumber)
+    return screenshotProcessor snapshot
+)
+
+// === EVENT SYSTEM ===
+
+Telos dispatchEvent := method(eventParam,
+    eventDispatcher := Object clone
+    eventDispatcher event := eventParam
+    eventDispatcher handled := false
+    
+    if(Telos world != nil,
+        eventDispatcher handled := Telos world handleEvent(eventDispatcher event)
+    )
+    
+    if(eventDispatcher handled not,
+        writeln("TelOS Morphic: Unhandled event: " .. eventDispatcher event type)
+    )
+    
+    return eventDispatcher handled
+)
+
+// === MAIN LOOP INTEGRATION ===
+
+Telos mainLoop := method(iterationsParam,
+    loopProcessor := Object clone
+    loopProcessor iterations := if(iterationsParam == nil, 1, iterationsParam asNumber)
+    
+    writeln("TelOS Morphic: Starting main loop for " .. loopProcessor iterations .. " iterations")
+    
+    loopProcessor iterations repeat(i,
+    // Canvas heartbeat
+        Telos canvas heartbeat(1)
+        
+    // Allow C-level processing if available
+        if(Telos hasSlot("Telos_rawMainLoop"),
+            try(
+                Telos Telos_rawMainLoop(1),
+    // Ignore errors from C-level loop
+            )
+        )
+        
+    // Event processing opportunity
+    // In full implementation, this would process pending events
+        
+        System sleep(0.1)
+    )
+    
+    writeln("TelOS Morphic: Main loop completed " .. loopProcessor iterations .. " iterations")
+    return loopProcessor iterations
+)
+
+writeln("TelOS Morphic: Direct Manipulation UI module loaded - visual interface ready")

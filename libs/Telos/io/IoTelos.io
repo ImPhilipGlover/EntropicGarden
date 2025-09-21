@@ -3742,4 +3742,209 @@ World forward := method(
     return Telos forward
 )
 
+// Phase 2.1: VSA-RAG Cognitive Dialogue - PRODUCTION IMPLEMENTATION
+
+// Neural Backend Initialization
+rag := Object clone
+rag initializeNeuralBackend := method(dimensions, device,
+    dimensionAnalyzer := Object clone
+    dimensionAnalyzer requestedDims := if(dimensions == nil, 10000, dimensions asNumber)
+    dimensionAnalyzer targetDevice := if(device == nil, "cpu", device asString)
+    
+    initResult := ffi callFunction("telos_neural_backend", "initialize_neural_backend", list(dimensionAnalyzer requestedDims, dimensionAnalyzer targetDevice))
+    
+    if(initResult,
+        "TelOS Neural Backend: Initialized with " .. dimensionAnalyzer requestedDims .. " dimensions on " .. dimensionAnalyzer targetDevice println,
+        "TelOS Neural Backend: Failed to initialize" println
+    )
+    
+    initResult
+)
+
+// 2.1.1: Semantic-Weighted Bundling - REAL IMPLEMENTATION
+rag bundleConcepts := method(conceptList, weights,
+    bundleProcessor := Object clone
+    bundleProcessor concepts := conceptList
+    bundleProcessor semanticWeights := weights
+    
+    // Convert Io concepts to vectors if needed
+    bundleProcessor vectorList := List clone
+    bundleProcessor concepts foreach(concept,
+        conceptVector := if(concept type == "List", 
+            concept,  // Already a vector
+            rag encodeText(concept asString)  // Convert text to vector
+        )
+        bundleProcessor vectorList append(conceptVector)
+    )
+    
+    // Call neural backend for semantic-weighted bundling
+    bundleResult := ffi callFunction("telos_neural_backend", "neural_bundle", 
+        list(bundleProcessor vectorList, bundleProcessor semanticWeights))
+    
+    "TelOS VSA: Bundled " .. bundleProcessor concepts size .. " concepts with semantic weights" println
+    bundleResult
+)
+
+// 2.1.2: Constrained Cleanup Operation - REAL IMPLEMENTATION
+rag cleanupVector := method(noisyVector, k,
+    cleanupProcessor := Object clone
+    cleanupProcessor inputVector := noisyVector
+    cleanupProcessor resultCount := if(k == nil, 5, k asNumber)
+    
+    // Perform neural cleanup operation
+    cleanupResults := ffi callFunction("telos_neural_backend", "neural_cleanup", 
+        list(cleanupProcessor inputVector, cleanupProcessor resultCount))
+    
+    // Process cleanup results
+    cleanupProcessor processedResults := List clone
+    cleanupResults foreach(result,
+        resultObj := Object clone
+        resultObj vector := result at("vector")
+        resultObj score := result at("score")
+        resultObj metadata := result at("metadata")
+        resultObj description := "Clean prototype (score: " .. resultObj score .. ")"
+        cleanupProcessor processedResults append(resultObj)
+    )
+    
+    "TelOS VSA: Cleanup found " .. cleanupProcessor processedResults size .. " clean prototypes" println
+    cleanupProcessor processedResults
+)
+
+// 2.1.3: HybridQueryPlanner - REAL IMPLEMENTATION
+rag planQuery := method(querySpec,
+    plannerProcessor := Object clone
+    plannerProcessor querySpec := querySpec
+    
+    // Ensure query spec has required fields
+    if(plannerProcessor querySpec hasSlot("text") not,
+        plannerProcessor querySpec atPut("text", "")
+    )
+    if(plannerProcessor querySpec hasSlot("type") not,
+        plannerProcessor querySpec atPut("type", "simple")
+    )
+    if(plannerProcessor querySpec hasSlot("context") not,
+        plannerProcessor querySpec atPut("context", Map clone)
+    )
+    
+    // Call neural backend for query planning and execution
+    planResult := ffi callFunction("telos_neural_backend", "plan_and_execute_query", 
+        list(plannerProcessor querySpec))
+    
+    planResultProcessor := Object clone
+    planResultProcessor result := planResult
+    planResultProcessor queryType := planResultProcessor result at("type")
+    planResultProcessor executionTime := planResultProcessor result at("execution_time") 
+    
+    "TelOS VSA: Executed " .. planResultProcessor queryType .. " query in " .. 
+        planResultProcessor executionTime .. "s" println
+    
+    planResultProcessor result
+)
+
+// Text Encoding Interface
+rag encodeText := method(text,
+    textProcessor := Object clone
+    textProcessor inputText := text asString
+    
+    encodedVector := ffi callFunction("telos_neural_backend", "neural_encode_text", 
+        list(textProcessor inputText))
+    
+    "TelOS VSA: Encoded text '" .. textProcessor inputText .. "' to " .. 
+        encodedVector size .. "-dim vector" println
+    encodedVector
+)
+
+// Concept Memory Interface
+rag addConcept := method(vectorOrText, metadata,
+    conceptProcessor := Object clone
+    conceptProcessor metadata := if(metadata == nil, Map clone, metadata)
+    
+    // Convert text to vector if needed
+    conceptProcessor vector := if(vectorOrText type == "List",
+        vectorOrText,  // Already a vector
+        rag encodeText(vectorOrText asString)  // Convert text to vector
+    )
+    
+    addResult := ffi callFunction("telos_neural_backend", "neural_add_concept", 
+        list(conceptProcessor vector, conceptProcessor metadata))
+    
+    if(addResult,
+        "TelOS VSA: Added concept to memory" println,
+        "TelOS VSA: Failed to add concept" println
+    )
+    addResult
+)
+
+// Hyperdimensional Operations Interface
+rag bind := method(vector1, vector2,
+    bindResult := ffi callFunction("telos_neural_backend", "neural_bind", 
+        list(vector1, vector2))
+    "TelOS VSA: Performed binding operation" println
+    bindResult
+)
+
+rag unbind := method(composite, key,
+    unbindResult := ffi callFunction("telos_neural_backend", "neural_unbind", 
+        list(composite, key))
+    "TelOS VSA: Performed unbinding operation (produces noisy result)" println
+    unbindResult
+)
+
+// Unified Conversational Interface for unbind→cleanup loop
+// This demonstrates the core VSA-RAG dialogue pattern
+rag converseQuery := method(queryText, contextConcepts,
+    conversationProcessor := Object clone
+    conversationProcessor query := queryText asString
+    conversationProcessor context := if(contextConcepts == nil, List clone, contextConcepts)
+    
+    // Step 1: Encode query and context as composite hypervector
+    conversationProcessor queryVector := rag encodeText(conversationProcessor query)
+    
+    if(conversationProcessor context size > 0,
+        // Bundle query with contextual concepts using semantic weights
+        conversationProcessor contextVectors := List clone
+        conversationProcessor context foreach(concept,
+            contextVector := rag encodeText(concept asString)
+            conversationProcessor contextVectors append(contextVector)
+        )
+        
+        // Create semantic weights (query gets more weight than context)
+        conversationProcessor allVectors := List clone append(conversationProcessor queryVector)
+        conversationProcessor allVectors appendSeq(conversationProcessor contextVectors)
+        conversationProcessor weights := List clone append(0.7)  // Query weight
+        conversationProcessor context size repeat(
+            conversationProcessor weights append(0.3 / conversationProcessor context size)  // Distributed context weight
+        )
+        
+        conversationProcessor compositeVector := rag bundleConcepts(conversationProcessor allVectors, conversationProcessor weights)
+    ,
+        conversationProcessor compositeVector := conversationProcessor queryVector
+    )
+    
+    // Step 2: Unbind using a random exploration key (simulates neural exploration)
+    conversationProcessor explorationKey := ffi callFunction("telos_neural_backend", "neural_encode_text", list("exploration_" .. Date now asNumber))
+    conversationProcessor noisyResult := rag unbind(conversationProcessor compositeVector, conversationProcessor explorationKey)
+    
+    // Step 3: Cleanup to find meaningful prototypes
+    conversationProcessor cleanResults := rag cleanupVector(conversationProcessor noisyResult, 3)
+    
+    // Step 4: Format conversational response
+    conversationProcessor response := Object clone
+    conversationProcessor response query := conversationProcessor query
+    conversationProcessor response foundConcepts := List clone
+    
+    conversationProcessor cleanResults foreach(result,
+        conceptDescription := "Clean concept (confidence: " .. (result score * 100) floor .. "%)"
+        if(result metadata and result metadata hasSlot("name"),
+            conceptDescription = result metadata at("name") .. " (" .. (result score * 100) floor .. "% match)"
+        )
+        conversationProcessor response foundConcepts append(conceptDescription)
+    )
+    
+    conversationProcessor response summary := "VSA Conversation: Found " .. conversationProcessor cleanResults size .. " relevant concepts through unbind→cleanup dialogue"
+    
+    "TelOS VSA Conversation Complete: " .. conversationProcessor response summary println
+    conversationProcessor response
+)
+
 // Telos zygote is ready - all slots immediately available through prototypal inheritance

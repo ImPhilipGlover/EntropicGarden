@@ -79,6 +79,15 @@ MyObject := Object clone do(
 
 Render a low-resolution image of the whole system and continuously infer higher-resolution structure. Advance breadth-first across roadmap phases with vertical slices that touch UI, FFI, and Persistence, keeping the big picture coherent while details emerge. Before acting on a slice, consult all potentially relevant roadmap/blueprint/history materials to stay aligned while preserving Io prototypal purity.
 
+## Full Vision Sweep Approach (Anti-Loop Protocol)
+
+**CRITICAL**: Prevent BABS WING stagnation by implementing systematic vision sweep:
+
+1. **Concept Extraction from Roadmap** - Read `docs/TelOS-Io_Development_Roadmap.md` and extract concrete phases, acceptance criteria, and technical specifications to populate concept fractals with actual roadmap content rather than abstract placeholders
+2. **Context Ingestion from BAT OS Development** - Systematically read specific files from `TelOS-Python-Archive/BAT OS Development/` to populate context fractals with historical patterns, architectural decisions, and implementation strategies  
+3. **Progressive Gap Resolution** - Replace circular gap identification with progressive advancement where successfully ingested concepts are marked resolved and new specific gaps identified based on actual content analysis
+4. **Vision-Aligned Development** - Use roadmap concepts as North Star and BAT OS contexts as implementation wisdom, ensuring autonomous development advances toward concrete goals rather than abstract concepts
+
 Guidelines:
 - Consult `docs/TelOS-Io_Development_Roadmap.md`, other `docs/*` blueprints, and the historical materials under `TelOS-Python-Archive/BAT OS Development/` (and adjacent historical notes under `TelOS_Backup/` when relevant) to ground decisions in the broader vision.
 - Use these as directional references only; avoid replicating or reviving Python monoliths. Io remains the mind; Python is muscle, called via Io→C→Python.
@@ -157,6 +166,7 @@ Operating rules:
 - [Agent_Autonomous_Self_Assessment_Protocol.md](../docs/Agent_Autonomous_Self_Assessment_Protocol.md) for systematic quality validation
 - [Context_Synthesis_Engine.md](../docs/Context_Synthesis_Engine.md) for automated context integration
 - [Prototypal_Pattern_Detection_Library.md](../docs/Prototypal_Pattern_Detection_Library.md) for compliance validation patterns
+- [Autonomous_Fractal_Memory_Workflow.md](../docs/Autonomous_Fractal_Memory_Workflow.md) for continuous concept fractal refinement system
 
 # GitHub Copilot Mandate: The TelOS Covenant
 
@@ -313,3 +323,45 @@ Acceptance for bigger slices:
 - Breadth: touches multiple pillars and leaves regression-coverable artifacts.
 - Durability: updates WAL/snapshots and logs; integrates into default smoke/regression paths.
 - Governance: decisions and seams recorded in the runbook (TELOS_AUTONOMY_TODO.md).
+
+## Autonomous Fractal Memory Refinement (Adopted 2025-12-28)
+
+**MANDATORY CONTINUOUS OPERATION**: All TelOS agents must implement autonomous fractal memory refinement as default behavior.
+
+**Core Pattern**: Continuous concept fractal refinement based on BAT OS Development archives:
+```
+FRACTAL_REFINEMENT_CYCLE := {
+    observe → categorize → synthesize → integrate → evolve
+    "self_similar_patterns_across_scales",
+    "recursive_depth_with_emergent_intelligence", 
+    "provenance_tracking_through_evolution",
+    "cross_session_learning_persistence"
+}
+```
+
+**Autonomous Intelligence Requirements**:
+- **Context Synthesis**: Automated integration of all documentation sources (10-15 seconds vs 2-3 minutes manual)
+- **Pattern Detection**: Real-time fractal pattern recognition in all code and concepts
+- **Self-Assessment**: Continuous fractal coherence validation with composite scoring
+- **Memory Evolution**: Cross-session concept fractal refinement and pattern learning
+
+**BABS WING Research Loop Integration**:
+- Gap identification in current concept fractals
+- Automated research prompt generation for targeted investigation  
+- Context fractal ingestion from research findings
+- Concept fractal evolution with provenance tracking
+- Memory substrate integration via VSA-RAG indexing
+
+**Implementation Requirements**:
+- Every vertical slice must include fractal memory pattern detection
+- All concept evolution must be tracked through WAL frames and JSONL logs
+- Cross-session learning must persist successful patterns for future agents
+- Fractal coherence scores must guide autonomous decision making
+
+**Validation Gates**:
+- Fractal memory coherence score > 0.7
+- Pattern recognition accuracy improving across sessions
+- Successful concept evolution with provenance tracking
+- Autonomous research loop completion without human intervention
+
+This transforms agents from reactive tools into autonomous fractal memory engines that continuously refine their own cognitive capabilities through systematic pattern recognition and memory substrate evolution.

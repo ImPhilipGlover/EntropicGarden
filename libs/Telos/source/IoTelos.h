@@ -26,6 +26,20 @@ IoObject *IoTelos_transactional_setSlot(IoTelos *self, IoObject *locals, IoMessa
 IoObject *IoTelos_openWindow(IoTelos *self, IoObject *locals, IoMessage *m);
 IoObject *IoTelos_closeWindow(IoTelos *self, IoObject *locals, IoMessage *m);
 
+// Rigorous FFI API methods
+IoObject *IoTelos_initializeFFI(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_shutdownFFI(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_marshalIoToPython(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_marshalPythonToIo(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_wrapTensor(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_executeAsync(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_waitForFuture(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_loadModule(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_callFunction(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_createInstance(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_callMethod(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_getObjectType(IoTelos *self, IoObject *locals, IoMessage *m);
+
 // Morphic API methods
 IoObject *IoTelos_createWorld(IoTelos *self, IoObject *locals, IoMessage *m);
 IoObject *IoTelos_mainLoop(IoTelos *self, IoObject *locals, IoMessage *m);

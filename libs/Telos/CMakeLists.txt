@@ -6,12 +6,16 @@ SET(IoTelos_VERSION_MAJOR 1)
 SET(IoTelos_VERSION_MINOR 0)
 SET(IoTelos_VERSION "${IoTelos_VERSION_MAJOR}.${IoTelos_VERSION_MINOR}")
 
+# Prototypal FFI uses pure C - no C++ dependencies needed
+# This maintains philosophical alignment with Io's dynamic object model
+
 # For now, don't require GLUT - we'll implement a stub UI
 # find_package(GLUT REQUIRED)
 # find_package(OpenGL REQUIRED)
 
 SET(IoTelos_SRCS
 	source/IoTelos.c
+	source/PrototypalFFI.c
 )
 
 SET(IoTelos_HDRS

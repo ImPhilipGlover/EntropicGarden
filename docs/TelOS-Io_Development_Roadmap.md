@@ -29,6 +29,8 @@ It also charts the longer path to a self-hosting organism on a formally verified
 - Io VM builds and runs in WSL; main coroutine return handling fixed to avoid abort on normal script completion.
 - TelOS addon (C) registers a `Telos` proto under `Protos` via IoState bindings-init callback.
 - Synaptic Bridge initializes CPython; FFI stubs available from Io through raw C methods.
+- **CRITICAL ARCHITECTURAL ISSUE IDENTIFIED**: Monolithic IoTelos.io file (3950 lines) causes segmentation faults during loading and violates Io's modular design principles.
+- **SOLUTION DESIGNED**: Modular architecture following Io addon patterns - split into 9 focused modules (TelosCore, TelosFFI, TelosPersistence, TelosMorphic, TelosMemory, TelosPersona, TelosQuery, TelosLogging, TelosCommands) with proper dependency management.
 - Persistence: initial WAL-like writes in place; recovery not yet implemented.
 - UI: console/heartbeat stubs; no real window yet.
 - Smoke test (`samples/telos/smoke.io`) validates Python version call, simple transactional set, heartbeat loop.

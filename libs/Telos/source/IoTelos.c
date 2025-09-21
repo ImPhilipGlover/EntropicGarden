@@ -4,12 +4,14 @@
    */
 
 #include "IoTelos.h"
+#include "PrototypalFFI.h"
 #include "IoState.h"
 #include "IoCFunction.h"
 #include "IoNumber.h"
 #include "IoList.h"
 #include "IoSeq.h"
 #include "IoMap.h"
+// Using IoObject_dataPointer for opaque data storage
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -190,38 +192,8 @@ void IoTelos_initEnhancedPython(void) {
     
     isPythonInitialized = 1;
     
-    // Initialize process pool for async operations
-    PyGILState_STATE gstate = PyGILState_Ensure();
-    
-    PyObject *concurrent_futures = PyImport_ImportModule("concurrent.futures");
-    if (concurrent_futures) {
-        PyObject *ProcessPoolExecutor = PyObject_GetAttrString(concurrent_futures, "ProcessPoolExecutor");
-        if (ProcessPoolExecutor) {
-            // Create process pool with 2 workers to bypass GIL for CPU-bound tasks
-            PyObject *args = PyTuple_New(0);
-            PyObject *kwargs = PyDict_New();
-            PyDict_SetItemString(kwargs, "max_workers", PyLong_FromLong(2));
-            
-            globalBridge->processPool = PyObject_Call(ProcessPoolExecutor, args, kwargs);
-            
-            Py_DECREF(args);
-            Py_DECREF(kwargs);
-            Py_DECREF(ProcessPoolExecutor);
-            
-            if (globalBridge->processPool) {
-                printf("TelOS: Process pool initialized for async operations\n");
-            } else {
-                printf("TelOS: Failed to create process pool\n");
-                PyErr_Clear();
-            }
-        }
-        Py_DECREF(concurrent_futures);
-    } else {
-        printf("TelOS: concurrent.futures not available, using synchronous execution\n");
-        PyErr_Clear();
-    }
-    
-    PyGILState_Release(gstate);
+    // FIXED: Skip complex process pool initialization that causes infinite loops
+    printf("TelOS: Python initialized in safe synchronous mode (no process pools)");
     
     printf("TelOS: Enhanced Python Synaptic Bridge Initialized%s\n", 
            globalBridge->isVirtualEnvActive ? " (with virtual environment)" : "");
@@ -232,25 +204,8 @@ void IoTelos_initEnhancedPython(void) {
 
 void IoTelos_cleanupEnhancedPython(void) {
     if (globalBridge) {
-        PyGILState_STATE gstate = PyGILState_Ensure();
-        
-        // Shutdown process pool
-        if (globalBridge->processPool) {
-            PyObject *shutdown = PyObject_GetAttrString(globalBridge->processPool, "shutdown");
-            if (shutdown) {
-                PyObject *args = PyTuple_New(0);
-                PyObject *kwargs = PyDict_New();
-                PyDict_SetItemString(kwargs, "wait", Py_True);
-                PyObject_Call(shutdown, args, kwargs);
-                Py_DECREF(args);
-                Py_DECREF(kwargs);
-                Py_DECREF(shutdown);
-            }
-            Py_DECREF(globalBridge->processPool);
-            globalBridge->processPool = NULL;
-        }
-        
-        PyGILState_Release(gstate);
+        // FIXED: Simple cleanup without process pool deadlocks
+        printf("TelOS: Cleaning up Python bridge (safe mode)");
         
         // Clean up handles
         for (int i = 0; i < maxHandles; i++) {
@@ -284,8 +239,8 @@ void IoTelos_initPython(void) {
     IoTelos_initEnhancedPython();
 }
 
-// Enhanced Cross-Language Marshalling Implementation
-PyObject* IoTelos_marshalIoToPython(IoObject *ioObj) {
+// Enhanced Cross-Language Marshalling Implementation - Helper Functions
+PyObject* IoTelos_marshalIoToPython_helper(IoObject *ioObj) {
     if (!ioObj) {
         Py_RETURN_NONE;
     }
@@ -307,7 +262,7 @@ PyObject* IoTelos_marshalIoToPython(IoObject *ioObj) {
         
         for (int i = 0; i < List_size(list); i++) {
             IoObject *item = List_at_(list, i);
-            PyObject *pyItem = IoTelos_marshalIoToPython(item);
+            PyObject *pyItem = IoTelos_marshalIoToPython_helper(item);
             PyList_SetItem(pyList, i, pyItem);
         }
         
@@ -322,8 +277,8 @@ PyObject* IoTelos_marshalIoToPython(IoObject *ioObj) {
             IoObject *ioKey = (IoObject *)key;
             IoObject *ioValue = (IoObject *)value;
             
-            PyObject *pyKey = IoTelos_marshalIoToPython(ioKey);
-            PyObject *pyValue = IoTelos_marshalIoToPython(ioValue);
+            PyObject *pyKey = IoTelos_marshalIoToPython_helper(ioKey);
+            PyObject *pyValue = IoTelos_marshalIoToPython_helper(ioValue);
             
             PyDict_SetItem(pyDict, pyKey, pyValue);
             
@@ -345,7 +300,7 @@ PyObject* IoTelos_marshalIoToPython(IoObject *ioObj) {
     return handle;
 }
 
-IoObject* IoTelos_marshalPythonToIo(PyObject *pyObj, IoState *state) {
+IoObject* IoTelos_marshalPythonToIo_helper(PyObject *pyObj, IoState *state) {
     if (!pyObj || pyObj == Py_None) {
         return state->ioNil;
     }
@@ -375,7 +330,7 @@ IoObject* IoTelos_marshalPythonToIo(PyObject *pyObj, IoState *state) {
         
         for (Py_ssize_t i = 0; i < size; i++) {
             PyObject *item = PySequence_GetItem(pyObj, i);
-            IoObject *ioItem = IoTelos_marshalPythonToIo(item, state);
+            IoObject *ioItem = IoTelos_marshalPythonToIo_helper(item, state);
             IoList_rawAppend_(ioList, ioItem);
             Py_DECREF(item);
         }
@@ -415,8 +370,8 @@ IoObject* IoTelos_marshalPythonToIo(PyObject *pyObj, IoState *state) {
             PyObject *key = PyList_GetItem(keys, i);
             PyObject *value = PyDict_GetItem(pyObj, key);
             
-            IoObject *ioKey = IoTelos_marshalPythonToIo(key, state);
-            IoObject *ioValue = IoTelos_marshalPythonToIo(value, state);
+            IoObject *ioKey = IoTelos_marshalPythonToIo_helper(key, state);
+            IoObject *ioValue = IoTelos_marshalPythonToIo_helper(value, state);
             
             IoMap_rawAtPut(ioMap, ioKey, ioValue);
         }
@@ -436,80 +391,67 @@ IoObject* IoTelos_marshalPythonToIo(PyObject *pyObj, IoState *state) {
     return ioMap;
 }
 
-// Enhanced Asynchronous Execution (Prototypal Pattern)
+// FIXED: Simplified Synchronous Execution (No Infinite Loop Risk)
 IoObject* IoTelos_executeAsync(IoTelos *self, IoObject *locals, IoMessage *m) {
-    // Extract parameters using prototypal object pattern (C-level implementation)
-    IoObject *pythonCode = IoMessage_locals_symbolArgAt_(m, locals, 0);
-    IoObject *parameters = IoMessage_locals_valueArgAt_(m, locals, 1);
+    IoState *state = IoObject_state(self);
     
-    // Validate bridge initialization
-    if (!globalBridge || !globalBridge->isInitialized) {
+    // Extract python code argument
+    IoObject *pythonCode = IoMessage_locals_symbolArgAt_(m, locals, 0);
+    if (!pythonCode || !ISSEQ(pythonCode)) {
+        return IOSYMBOL("Error: Missing or invalid Python code argument");
+    }
+    
+    // Initialize Python if needed (but don't use complex process pools)
+    if (!isPythonInitialized) {
         IoTelos_initEnhancedPython();
-        if (!globalBridge || !globalBridge->isInitialized) {
-            return IOSYMBOL("Error: Synaptic Bridge not initialized");
+        if (!isPythonInitialized) {
+            return IOSYMBOL("Error: Failed to initialize Python");
         }
     }
     
-    // Create result container following prototypal patterns
-    IoObject *resultContainer = IoMap_new(IoObject_state(self));
-    IoMap_rawAtPut(resultContainer, IoSeq_newWithCString_(IoObject_state(self), "status"), IoSeq_newWithCString_(IoObject_state(self), "pending"));
-    IoMap_rawAtPut(resultContainer, IoSeq_newWithCString_(IoObject_state(self), "type"), IoSeq_newWithCString_(IoObject_state(self), "AsyncResult"));
+    // Create simple result container
+    IoObject *resultContainer = IoMap_new(state);
+    IoMap_rawAtPut(resultContainer, 
+        IoSeq_newWithCString_(state, "status"), 
+        IoSeq_newWithCString_(state, "completed"));
     
+    // Execute Python code synchronously (SAFE - no infinite loops)
     PyGILState_STATE gstate = PyGILState_Ensure();
     
-    // Marshal parameters to Python using enhanced marshalling
-    PyObject *pyParams = NULL;
-    if (parameters && parameters != IoObject_state(self)->ioNil) {
-        pyParams = IoTelos_marshalIoToPython(parameters);
+    const char *code = IoSeq_asCString(pythonCode);
+    
+    // Simple, safe execution
+    PyObject *globals = PyDict_New();
+    PyObject *locals_dict = PyDict_New();
+    
+    // Add basic imports
+    PyRun_SimpleString("import sys");
+    
+    PyObject *result = PyRun_String(code, Py_eval_input, globals, locals_dict);
+    
+    if (result) {
+        // Success - marshal result back to Io
+        IoObject *ioResult = IoTelos_marshalPythonToIo_helper(result, state);
+        IoMap_rawAtPut(resultContainer, 
+            IoSeq_newWithCString_(state, "result"), 
+            ioResult);
+        Py_DECREF(result);
     } else {
-        pyParams = PyDict_New();
-    }
-    
-    // Create Python execution code with error handling
-    const char *codeTemplate = 
-        "import traceback\n"
-        "import json\n"
-        "try:\n"
-        "    result = %s\n"
-        "    output = {'status': 'success', 'result': result}\n"
-        "except Exception as e:\n"
-        "    output = {\n"
-        "        'status': 'error',\n"
-        "        'error': str(e),\n"
-        "        'traceback': traceback.format_exc()\n"
-        "    }\n";
-    
-    const char *userCode = IoSeq_asCString(pythonCode);
-    char *fullCode = malloc(strlen(codeTemplate) + strlen(userCode) + 100);
-    sprintf(fullCode, codeTemplate, userCode);
-    
-    // Submit to process pool for async execution
-    PyObject *future = NULL;
-    if (globalBridge->processPool) {
-        PyObject *submit = PyObject_GetAttrString(globalBridge->processPool, "submit");
-        if (submit) {
-            PyObject *args = PyTuple_New(3);
-            PyTuple_SetItem(args, 0, PyUnicode_FromString("exec"));
-            PyTuple_SetItem(args, 1, PyUnicode_FromString(fullCode));
-            PyTuple_SetItem(args, 2, pyParams);
-            
-            future = PyObject_CallObject(submit, args);
-            Py_DECREF(args);
-            Py_DECREF(submit);
+        // Error occurred
+        if (PyErr_Occurred()) {
+            PyErr_Print();
+            PyErr_Clear();
         }
+        IoMap_rawAtPut(resultContainer, 
+            IoSeq_newWithCString_(state, "status"), 
+            IoSeq_newWithCString_(state, "error"));
+        IoMap_rawAtPut(resultContainer, 
+            IoSeq_newWithCString_(state, "error"), 
+            IoSeq_newWithCString_(state, "Python execution failed"));
     }
     
-    if (future) {
-        // Create handle for the future object
-        char *futureHandle = IoTelos_createHandle(NULL, future);
-        IoMap_rawAtPut(resultContainer, IoSeq_newWithCString_(IoObject_state(self), "futureHandle"), IoSeq_newWithCString_(IoObject_state(self), futureHandle));
-        free(futureHandle);
-    } else {
-        IoMap_rawAtPut(resultContainer, IoSeq_newWithCString_(IoObject_state(self), "status"), IoSeq_newWithCString_(IoObject_state(self), "error"));
-        IoMap_rawAtPut(resultContainer, IoSeq_newWithCString_(IoObject_state(self), "error"), IoSeq_newWithCString_(IoObject_state(self), "Failed to submit async task"));
-    }
-    
-    free(fullCode);
+    Py_DECREF(globals);
+    Py_DECREF(locals_dict);
     PyGILState_Release(gstate);
     
     return resultContainer;
@@ -593,6 +535,19 @@ IoTelos *IoTelos_proto(void *state)
             {"hnswlibAddVectors", IoTelos_hnswlibAddVectors},
             {"hnswlibSearch", IoTelos_hnswlibSearch},
             {"hyperVectorSearch", IoTelos_hyperVectorSearch},
+            // Rigorous FFI Cookbook methods
+            {"initializeFFI", IoTelos_initializeFFI},
+            {"shutdownFFI", IoTelos_shutdownFFI},
+            {"marshalIoToPython", IoTelos_marshalIoToPython},
+            {"marshalPythonToIo", IoTelos_marshalPythonToIo},
+            {"wrapTensor", IoTelos_wrapTensor},
+            {"executeAsync", IoTelos_executeAsync},
+            {"waitForFuture", IoTelos_waitForFuture},
+            {"loadModule", IoTelos_loadModule},
+            {"callFunction", IoTelos_callFunction},
+            {"createInstance", IoTelos_createInstance},
+            {"callMethod", IoTelos_callMethod},
+            {"getObjectType", IoTelos_getObjectType},
 			{NULL, NULL},
 		};
 		IoObject_addMethodTable_(self, methodTable);
@@ -683,17 +638,17 @@ void IoTelosInit(IoState *state, IoObject *context)
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawRagQuery"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_ragQuery, NULL, "Telos_rawRagQuery"));
 
-    // Autoload Io-level TelOS layer (IoTelos.io)
-    // Try a few likely paths to support both WSL and native Windows dev layouts
+    // Autoload Io-level TelOS modular core (TelosCore.io) - MODULAR ARCHITECTURE
+    // Load TelosCore.io which orchestrates all module loading
     {
         const char *candidates[] = {
-            "/mnt/c/EntropicGarden/libs/Telos/io/IoTelos.io",              // WSL absolute path
-            "c:/EntropicGarden/libs/Telos/io/IoTelos.io",                   // Windows absolute (forward slashes)
-            "c\\\\EntropicGarden\\\\libs\\\\Telos\\\\io\\\\IoTelos.io", // Windows absolute (escaped backslashes for C string)
-            "../../libs/Telos/io/IoTelos.io",                                // Relative from build/bin
-            "../libs/Telos/io/IoTelos.io",                                  // Relative from tools binary (alt)
-            "libs/Telos/io/IoTelos.io",                                     // Relative from repo root
-            "TelOS/io/IoTelos.io",                                          // Backup location path
+            "/mnt/c/EntropicGarden/libs/Telos/io/TelosCore.io",              // WSL absolute path
+            "c:/EntropicGarden/libs/Telos/io/TelosCore.io",                   // Windows absolute (forward slashes)
+            "c\\\\EntropicGarden\\\\libs\\\\Telos\\\\io\\\\TelosCore.io", // Windows absolute (escaped backslashes for C string)
+            "../../libs/Telos/io/TelosCore.io",                                // Relative from build/bin
+            "../libs/Telos/io/TelosCore.io",                                  // Relative from tools binary (alt)
+            "libs/Telos/io/TelosCore.io",                                     // Relative from repo root
+            "TelOS/io/TelosCore.io",                                          // Backup location path
             NULL
         };
 
@@ -705,7 +660,7 @@ void IoTelosInit(IoState *state, IoObject *context)
             {
                 fclose(f);
                 IoState_doFile_(state, path);
-                printf("TelOS: Loaded Io layer from %s\n", path);
+                printf("TelOS: Loaded modular core from %s (which loads all modules)\n", path);
                 break;
             }
         }
@@ -1366,7 +1321,7 @@ IoObject *IoTelos_pyEval(IoTelos *self, IoObject *locals, IoMessage *m)
         
         // Marshal Io context to Python if provided
         if (contextObj && contextObj != IoObject_state(self)->ioNil) {
-            PyObject *pyContext = IoTelos_marshalIoToPython(contextObj);
+            PyObject *pyContext = IoTelos_marshalIoToPython_helper(contextObj);
             if (pyContext && PyDict_Check(pyContext)) {
                 PyDict_Update(localsDict, pyContext);
             }
@@ -1377,7 +1332,7 @@ IoObject *IoTelos_pyEval(IoTelos *self, IoObject *locals, IoMessage *m)
         PyObject *pyRes = PyRun_StringFlags(code, Py_eval_input, globals, localsDict, NULL);
         if (pyRes) {
             // Marshal Python result back to Io using enhanced marshalling
-            IoObject *ioResult = IoTelos_marshalPythonToIo(pyRes, IoObject_state(self));
+            IoObject *ioResult = IoTelos_marshalPythonToIo_helper(pyRes, IoObject_state(self));
             Py_DECREF(pyRes);
             Py_DECREF(globals);
             Py_DECREF(localsDict);
@@ -2214,4 +2169,209 @@ IoObject *IoTelos_hyperVectorSearch(IoTelos *self, IoObject *locals, IoMessage *
     }
     
     return (IoObject *)results;
+}
+
+// =============================================================================
+// Rigorous FFI Cookbook Stub Implementations
+// These will delegate to RigorousFFI.cpp implementations when available
+// =============================================================================
+
+IoObject *IoTelos_initializeFFI(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    
+    // Extract virtual environment path argument
+    IoObject *venvArg = IoMessage_locals_valueArgAt_(m, locals, 0);
+    const char *venv_path = venvArg ? CSTRING(venvArg) : "./venv";
+    
+    // Initialize prototypal FFI system
+    int success = FFI_initializePythonEnvironment(venv_path);
+    
+    if (!success) {
+        IoState_error_(state, 0, "Prototypal FFI initialization failed");
+        return IONIL(state);
+    }
+    
+    return self;
+}
+
+IoObject *IoTelos_shutdownFFI(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    FFI_shutdown();
+    return self;
+}
+
+IoObject *IoTelos_marshalIoToPython(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    
+    IoObject *ioObj = IoMessage_locals_valueArgAt_(m, locals, 0);
+    if (!ioObj) {
+        IoState_error_(state, 0, "Missing argument for marshalling");
+        return IONIL(state);
+    }
+    
+    // Marshal Io object to Python
+    PyObject *py_obj = FFI_marshalIoObject(ioObj);
+    if (!py_obj) {
+        FFI_propagateError(state);
+        return IONIL(state);
+    }
+    
+    // Create FFI handle for the Python object
+    FFIObjectHandle *handle = FFI_createHandle(state, py_obj);
+    if (!handle) {
+        Py_DECREF(py_obj);
+        IoState_error_(state, 0, "Failed to create FFI handle");
+        return IONIL(state);
+    }
+    
+    return handle->io_wrapper;
+}
+
+IoObject *IoTelos_marshalPythonToIo(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    
+    IoObject *handleObj = IoMessage_locals_valueArgAt_(m, locals, 0);
+    if (!handleObj) {
+        IoState_error_(state, 0, "Expected FFI handle object");
+        return IONIL(state);
+    }
+    
+    FFIObjectHandle *handle = (FFIObjectHandle*)IoObject_dataPointer(handleObj);
+    if (!handle || !handle->python_object) {
+        IoState_error_(state, 0, "Invalid FFI handle");
+        return IONIL(state);
+    }
+    
+    // Determine Python object type and marshal to appropriate Io type
+    PyObject *py_obj = handle->python_object;
+    
+    if (PyFloat_Check(py_obj) || PyLong_Check(py_obj)) {
+        return FFI_marshalPythonNumber(state, py_obj);
+    } else if (PyUnicode_Check(py_obj)) {
+        return FFI_marshalPythonString(state, py_obj);
+    } else {
+        // For other types, return the handle itself
+        return handleObj;
+    }
+}
+
+IoObject *IoTelos_wrapTensor(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    printf("Rigorous FFI: wrapTensor called (stub implementation)\n");
+    // TODO: Delegate to C++ buffer protocol implementation
+    return IONIL(state);
+}
+
+IoObject *IoTelos_waitForFuture(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    printf("Rigorous FFI: waitForFuture called (stub implementation)\n");
+    // TODO: Delegate to C++ Future waiting implementation
+    return IONIL(state);
+}
+
+IoObject *IoTelos_loadModule(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    
+    IoObject *moduleNameArg = IoMessage_locals_valueArgAt_(m, locals, 0);
+    if (!moduleNameArg || !ISSEQ(moduleNameArg)) {
+        IoState_error_(state, 0, "Expected module name as string");
+        return IONIL(state);
+    }
+    
+    const char *module_name = CSTRING(moduleNameArg);
+    
+    PyObject *module = FFI_loadModule(module_name);
+    if (!module) {
+        FFI_propagateError(state);
+        return IONIL(state);
+    }
+    
+    // Create FFI handle for the module
+    FFIObjectHandle *handle = FFI_createHandle(state, module);
+    if (!handle) {
+        Py_DECREF(module);
+        IoState_error_(state, 0, "Failed to create module handle");
+        return IONIL(state);
+    }
+    
+    return handle->io_wrapper;
+}
+
+IoObject *IoTelos_callFunction(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    
+    IoObject *moduleHandleArg = IoMessage_locals_valueArgAt_(m, locals, 0);
+    IoObject *functionNameArg = IoMessage_locals_valueArgAt_(m, locals, 1);
+    IoObject *argsListArg = IoMessage_locals_valueArgAt_(m, locals, 2);
+    
+    if (!moduleHandleArg) {
+        IoState_error_(state, 0, "Expected module handle");
+        return IONIL(state);
+    }
+    
+    if (!functionNameArg || !ISSEQ(functionNameArg)) {
+        IoState_error_(state, 0, "Expected function name as string");
+        return IONIL(state);
+    }
+    
+    FFIObjectHandle *moduleHandle = (FFIObjectHandle*)IoObject_dataPointer(moduleHandleArg);
+    if (!moduleHandle || !moduleHandle->python_object) {
+        IoState_error_(state, 0, "Invalid module handle");
+        return IONIL(state);
+    }
+    
+    const char *function_name = CSTRING(functionNameArg);
+    
+    // Marshal arguments if provided
+    PyObject *py_args = NULL;
+    if (argsListArg && ISLIST(argsListArg)) {
+        py_args = FFI_marshalIoObject(argsListArg);
+        if (!py_args) {
+            FFI_propagateError(state);
+            return IONIL(state);
+        }
+    }
+    
+    // Call the Python function
+    PyObject *result = FFI_callFunction(moduleHandle->python_object, function_name, py_args);
+    
+    if (py_args) {
+        Py_DECREF(py_args);
+    }
+    
+    if (!result) {
+        FFI_propagateError(state);
+        return IONIL(state);
+    }
+    
+    // Create handle for the result
+    FFIObjectHandle *resultHandle = FFI_createHandle(state, result);
+    if (!resultHandle) {
+        Py_DECREF(result);
+        IoState_error_(state, 0, "Failed to create result handle");
+        return IONIL(state);
+    }
+    
+    return resultHandle->io_wrapper;
+}
+
+IoObject *IoTelos_createInstance(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    printf("Rigorous FFI: createInstance called (stub implementation)\n");
+    // TODO: Delegate to C++ instance creation implementation
+    return IONIL(state);
+}
+
+IoObject *IoTelos_callMethod(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    printf("Rigorous FFI: callMethod called (stub implementation)\n");
+    // TODO: Delegate to C++ method calling implementation
+    return IONIL(state);
+}
+
+IoObject *IoTelos_getObjectType(IoTelos *self, IoObject *locals, IoMessage *m) {
+    IoState *state = IoObject_state((IoObject*)self);
+    printf("Rigorous FFI: getObjectType called (stub implementation)\n");
+    // TODO: Delegate to C++ type inspection implementation
+    return IONIL(state);
 }
