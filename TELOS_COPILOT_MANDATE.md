@@ -10,6 +10,12 @@
 2. **`Io Prototype Programming Training Guide.txt`** - Foundational principles of prototypal programming, Self/Smalltalk philosophy, essential for proper Io implementation
 3. **`Morphic UI Framework Training Guide Extension.txt`** - Direct manipulation philosophy, liveness principles, morphic architecture fundamentals
 
+**Enhanced Intelligence Integration:**
+- **`Enhanced_Copilot_Agent_Workflow_v2.md`** - Next-generation automated intelligence synthesis and autonomous operation
+- **`Agent_Autonomous_Self_Assessment_Protocol.md`** - Systematic quality validation and continuous improvement
+- **`Context_Synthesis_Engine.md`** - Automated context integration eliminating manual document consultation
+- **`Prototypal_Pattern_Detection_Library.md`** - Real-time compliance checking and automatic violation correction
+
 **These documents are not optional reading - they are the operational DNA that must guide every architectural decision and implementation choice.**
 
 ## THE AUTONOMOUS DEVELOPMENT MANDATE

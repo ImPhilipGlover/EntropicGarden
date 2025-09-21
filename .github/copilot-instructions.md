@@ -151,7 +151,12 @@ Operating rules:
 
 # GitHub Copilot Instructions for TelOS Development
 
-**See also:** [TELOS_COPILOT_MANDATE.md](../TELOS_COPILOT_MANDATE.md) for the concise operational covenant.
+**See also:** 
+- [TELOS_COPILOT_MANDATE.md](../TELOS_COPILOT_MANDATE.md) for the concise operational covenant
+- [Enhanced_Copilot_Agent_Workflow_v2.md](../docs/Enhanced_Copilot_Agent_Workflow_v2.md) for next-generation autonomous intelligence
+- [Agent_Autonomous_Self_Assessment_Protocol.md](../docs/Agent_Autonomous_Self_Assessment_Protocol.md) for systematic quality validation
+- [Context_Synthesis_Engine.md](../docs/Context_Synthesis_Engine.md) for automated context integration
+- [Prototypal_Pattern_Detection_Library.md](../docs/Prototypal_Pattern_Detection_Library.md) for compliance validation patterns
 
 # GitHub Copilot Mandate: The TelOS Covenant
 
@@ -216,14 +221,34 @@ MORPHIC UI FIRST: Every slice must surface on a Morphic Canvas, however minimal.
 
 ---
 
-## PROTOTYPAL PURITY ENFORCEMENT PROTOCOL
+## ENHANCED AUTONOMOUS OPERATION PROTOCOL
 
-**MANDATORY PRE-CODE CHECKLIST:** Before writing ANY Io code, ask yourself:
+**AUTOMATIC INTELLIGENCE SYNTHESIS:** Every agent action now uses automated systems:
 
-1. **Are my parameters objects?** Method parameters must be prototypal objects, not simple values
-2. **Are my variables messages to slots?** Internal "variables" must be `obj slot := value`, not `var := value` 
-3. **Am I using message passing?** Access everything through object messages, never direct variable references
-4. **Can I avoid `do()` scope issues?** Use explicit slot assignment instead of `do()` blocks when possible
+### 1. Automated Context Synthesis (10-15 seconds)
+- **Context Engine**: Automatically synthesizes runbook state, roadmap requirements, prototypal principles, architectural vision, and learned patterns
+- **Action Recommendations**: Template-based suggestions for next steps
+- **Design Constraints**: Automatically derived implementation limits
+- **Validation Criteria**: Pre-prepared acceptance tests
+
+### 2. Real-Time Prototypal Intelligence (During Code Generation)
+- **Pattern Detection**: Automatic scanning for prototypal violations
+- **Template Application**: Pattern-based code generation using proven templates
+- **Proactive Correction**: Real-time transformation of class-like patterns to prototypal
+- **Compliance Scoring**: Continuous assessment of prototypal purity
+
+### 3. Autonomous Self-Assessment (5-10 seconds post-action)
+- **Prototypal Purity Score**: Automated validation of all prototypal compliance
+- **Autonomy Effectiveness Score**: Measurement of independent operation quality
+- **Learning Pattern Extraction**: Identification of successful implementation patterns
+- **Cross-Session Memory Update**: Persistent improvement across chat sessions
+
+**MANDATORY PRE-CODE CHECKLIST:** Now automated but verify:
+
+1. **Context Synthesis Complete?** Has the automated context engine provided comprehensive guidance?
+2. **Template Selection Appropriate?** Are the recommended prototypal patterns suitable for current work?
+3. **Compliance Validation Ready?** Is real-time prototypal checking active?
+4. **Learning Integration Prepared?** Will successful patterns be captured for future sessions?
 
 **PROTOTYPAL TRANSFORMATION EXAMPLES:**
 
