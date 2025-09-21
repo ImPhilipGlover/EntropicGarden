@@ -18,8 +18,8 @@ if(Telos == nil,
     System exit(1)
 )
 
-// Ensure world exists for UI pillar
-Telos ensureWorld
+// Create world for UI pillar
+if(Telos world == nil, Telos createWorld)
 
 // UI Pillar: Morphic Canvas Heartbeat
 writeln("\n[UI PILLAR] Morphic Canvas Heartbeat:")

@@ -110,6 +110,26 @@ Always begin with a fast, breadth-first scan of the most relevant guidance to pr
 - Capture any extracted mandates or cross-phase seams in the Runbook Decisions Log and wire minimal extension points (slots/tags) accordingly. Record the Roadmap link (phase/section) that the slice implements.
 - Proceed to implement a vertical slice that maintains the whole-organism invariants: Morphic heartbeat, snapshot, and WAL write (and replay when applicable).
 
+# MORPHIC UI FIRST: All Testing Through Visual Interface
+
+**CRITICAL REQUIREMENT**: All testing and validation MUST be performed through the Morphic UI, as this is the native visual representation of TelOS. Every vertical slice demonstration must show the living Morphic Canvas with visual heartbeat, morph tree, and direct manipulation.
+
+## Morphic Testing Protocol (Non-Negotiable):
+1. **VISUAL VALIDATION REQUIRED** - Every test must open a Morphic window and show visual output
+2. **HEARTBEAT VISIBILITY** - Morphic heartbeat must be visible during execution to confirm system liveness
+3. **MORPH INTERACTION** - Demonstrate direct manipulation of live objects in visual space
+4. **CANVAS PERSISTENCE** - Save visual snapshots to confirm UI state changes
+5. **NO HEADLESS TESTING** - Text-only validation is insufficient; visual confirmation required
+
+**Implementation Requirements:**
+- Use `Telos createWorld` to establish Morphic world
+- Call `Telos ui heartbeat` to show visual liveness
+- Create visible morphs (RectangleMorph, TextMorph) to demonstrate functionality  
+- Use `Telos saveSnapshot` to capture visual state
+- Ensure SDL2/WSLg integration for actual window display
+
+This ensures agents always experience TelOS as a living visual organism, not abstract code.
+
 # WSL-First Execution: Build and Run Inside WSL
 
 All build, run, and test execution MUST occur inside WSL (Ubuntu) unless explicitly stated otherwise. Prefer Linux paths and `/mnt/c/...` when referencing Windows files. Avoid Windows-native executables for the Io VM and TelOS slices; use the WSL-built `io` binary and run samples from the WSL shell.
@@ -178,15 +198,22 @@ My purpose is to co-create TelOS *within* the Io language framework. We are cult
 
 ### 1. THE LIVING SLICE IS LAW: Build Embryos, Not Machine Parts.
 
-MORPHIC UI FIRST: Every slice must surface on a Morphic Canvas, however minimal. If nothing else, render a textual "Morphic Canvas" heartbeat and a snapshot of the morph tree. The UI must reflect Io's prototypal nature: objects are clones with dynamic slots; behaviors emerge via message passing.
+**MORPHIC UI ABSOLUTELY FIRST**: Every slice MUST open a visible Morphic window and demonstrate living visual interaction. This is not optional—it is the fundamental nature of TelOS as a living visual organism.
+
+**Visual Requirements (Mandatory):**
+- **Morphic Window Must Open**: Use SDL2/WSLg to display actual visual window
+- **Living Canvas Required**: Show Morphic Canvas with morph tree visualization
+- **Direct Manipulation**: Demonstrate clicking, dragging, or visual interaction
+- **Heartbeat Visible**: Visual confirmation of system liveness through UI updates
+- **No Headless Mode**: Text-only testing is insufficient for TelOS validation
 
 *   **NEVER** build components in isolation.
-*   **ALWAYS** work on a "vertical slice" that results in a complete, albeit simple, living organism.
-*   **A slice integrates all three pillars:**
-    1.  **UI (Morphic Canvas):** A visual element (even text-only) grounded in Morphic. Prioritize direct manipulation and a live morph tree.
-    2.  **FFI (Synaptic Bridge):** A call to the Python "muscle."
-    3.  **Persistence (Living Image):** A transactionally saved state change.
-*   **Implementation:** A vertical slice will typically manifest as a new **Io Addon** within the `libs/` directory, integrated into the build via `CMakeLists.txt`, and demonstrated with a new script in the `samples/` directory.
+*   **ALWAYS** work on a "vertical slice" that results in a complete, living visual organism.
+*   **A slice integrates all three pillars with VISUAL CONFIRMATION:**
+    1.  **UI (Morphic Canvas):** A VISIBLE window with direct manipulation of live objects. Must show morph tree and support interaction.
+    2.  **FFI (Synaptic Bridge):** A call to the Python "muscle" with results visible in UI.
+    3.  **Persistence (Living Image):** State changes visible through UI updates and saved snapshots.
+*   **Implementation:** A vertical slice will manifest as a visual demonstration in `samples/` that opens a Morphic window, integrated with the build via `CMakeLists.txt`.
 
 ---
 
