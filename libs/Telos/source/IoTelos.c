@@ -428,9 +428,9 @@ IoObject* IoTelos_marshalPythonToIo(PyObject *pyObj, IoState *state) {
     // For other Python objects, create a cross-language handle
     char *handleId = IoTelos_createHandle(NULL, pyObj);
     IoObject *ioMap = IoMap_new(state);
-    IoMap_rawAtPut(ioMap, IOSYMBOL("type"), IOSYMBOL("PyHandle"));
-    IoMap_rawAtPut(ioMap, IOSYMBOL("handleId"), IOSYMBOL(handleId));
-    IoMap_rawAtPut(ioMap, IOSYMBOL("pytype"), IOSYMBOL(Py_TYPE(pyObj)->tp_name));
+    IoMap_rawAtPut(ioMap, IoState_symbolWithCString_(state, "type"), IoState_symbolWithCString_(state, "PyHandle"));
+    IoMap_rawAtPut(ioMap, IoState_symbolWithCString_(state, "handleId"), IoState_symbolWithCString_(state, handleId));
+    IoMap_rawAtPut(ioMap, IoState_symbolWithCString_(state, "pytype"), IoState_symbolWithCString_(state, Py_TYPE(pyObj)->tp_name));
     
     free(handleId);
     return ioMap;
@@ -1423,7 +1423,6 @@ IoObject *IoTelos_pyEval(IoTelos *self, IoObject *locals, IoMessage *m)
     PyGILState_Release(gstate);
     
     return IoSeq_newWithCString_(IoObject_state(self), "Unexpected execution path");
-}
 }
 
 // --- Simple logging append (JSONL) ---
