@@ -200,7 +200,8 @@ Telos loadAllModules := method(
         "TelosPersona",
         "TelosQuery",
         "TelosLogging",
-        "TelosCommands"
+        "TelosCommands",
+        "TelosOllama"
     )
     
     loadTracker := Object clone
