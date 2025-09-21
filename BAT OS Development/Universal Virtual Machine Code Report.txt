@@ -1,0 +1,735 @@
+A Technical Blueprint for a Universal Virtual Machine with Fractal Cognition
+
+Section 1: The Prototypal Computation Core
+
+This section establishes the foundational computational model of the Universal Virtual Machine (UVM). It defines how objects exist, inherit, and interact, grounding the entire system in a prototype-based, message-passing paradigm implemented within a graph database. This approach moves beyond traditional class-based systems to create a more dynamic, reflective, and extensible computational environment.
+
+1.1 The UVM Abstract Machine: A Prototypal, Graph-Native Paradigm
+
+The UVM's computational model is formally defined as a prototype-based object system, a paradigm that eschews the rigid structure of classes in favor of direct object-to-object inheritance.1 This architectural choice is deliberate, aiming to simplify the core computational model, reduce the virtual machine's footprint, and significantly enhance its reflective capabilities. This philosophy is inspired by systems like the nitrO Virtual Machine, which demonstrated that eliminating the class abstraction does not lead to a loss of expressiveness and is particularly well-suited for reflective environments where dynamic adaptation is paramount.3 The UVM is conceptualized as a "virtual prototype" 4, not of physical hardware, but of a cognitive process. Within this framework, objects are fundamentally mutable entities that can be cloned and extended at runtime, allowing for a fluid and adaptable system architecture.2
+
+At the apex of the UVM's inheritance hierarchy sits a single, foundational ancestor object: nil. This root object serves as the ultimate prototype for all other objects within the system, providing a common set of basic behaviors, such as reflection routines, that are universally inherited. The concept of a root object is a cornerstone of many prototype-based systems, ensuring a predictable and consistent termination point for the inheritance chain.2 The
+
+nil object in the UVM, like its counterpart in the nitrO VM, is self-referential in its inheritance, meaning its own prototype is itself, thus forming the final link in any lookup chain.3
+
+Object creation within the UVM is governed by a single, simple principle: cloning. New objects are instantiated exclusively by copying an existing prototype object.2 The system deliberately omits class constructors and factory patterns in its core model. An operation, conceptually represented as
+
+new(Prototype), is translated directly into a database operation: it creates a new object document and establishes a directed PROTOTYPE_OF relationship pointing from the newly created object to its prototype. This process ensures that every object has a clearly defined lineage and that behavior reuse is managed explicitly through the graph structure of the object system.
+
+1.2 Graph Schema for Prototypal Inheritance in ArangoDB
+
+The object-oriented model of the UVM is realized through a precise graph schema within ArangoDB. This graph-native representation is not merely a storage mechanism but the very fabric of the computational model.
+
+Schema Definition:
+
+The system utilizes two primary collections to model the entire object universe: a vertex collection for objects and an edge collection for the inheritance links.
+
+UVM_Objects (Vertex Collection): This collection houses every object in the system. Each document within this collection represents a single object and adheres to a specific structure. The document contains a unique _key (the object's ID), an attributes sub-document, and a methods sub-document.
+
+attributes: A JSON object containing the instance-specific data or state of the object. These are the properties unique to the object itself.
+
+methods: A JSON object where keys are method names and values are strings of executable code. This code can range from ArangoDB Query Language (AQL) statements to metaprompts designed for the cognitive engine.
+
+PrototypeLinks (Edge Collection): This collection models the inheritance relationships. A directed edge of type PROTOTYPE_OF is created from a child object to its parent prototype. For example, an edge (A) --> (B) signifies that object A inherits from object B. This structure naturally forms a directed acyclic graph (DAG) that represents the complete inheritance hierarchy of the system, with nil as the ultimate root.6
+
+Method and Property Resolution via AQL Traversal:
+
+The core mechanism of behavior reuse—inheritance—is implemented as a graph traversal along the prototype chain. When a method is invoked or a property is accessed on an object, the system first checks the object's own document. If the requested member is not found, an AQL query is executed to traverse the PROTOTYPE_OF edges, moving from object to prototype recursively. This process continues until the member is found or the traversal reaches the nil object, at which point the search terminates. This is a direct, high-performance, graph-based implementation of the prototype chain lookup mechanism found in languages like JavaScript.7
+
+The choice of ArangoDB's OneShard deployment model is a critical architectural decision that enables this design to be performant. In a standard sharded cluster, each hop along the prototype chain could potentially translate into a network request between a Coordinator and different DB-Server nodes, introducing significant latency that would render the VM unusable for any non-trivial inheritance depth.8 By enforcing a OneShard configuration, all collections for a given UVM instance are co-located on a single DB-Server.9 This allows the entire method resolution traversal to be pushed down and executed locally on that server, eliminating inter-node network latency and transforming the architecture from a theoretical model into a viable, high-performance system. Furthermore, this configuration provides the strong ACID transactional guarantees necessary to treat a sequence of operations within a single message pass as an atomic unit.10
+
+The following AQL query demonstrates the method resolution process. It takes the ID of the target object and the name of the method as input and returns the first implementation it finds by traversing the prototype chain.
+
+Code snippet
+
+/*
+ * AQL Query for Method Resolution in the UVM
+ *
+ * @param start_object_id The _id of the object on which the method is called.
+ * @param method_name The name of the method to resolve.
+ */
+LET startObject = DOCUMENT(@start_object_id)
+
+// First, check if the method exists on the start object itself.
+LET localMethod = startObject.methods[@method_name]
+
+// If the method is found locally, return it. Otherwise, traverse the prototype chain.
+RETURN localMethod!= null? {
+    source_object_id: startObject._id,
+    method_code: localMethod
+} : (
+    // Traverse the prototype chain using a graph traversal.
+    FOR v, e, p IN 1..100 OUTBOUND @start_object_id PrototypeLinks
+        // Limit traversal depth to 100 to prevent infinite loops in misconfigured graphs.
+        OPTIONS { uniqueVertices: "path" }
+        // Check for the method at each vertex in the path.
+        FILTER v.methods[@method_name]!= null
+        // Limit the result to the first match found.
+        LIMIT 1
+        // Return the method code and the ID of the object where it was found.
+        RETURN {
+            source_object_id: v._id,
+            method_code: v.methods[@method_name]
+        }
+) // Return the first element of the traversal result, or null if nothing is found.
+
+
+1.3 Message Passing as the Sole Computational Driver
+
+In the UVM, all computation is initiated and governed by the principle of message passing.11 This paradigm is not merely an implementation detail but the fundamental law of interaction within the system. It ensures strict encapsulation, as objects can only interact through defined interfaces (their methods), and promotes a loosely coupled architecture where objects do not need to know the internal implementation of other objects.13
+
+Conceptual Model:
+
+A "message" is a structured request sent from one entity (an external caller or another object) to a target object, instructing it to perform an action. A message is defined as a JSON object with a clear and consistent structure:
+
+target_object_id: The unique identifier (_id) of the recipient object.
+
+method_name: The name of the method to be invoked on the target object.
+
+payload: A JSON object containing the arguments or data required by the method.
+
+Implementation via AQL:
+
+A message is an ephemeral construct that triggers a database operation. The system's external API or an internal object's method will receive a message, translate it into the AQL traversal query for method resolution (as defined in 1.2), and execute it against the ArangoDB instance. The payload from the message is passed into the AQL query as bind parameters, ensuring safe and efficient data handling.15
+
+This design leads to a profound architectural conclusion: the ArangoDB query executor is not just a data storage and retrieval engine; it is the core of the Universal Virtual Machine's instruction cycle. The act of sending a message is synonymous with formulating and executing an AQL query. The database is not a passive repository but the active computational engine that drives the entire system.
+
+Synchronous vs. Asynchronous Communication:
+
+The UVM architecture supports both synchronous and asynchronous message passing, mirroring the different communication patterns found in distributed systems.12
+
+Synchronous Message Passing: This is the default mode of operation. An incoming message triggers an AQL query, and the client or calling object blocks until the query completes and returns a result. This is analogous to a standard synchronous function call and is suitable for operations where an immediate response is required.
+
+Asynchronous Message Passing: For long-running tasks or operations where an immediate response is not necessary, the system employs an asynchronous pattern. When an asynchronous message is received, the initial AQL query does not perform the full computation. Instead, its sole purpose is to insert a "task" object into a dedicated queue collection within the database. This task object contains all the information from the original message. A separate pool of worker services monitors this queue, picks up tasks, and executes them independently. This decouples the message sender from the execution of the task, enabling scalable and non-blocking computation.
+
+Section 2: The ContextFractal Memory System
+
+This section details the design of the UVM's novel memory architecture, the ContextFractal system. It aims to transcend the limitations of fixed-size context windows inherent in current Large Language Models (LLMs) by modeling knowledge and its intricate relationships in a self-similar, fractal graph structure. This allows for a dynamic and theoretically infinite context, retrieved via sophisticated multi-hop graph queries.
+
+2.1 Theoretical Framework: From Cognitive Science to Graph Theory
+
+The foundation of the ContextFractal memory system is a synthesis of principles from cognitive psychology and computational modeling. It draws heavily from the theory of context-dependent memory, which posits that human recall is significantly enhanced when the context present during memory retrieval matches the context of its initial encoding.16 This concept is often demonstrated by the common experience of retracing one's steps to find a lost item; returning to the original physical context often triggers the memory of the item's location.18
+
+Modern computational models of memory extend this idea by treating context not as a simple environmental snapshot, but as a complex, inferred latent variable.19 In this view, the brain continuously performs Bayesian inference to determine the currently active context, which in turn controls how memories are expressed, updated, and created.19 Context can be multi-faceted, including environmental, emotional, cognitive, and temporal dimensions.16
+
+The ContextFractal system operationalizes these theories by applying an analogy from fractal geometry. Fractals are complex, infinitely detailed patterns that emerge from simple, recursive rules and exhibit self-similarity across different scales.21 The memory graph is designed to be "statistically self-similar".23 This means the topological structure of connections between individual memories and their immediate contexts mirrors the structure of connections between those contexts and their own higher-level, or meta-, contexts. This recursive, nested structure is the key to representing the rich, layered nature of information as it exists in the real world.
+
+2.2 A Graph Data Model for Nested Contexts
+
+The memory is implemented as a dedicated graph within the UVM's ArangoDB database. The schema is designed to be both simple and expressive, allowing for the representation of complex, nested contextual relationships.
+
+Schema Definition:
+
+MemoryNodes (Vertex Collection): This collection serves as the universal container for all pieces of information. A MemoryNode can represent a concrete fact, a sensory observation, an abstract concept, a user query, an LLM response, or, crucially, another context. Each node document contains:
+
+content: The primary data of the node, which can be text, a structured object, or a reference to external data.
+
+embedding: A vector embedding of the content, generated by a sentence transformer model. This is used for semantic similarity searches.
+
+metadata: A sub-document for storing temporal information (timestamps), source attribution, and other relevant metadata.
+
+ContextLinks (Edge Collection): This collection defines the rich tapestry of relationships between MemoryNodes. Edges are directed and typed to capture specific semantics:
+
+HAS_CONTEXT: This is the primary structural link. It connects a MemoryNode to another MemoryNode that provides its context. For example, (Statement_A) --> (Conversation_B).
+
+SEQUENCED_AFTER: A temporal link used to establish chronological order between nodes, essential for representing narratives or process flows.
+
+RELATED_TO: A generic semantic link indicating a relationship (e.g., causality, similarity, opposition) between two nodes. The specific nature of the relationship can be stored as a property on the edge itself.
+
+The power of this model lies in its recursive nature. Any MemoryNode can serve as the target of a HAS_CONTEXT edge, thereby becoming the context for another node. A node representing a "Project Meeting" can have HAS_CONTEXT links to nodes representing "Q3 Financial Report" (a document), "Project Phoenix" (a concept), and "Main Conference Room" (a location). The "Main Conference Room" node can, in turn, have its own context, such as a HAS_CONTEXT link to a "Headquarters Building" node. This ability to create arbitrarily deep, nested contexts is the core of the fractal design, analogous to the concept of nested graphs in advanced database modeling.24 This approach redefines "context" from a flat, linear sequence of data into a rich, queryable topology.
+
+2.3 Simulating Infinite Context with Multi-Hop AQL Queries
+
+The "infinite context" of the ContextFractal system is an emergent property of its graph-based structure and query mechanism. The effective context for any given task is not constrained by a fixed token limit but is instead defined by the scope of a graph traversal. When the cognitive engine needs to reason about a particular topic, it does not retrieve a simple list of recent memories. Instead, it executes a multi-hop AQL query to retrieve a complete contextual subgraph surrounding the topic of interest.
+
+This process involves several steps, demonstrated in the AQL query below:
+
+Identify a Starting Point: The query begins with one or more starting nodes, which can be identified via keyword search, vector similarity search, or direct reference.
+
+Perform a Multi-Hop Traversal: The query traverses the graph outwards from the starting nodes, following HAS_CONTEXT and RELATED_TO edges up to a variable depth (e.g., 3-10 hops). This collects a rich neighborhood of related information.25
+
+Collect the Contextual Subgraph: All vertices and edges visited during the traversal are collected into a path object. This object represents the raw contextual landscape.
+
+Filter and Rank: The collected nodes can be filtered and ranked based on relevance, recency (using metadata), or their structural relationship to the starting node (e.g., path length).
+
+Linearize for LLM Consumption: The final, curated subgraph is then linearized into a structured text format that can be injected into the prompt of an LLM, providing it with a deep and highly relevant context for its task.
+
+The following AQL query provides a template for this contextual retrieval process:
+
+Code snippet
+
+/*
+ * AQL Query for Multi-Hop Contextual Retrieval
+ *
+ * @param start_node_ids An array of _id strings for the initial memory nodes.
+ * @param max_depth The maximum number of hops to traverse from the start nodes.
+ */
+FOR start_node IN @start_node_ids
+    // Perform a graph traversal of variable depth.
+    FOR v, e, p IN 1..@max_depth ANY start_node ContextLinks
+        // OPTIONS can be used to control traversal behavior, e.g., BFS for proximity.
+        OPTIONS { order: "bfs", uniqueVertices: "global" }
+
+        // COLLECT all vertices and edges into a single result set to avoid duplicates.
+        COLLECT vertex = v, edge = e
+        
+        // Return a structured representation of the contextual subgraph.
+        RETURN {
+            vertices: (
+                FOR v_doc IN UNIQUE(FOR path_vertex IN p.vertices RETURN path_vertex)
+                RETURN {
+                    _id: v_doc._id,
+                    content: v_doc.content,
+                    timestamp: v_doc.metadata.timestamp
+                }
+            ),
+            edges: (
+                FOR e_doc IN UNIQUE(p.edges)
+                RETURN {
+                    _from: e_doc._from,
+                    _to: e_doc._to,
+                    type: e_doc.type
+                }
+            )
+        }
+
+
+2.4 The Autonomous Memory Curation Object
+
+A static memory graph, no matter how well-structured initially, will degrade into a state of high entropy over time, becoming a "hairball" of connections that is difficult to query efficiently. To combat this, the UVM incorporates a specialized prototype object, the MemoryCurator, which functions as an autonomous agent responsible for the continuous organization, refinement, and abstraction of the memory graph.
+
+The MemoryCurator operates as a background process, periodically executing a suite of AQL queries and graph algorithms to analyze and restructure the memory graph. Its primary functions are:
+
+Community Detection for Context Abstraction: The Curator uses graph community detection algorithms, such as Louvain Modularity or Weakly Connected Components, to identify densely interconnected clusters of MemoryNodes.27 These clusters represent emergent, latent topics or contexts that are not explicitly defined but are implied by the data's link structure. For instance, a cluster of nodes related to specific meetings, documents, and conversations might represent an unnamed project.
+
+Creating Abstract Context Nodes: Upon identifying a stable and meaningful community, the Curator performs an act of abstraction. It creates a new MemoryNode to represent the discovered community (e.g., a node with content: "Project Phoenix Internal Review"). It then creates HAS_CONTEXT links from all the member nodes of that community to this new, abstract context node. This process transforms implicit relationships into explicit, queryable structures, making the graph easier to navigate and understand. This dynamic knowledge organization is what allows the system to build high-level concepts from low-level data, a process enabled by the recursive, self-similar nature of the fractal data model.29
+
+Link Pruning and Reinforcement: Over time, the Curator can analyze link usage and importance. It can use centrality algorithms to identify structurally important nodes and edges.31 Based on this analysis, it can prune weak, noisy, or redundant links and potentially reinforce links that are frequently traversed as part of successful cognitive tasks. This continuous refinement ensures the long-term health and performance of the memory graph.
+
+Section 3: The Fractal Cognition Architecture
+
+This section details the cognitive engine of the UVM, which functions as the system's "brain." It is a sophisticated multi-agent architecture composed of specialized Large Language Model (LLM) personas. These agents, or "pillars," collaborate to perform complex reasoning tasks, guided by a continuous self-improvement loop and a dynamic control mechanism.
+
+3.1 Cognitive Pillars as Specialized LLM Personas
+
+The cognitive architecture is designed as a Hierarchical Multi-Agent System (HMAS), a pattern where agents are organized into a structured, often tree-like, fashion to manage complex tasks efficiently.32 This structure allows for a clear division of labor, with higher-level agents handling strategic planning and delegation, while lower-level agents focus on specialized execution.34
+
+The UVM's cognitive engine consists of several "pillars," each representing a distinct persona. Each pillar is powered by a dedicated, fine-tuned LLM instance served locally via Ollama, ensuring privacy, control, and low-latency inference. The roles of these pillars are inspired by different facets of human cognition and problem-solving workflows:
+
+Orchestrator: The top-level agent in the hierarchy. It receives the initial high-level task from the UVM's computational core, analyzes it, and decomposes it into a sequence of smaller, manageable sub-tasks. It then delegates these sub-tasks to the appropriate specialist pillars and manages the overall workflow, ensuring the final output is coherent and complete.32
+
+Analyst: A persona focused on precision, logic, and data extraction. The Analyst is responsible for executing tasks that require rigorous, step-by-step reasoning, such as querying the ContextFractal memory graph, extracting structured information from unstructured text, and performing logical deductions.
+
+Synthesist: A creative and generative persona. The Synthesist takes the structured outputs from the Analyst and other sources and combines them in novel ways. Its role is to brainstorm ideas, generate hypotheses, formulate plans, and create new content.
+
+Critic: An adversarial and reflective persona. The Critic's function is to evaluate the outputs generated by other pillars. It challenges assumptions, identifies logical fallacies, checks for factual inconsistencies against the memory graph, and provides constructive feedback for improvement. This "reflect and critique" pattern is crucial for enhancing the reliability and quality of the system's final output.35
+
+MemoryCurator: The agentic manifestation of the memory curation object described in Section 2.4. This pillar is responsible for the long-term consolidation and organization of the memory graph, functioning as the system's mechanism for learning and memory refinement.
+
+3.2 The Self-Tuning Flywheel via LoRA
+
+A key innovation of the Fractal Cognition Architecture is the "Self-Tuning Flywheel," a closed-loop system for continuous self-improvement. This mechanism allows each cognitive pillar to become progressively more specialized and effective at its designated role by learning from its own successful operations. This creates a virtuous cycle where better performance generates higher-quality training data, which in turn leads to even better performance.
+
+The flywheel operates through the following workflow:
+
+Data Capture: The Orchestrator logs all inter-pillar interactions, including the inputs, outputs, and feedback loops. It specifically flags interaction chains that lead to a successful outcome, as validated by the Critic or an external success metric. For example, when the Critic provides feedback that leads the Synthesist to produce a higher-quality output, that entire interaction (initial_synthesis, critique, revised_synthesis) is captured as a high-quality data point.
+
+Dataset Preparation: A background process periodically collects these logged successful interactions and transforms them into a structured instruction-response dataset. For the Synthesist, a training example might be formatted as: {"instruction": "Given the analysis {analyst_output} and the critique {critic_feedback}, generate a revised synthesis.", "output": "{successful_revised_synthesis}"}.36
+
+QLoRA Fine-Tuning: This curated dataset is used to fine-tune the specific pillar's underlying LLM. The system employs Quantized Low-Rank Adaptation (QLoRA), a highly efficient fine-tuning technique that dramatically reduces memory requirements by quantizing the base model and training only a small number of additional "adapter" weights.36 This parameter-efficient approach makes it feasible to perform fine-tuning on local, consumer-grade or prosumer-grade GPUs.38
+
+Ollama Deployment: After the fine-tuning process completes, the newly trained LoRA adapter weights are merged with the original base model. A new, specialized model is then created and deployed on the Ollama server using a Modelfile. This updated model seamlessly replaces the previous version of the pillar, completing one revolution of the flywheel.36 The system has now incorporated its own operational experience to enhance its future performance.
+
+3.3 Metaprompting for an Internal Monologue
+
+To exert fine-grained control over the behavior of the probabilistic LLM pillars, the architecture employs metaprompting. This advanced prompt engineering technique involves using a prompt to instruct an LLM on how to generate or modify another prompt, or more broadly, how to approach a task and configure its own behavior.41 This allows the system to create a dynamic "internal monologue" where the
+
+Orchestrator can guide the cognitive "stance" of each pillar based on the immediate needs of the task.43
+
+Instead of simply passing data, the Orchestrator sends a comprehensive metaprompt to the target pillar. This prompt includes not only the task and the relevant context retrieved from the memory graph but also explicit instructions on how to perform the task. Crucially, this includes directives to self-regulate its own generation parameters, such as temperature, top_p, and top_k.36
+
+For example, when delegating a task to the Analyst, the metaprompt might include:
+
+"You are the Analyst, a master of logical deduction. Your task is to analyze the provided data. First, formulate a step-by-step reasoning plan. Then, execute the plan, citing evidence for each step. For this task, absolute precision is required. Therefore, you must use a cognitive temperature of 0.1 and a top_p of 0.9."
+
+Conversely, a task for the Synthesist might include:
+
+"You are the Synthesist, a creative engine for new ideas. Your task is to brainstorm novel solutions based on the provided analysis. Explore multiple divergent paths and do not limit yourself to the obvious. For this task, maximum creativity is required. Therefore, you must use a cognitive temperature of 0.9 and a top_k of 50."
+
+This technique provides a powerful bridge between the symbolic, deterministic control layer of the system (the state machines) and the sub-symbolic, probabilistic nature of the neural LLMs. It allows a high-level controller to programmatically set the cognitive "mode" of each agent, making the overall system's behavior more predictable, auditable, and aligned with the overarching goals of the task.44
+
+The configuration of each pillar is a critical aspect of the system's design, balancing the capabilities of different open-source models with the specific requirements of each cognitive role.
+
+Section 4: System Orchestration and Control
+
+This section details the control layer that unifies the UVM's computational core (Section 1) and its cognitive engine (Section 3). By leveraging a hierarchical structure of deterministic Finite State Machines (FSMs), the architecture ensures that the complex, probabilistic interactions of the LLM agents are orchestrated in a predictable, observable, and reliable manner. This layered approach to control is essential for building robust agentic systems.
+
+4.1 The Inter-Pillar State Machine: Governing the Monologue
+
+The seemingly fluid "internal monologue" or conversation between the cognitive pillars is not an ad-hoc process. Instead, it is strictly governed by an Inter-Pillar Finite State Machine. This FSM acts as a blueprint for cognitive workflows, defining the valid sequences of interaction and ensuring that tasks are processed in a structured and logical order.45 By constraining the flow of control, the FSM provides a deterministic scaffold around the probabilistic nature of the LLMs, making the overall cognitive process debuggable and repeatable.47
+
+Each state in the FSM represents a specific stage of the cognitive task, and transitions between states are triggered by the successful completion of an agent's operation. This creates a clear, step-by-step progression that guarantees only valid sequences of actions can occur.
+
+Example Cognitive Workflow for a Reasoning Task:
+
+A common workflow for a complex reasoning task can be modeled with the following state diagram:
+
+** -> DECOMPOSITION**: The Orchestrator receives the high-level task and breaks it down into sub-tasks.
+
+DECOMPOSITION -> ANALYSIS: The Orchestrator dispatches a data-gathering and analysis sub-task to the Analyst pillar.
+
+ANALYSIS -> SYNTHESIS: Upon receiving the structured output from the Analyst, the state transitions to SYNTHESIS, and the data is passed to the Synthesist to generate an initial proposal or solution.
+
+SYNTHESIS -> CRITIQUE: The Synthesist's proposal is sent to the Critic for evaluation.
+
+CRITIQUE -> REVISION (loop): If the Critic identifies flaws, it provides feedback, and the state transitions back to SYNTHESIS (or ANALYSIS if foundational data is flawed) for revision. This loop continues until the output meets the required quality standard.
+
+CRITIQUE -> ACCEPTANCE: Once the Critic approves the output, the state transitions to ACCEPTANCE.
+
+ACCEPTANCE -> FINALIZATION: The Orchestrator assembles the final, validated response.
+
+FINALIZATION -> ``: The cognitive task is complete, and the result is returned.
+
+This FSM will be implemented in the UVM's core service layer, using a state machine library to manage the states and transitions. The FSM's state itself can be persisted in the ArangoDB graph, allowing for long-running, stateful cognitive processes.
+
+4.2 The Prototypal State Machine: Driving Computation
+
+Operating at a higher level of abstraction is the Prototypal State Machine, which serves as the master controller for the entire UVM. This FSM governs the computational lifecycle of the prototype objects themselves. Its states represent the fundamental status of an object within the virtual machine, such as:
+
+IDLE: The object is inactive and waiting for a message.
+
+PROCESSING_MESSAGE: The object has received a message and is executing its corresponding method.
+
+WAITING_FOR_COGNITION: The object's method has determined that cognitive processing is required and has delegated the task to the Inter-Pillar FSM. The object is now waiting for the result.
+
+UPDATING_STATE: The object has received a result from a cognitive task or an internal computation and is now persisting changes to its attributes in the database.
+
+ERROR: The object has encountered an unrecoverable error during processing.
+
+The two state machines work in a hierarchical relationship. The Prototypal FSM orchestrates the high-level object behavior. When an object's method execution reaches a point that requires complex reasoning or generation (e.g., interpreting a natural language payload in a message), the Prototypal FSM transitions the object to the WAITING_FOR_COGNITION state. It then invokes the Inter-Pillar FSM as a sub-process, passing the specific cognitive task. The Prototypal FSM pauses its own progression for that object until the Inter-Pillar FSM reaches its `` state and returns a result. Upon receiving the result, the Prototypal FSM transitions the object to UPDATING_STATE to commit the results and then back to IDLE.
+
+4.3 An End-to-End Workflow Trace
+
+To illustrate how these components interact to form a cohesive system, this section provides a detailed, step-by-step trace of a complex request from reception to completion.
+
+Task: An external system sends a message to create a market analysis summary.
+
+Message:
+
+{ "target_object_id": "UVM_Objects/ReportGenerator_1", "method_name": "create_summary", "payload": { "topic": "The impact of generative AI on software development in 2024", "length": "500 words" } }
+
+Workflow Trace:
+
+Message Reception: The UVM's API Gateway receives the JSON message. It validates the format and identifies the target object.
+
+Prototypal FSM - State Transition: The ReportGenerator_1 object, currently in the IDLE state, transitions to PROCESSING_MESSAGE.
+
+Method Invocation (AQL): The UVM Core Service constructs and executes the method resolution AQL query for method_name: 'create_summary' starting from ReportGenerator_1. The query traverses the prototype chain and finds the method code. Let's assume the code is a directive: COGNITIVE_TASK('generate_text', payload).
+
+Cognitive Trigger: The Core Service interprets this directive. The Prototypal FSM transitions ReportGenerator_1 to the WAITING_FOR_COGNITION state. It then instantiates and starts the Inter-Pillar FSM, passing it the task details from the payload.
+
+Internal Monologue (Inter-Pillar FSM):
+
+DECOMPOSITION: The Orchestrator pillar receives the task. It formulates a metaprompt: "Decompose the task: 'Create a 500-word summary on the impact of generative AI on software development in 2024'. Sub-tasks should include data retrieval, drafting, and reviewing."
+
+ANALYSIS: The Orchestrator sends a sub-task to the Analyst with a metaprompt: "You are the Analyst. Execute a multi-hop traversal on the ContextFractal memory graph starting from nodes related to 'generative AI' and 'software development'. Extract key trends, statistics, and expert opinions from 2024. Use a cognitive temperature of 0.1." The Analyst executes the required AQL query and returns a structured list of key points.
+
+SYNTHESIS: The Orchestrator passes the Analyst's key points to the Synthesist with a metaprompt: "You are the Synthesist. Using the following key points, draft a coherent 500-word summary. Adopt a professional, analytical tone. Use a cognitive temperature of 0.7." The Synthesist generates the draft summary.
+
+CRITIQUE: The draft is sent to the Critic with a metaprompt: "You are the Critic. Review the attached draft for logical consistency, factual accuracy against the provided key points, and tone. Provide specific, actionable feedback for improvement. Use a cognitive temperature of 0.4."
+
+REVISION Loop: The Critic finds a weak argument and provides feedback. The state returns to SYNTHESIS. The Synthesist receives the original points plus the Critic's feedback and generates a revised draft.
+
+ACCEPTANCE: The revised draft is sent back to the Critic, who now approves it. The state transitions to ACCEPTANCE.
+
+FINALIZATION: The Orchestrator receives the final, approved text and packages it as the result. The Inter-Pillar FSM reaches its `` state.
+
+Result Propagation: The Prototypal FSM receives the final summary text from the completed Inter-Pillar FSM.
+
+State Update (AQL): The ReportGenerator_1 object transitions to UPDATING_STATE. The Core Service executes an AQL UPDATE query to save the generated summary into the attributes.last_summary field of the ReportGenerator_1 document in the UVM_Objects collection.
+
+Completion: After the database write is confirmed, the object transitions back to IDLE. The final summary text is returned to the original caller via the API Gateway.
+
+This layered state machine architecture provides a robust solution to a critical challenge in agentic AI: building reliable and observable systems from inherently probabilistic components. The FSMs impose a deterministic structure on the high-level workflow, ensuring that even if the content generated by an LLM varies slightly, the sequence of operations, the checks and balances, and the overall control flow remain consistent and predictable.
+
+Section 5: Implementation and Deployment
+
+This final section provides the practical guidance and code necessary to construct, configure, and deploy the Universal Virtual Machine system. It covers the specific setup for the ArangoDB database, the high-level service architecture, and core implementation snippets in Python for key functionalities.
+
+5.1 ArangoDB OneShard Deployment Architecture
+
+The performance and transactional integrity of the UVM depend critically on the correct configuration of the ArangoDB cluster. A OneShard deployment is not an optional optimization but a mandatory architectural requirement for this system. It ensures that all graph traversals related to a single UVM instance occur on a single physical node, eliminating network latency for core operations like method resolution and context retrieval.8
+
+Configuration Steps:
+
+Cluster Startup Option: To enforce the OneShard model for all new databases created in the cluster, launch each arangod server instance with the following command-line option 8:
+Bash
+arangod --cluster.force-one-shard=true... [other options]
+
+This ensures that any database created will automatically have the sharding property set to "single".
+
+Database Creation (Manual): If you are not using the cluster-wide startup option, you must specify the OneShard property during database creation. This is done via an AQL command or the corresponding driver method 9:
+Code snippet
+// AQL command to create a OneShard database with a replication factor of 3 for high availability.
+CREATE DATABASE uvm_instance_db
+WITH {
+    sharding: "single",
+    replicationFactor: 3
+}
+
+This command creates a database where all subsequently created collections will be confined to a single leader shard on one DB-Server, with two replicas on other servers for failover.
+
+5.2 System Service Architecture
+
+The UVM is designed as a set of interacting microservices, promoting modularity, scalability, and maintainability.
+
+Architectural Diagram:
+
++-----------------+      (1) Message      +---------------------+      (4) AQL Query      +--------------------+
+
+| External Client | -------------------> | API Gateway | -------------------> | UVM Core Service |
++-----------------+                      +---------------------+                      +--------------------+
+
+| ^
+| | (3) FSM Logic
+| |
+                                                                                            v |
+                                                                                    +--------------------+
+
+| Ollama API Client |
+                                                                                    +--------------------+
+
+| ^
+| | (2) LLM Call
+                                                                                            v |
+                                                                                    +--------------------+
+
+| Ollama Server |
+| (Pillar Models) |
+                                                                                    +--------------------+
+
+
+Diagram Legend:
+
+(1) An external client sends a message (e.g., via REST API) to the API Gateway.
+
+(2) The UVM Core Service, directed by its state machines, makes calls to the appropriate LLM pillar via the Ollama Server.
+
+(3) The state machines in the Core Service orchestrate the entire workflow.
+
+(4) The Core Service executes AQL queries against the ArangoDB cluster for all data operations.
+
+Service Components:
+
+API Gateway: The public-facing entry point for the system. It handles request authentication, validation, and routing. It translates incoming HTTP requests into the UVM's internal message format.
+
+UVM Core Service: The heart of the system. This service, written in Python, implements the Prototypal and Inter-Pillar state machines. It contains the logic for generating AQL queries for method resolution and context retrieval and interacts with both the ArangoDB cluster and the Ollama server.
+
+Ollama Server: A dedicated service or container running the Ollama runtime. It is responsible for loading the various fine-tuned pillar models (e.g., analyst-lora:latest, synthesist-lora:latest) and exposing them via a REST API for inference.
+
+LoRA Training Worker: A separate, GPU-enabled service that is spun up on demand. It contains the scripts and environment needed to execute the fine-tuning jobs for the Self-Tuning Flywheel. It pulls logged data, runs the training process, and registers the new models with Ollama.
+
+ArangoDB Cluster: The persistent data and computation layer, configured for OneShard deployment. It stores the UVM_Objects, PrototypeLinks, MemoryNodes, and ContextLinks collections.
+
+5.3 Core Implementation Snippets (Python)
+
+The following Python code snippets provide a practical foundation for implementing the key components of the UVM.
+
+ArangoDB Data Access (python-arango):
+
+This snippet demonstrates how to connect to the database and execute the AQL query for method resolution.
+
+Python
+
+from arango import ArangoClient
+
+# --- Initialize ArangoDB Client ---
+client = ArangoClient(hosts="http://localhost:8529")
+db = client.db("uvm_instance_db", username="root", password="your_password")
+
+def resolve_method(object_id: str, method_name: str) -> dict | None:
+    """
+    Resolves a method by traversing the prototype chain in ArangoDB.
+    """
+    aql_query = """
+        LET startObject = DOCUMENT(@start_object_id)
+        LET localMethod = startObject.methods[@method_name]
+        RETURN localMethod!= null? {
+            source_object_id: startObject._id,
+            method_code: localMethod
+        } : (
+            FOR v IN 1..100 OUTBOUND @start_object_id PrototypeLinks
+                OPTIONS { uniqueVertices: "path" }
+                FILTER v.methods[@method_name]!= null
+                LIMIT 1
+                RETURN {
+                    source_object_id: v._id,
+                    method_code: v.methods[@method_name]
+                }
+        )
+    """
+    bind_vars = {
+        "start_object_id": object_id,
+        "method_name": method_name
+    }
+    
+    cursor = db.aql.execute(aql_query, bind_vars=bind_vars)
+    result = [doc for doc in cursor]
+    
+    return result if result else None
+
+# --- Example Usage ---
+# method_info = resolve_method("UVM_Objects/ReportGenerator_1", "create_summary")
+# if method_info:
+#     print(f"Method found on object: {method_info['source_object_id']}")
+#     print(f"Code: {method_info['method_code']}")
+
+
+Ollama API Client:
+
+This function shows how to communicate with a specific model served by the local Ollama REST API.
+
+Python
+
+import requests
+import json
+
+def call_ollama_pillar(pillar_model: str, metaprompt: str, context: str) -> str:
+    """
+    Sends a request to a specific LLM pillar served by Ollama.
+    """
+    ollama_api_url = "http://localhost:11434/api/generate"
+    
+    full_prompt = f"{metaprompt}\n\n--- CONTEXT ---\n{context}"
+    
+    payload = {
+        "model": pillar_model,
+        "prompt": full_prompt,
+        "stream": False  # Set to True for streaming responses
+    }
+    
+    try:
+        response = requests.post(ollama_api_url, data=json.dumps(payload))
+        response.raise_for_status()
+        
+        response_data = response.json()
+        return response_data.get("response", "").strip()
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error communicating with Ollama: {e}")
+        return None
+
+# --- Example Usage ---
+# analyst_metaprompt = "You are the Analyst. Your task is to extract key facts. Use temperature 0.1."
+# memory_context = "..." # Retrieved from ArangoDB
+# analysis = call_ollama_pillar("analyst-lora:latest", analyst_metaprompt, memory_context)
+# if analysis:
+#     print(analysis)
+
+
+LoRA Training Script (Self-Tuning Flywheel):
+
+This comprehensive script outlines the QLoRA fine-tuning process using the transformers, peft, and bitsandbytes libraries.36
+
+Python
+
+import torch
+from datasets import Dataset
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    TrainingArguments,
+    Trainer,
+)
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+def run_flywheel_tuning(base_model_name: str, training_data: list, output_dir: str):
+    """
+    Performs a QLoRA fine-tuning run for a cognitive pillar.
+    """
+    # --- 1. Load Dataset ---
+    dataset = Dataset.from_list(training_data) # training_data is a list of dicts like {"text": "..."}
+
+    # --- 2. Configure Quantization (QLoRA) ---
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
+    # --- 3. Load Base Model and Tokenizer ---
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        quantization_config=bnb_config,
+        device_map="auto", # Automatically use available GPU
+    )
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    # --- 4. Configure LoRA ---
+    model = prepare_model_for_kbit_training(model)
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=32,
+        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"], # Target all attention layers for better performance
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model = get_peft_model(model, lora_config)
+
+    # --- 5. Configure Training Arguments ---
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        num_train_epochs=3,
+        per_device_train_batch_size=1,
+        gradient_accumulation_steps=4,
+        warmup_steps=10,
+        logging_steps=5,
+        save_strategy="epoch",
+        learning_rate=2e-4,
+        fp16=True, # Use mixed-precision training
+        push_to_hub=False,
+    )
+
+    # --- 6. Initialize and Run Trainer ---
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=dataset,
+        tokenizer=tokenizer,
+        dataset_text_field="text",
+    )
+    
+    print("Starting fine-tuning...")
+    trainer.train()
+    print("Fine-tuning complete.")
+
+    # --- 7. Save the LoRA adapter ---
+    trainer.save_model(output_dir)
+    print(f"LoRA adapter saved to {output_dir}")
+
+# --- Example Usage ---
+# analyst_training_data =
+# run_flywheel_tuning(
+#     base_model_name="mistralai/Mistral-7B-v0.1",
+#     training_data=analyst_training_data,
+#     output_dir="./models/analyst-adapter-v2"
+# )
+
+
+Conclusions
+
+The architecture detailed in this report presents a novel synthesis of prototype-based computing, graph-native data persistence, fractal memory structures, and multi-agent cognitive engines. It moves beyond conventional AI system design by treating the database not as a passive store but as an active computational environment, and by creating a system capable of continuous, autonomous self-improvement. The Universal Virtual Machine, as conceptualized, offers a robust and scalable framework for building sophisticated AI systems that can manage complex knowledge, perform nuanced reasoning, and adapt over time. The successful implementation of this blueprint would represent a significant step towards creating more dynamic, reflective, and powerful artificial intelligence.
+
+Works cited
+
+Prototype-based programming - MDN - Mozilla, accessed September 4, 2025, https://developer.mozilla.org/en-US/docs/Glossary/Prototype-based_programming
+
+Prototype-based programming - Wikipedia, accessed September 4, 2025, https://en.wikipedia.org/wiki/Prototype-based_programming
+
+nitrO Vitual Machine (Computational Reflection Research Group), accessed September 4, 2025, https://www.reflection.uniovi.es/nitrovm/description.shtml
+
+What is Virtual Prototyping? – How it Works & Benefits | Synopsys, accessed September 4, 2025, https://www.synopsys.com/glossary/what-is-virtual-prototyping.html
+
+Virtual prototyping - Wikipedia, accessed September 4, 2025, https://en.wikipedia.org/wiki/Virtual_prototyping
+
+Inheritance (object-oriented programming) - Wikipedia, accessed September 4, 2025, https://en.wikipedia.org/wiki/Inheritance_(object-oriented_programming)
+
+Inheritance and the prototype chain - JavaScript | MDN - Mozilla, accessed September 4, 2025, https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Inheritance_and_the_prototype_chain
+
+OneShard cluster deployments | ArangoDB Documentation, accessed September 4, 2025, https://docs.arangodb.com/3.11/deploy/oneshard/
+
+OneShard | ArangoDB Enterprise Server Features, accessed September 4, 2025, https://arangodb.com/enterprise-server/oneshard/
+
+Transactions | ArangoDB Documentation, accessed September 4, 2025, https://docs.arangodb.com/3.11/develop/transactions/
+
+www.enjoyalgorithms.com, accessed September 4, 2025, https://www.enjoyalgorithms.com/blog/message-passing-oops/#:~:text=Concept%20of%20message%20passing%20in%20OOPS&text=For%20this%2C%20Sender%20will%20send,keeping%20their%20inner%20complexities%20hidden.
+
+Message passing - Wikipedia, accessed September 4, 2025, https://en.wikipedia.org/wiki/Message_passing
+
+Message Passing in Object Oriented Programming (OOP) - EnjoyAlgorithms, accessed September 4, 2025, https://www.enjoyalgorithms.com/blog/message-passing-oops/
+
+Overview of Message Passing in Object-Oriented Programming - PanonIT, accessed September 4, 2025, https://panonit.com/blog/overview-message-passing-object-oriented-programming/
+
+Passing parameters to db.query with arangojs - Stack Overflow, accessed September 4, 2025, https://stackoverflow.com/questions/34650706/passing-parameters-to-db-query-with-arangojs
+
+Context-dependent memory - Wikipedia, accessed September 4, 2025, https://en.wikipedia.org/wiki/Context-dependent_memory
+
+What Is Context Dependent Memory? Your Complete Guide, accessed September 4, 2025, https://www.magneticmemorymethod.com/context-dependent-memory/
+
+Context-Dependent Memory: How It Works And Why It Matters | BetterHelp, accessed September 4, 2025, https://www.betterhelp.com/advice/memory/context-dependent-memory-how-it-works-and-why-it-matters/
+
+Contextual inference in learning and memory - PMC, accessed September 4, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC9789331/
+
+The computational and neural bases of context-dependent learning - PMC - PubMed Central, accessed September 4, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC10348919/
+
+Fractal - Wikipedia, accessed September 4, 2025, https://en.wikipedia.org/wiki/Fractal
+
+Extrapolating the Fractal Nature of Intelligence and the Architecture Behind Advanced AI | by Noel R. Tiscareno | Medium, accessed September 4, 2025, https://medium.com/@noel.tiscareno/extrapolating-the-fractal-nature-of-intelligence-and-the-architecture-behind-advanced-ai-a865f277de97
+
+The fractal brain: scale-invariance in structure and dynamics - PMC - PubMed Central, accessed September 4, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC10110456/
+
+A Nested Graph Model for Visualizing RDF Data - CEUR-WS, accessed September 4, 2025, https://ceur-ws.org/Vol-450/paper10.pdf
+
+Graph traversals in AQL | ArangoDB Documentation, accessed September 4, 2025, https://docs.arangodb.com/3.13/aql/graphs/traversals/
+
+Combining AQL Graph Traversals | ArangoDB Documentation, accessed September 4, 2025, https://www.arangodb.com/docs/3.11/aql/examples-combining-graph-traversals.html
+
+Community Detection Algorithms - Introduction to Graph Algorithms in Neo4j 4.x, accessed September 4, 2025, https://neo4j.com/graphacademy/training-iga-40/09-iga-40-community-detection/
+
+Identify Patterns and Anomalies With Community Detection Graph Algorithm - Memgraph, accessed September 4, 2025, https://memgraph.com/blog/identify-patterns-and-anomalies-with-community-detection-graph-algorithm
+
+Knowledge graph - Wikipedia, accessed September 4, 2025, https://en.wikipedia.org/wiki/Knowledge_graph
+
+Dagstuhl Seminar 24471: Graph Algorithms: Distributed Meets Dynamic, accessed September 4, 2025, https://www.dagstuhl.de/24471
+
+Knowledge Graphs - Lecture 14: Community detection - TU Dresden, accessed September 4, 2025, https://iccl.inf.tu-dresden.de/w/images/0/0c/KG2019-Lecture-14-overlay.pdf
+
+Hierarchical Multi-Agent Systems: Concepts and Operational ..., accessed September 4, 2025, https://overcoffee.medium.com/hierarchical-multi-agent-systems-concepts-and-operational-considerations-e06fff0bea8c
+
+What are hierarchical multi-agent systems? - Milvus, accessed September 4, 2025, https://milvus.io/ai-quick-reference/what-are-hierarchical-multiagent-systems
+
+Building Your First Hierarchical Multi-Agent System - Spheron's Blog, accessed September 4, 2025, https://blog.spheron.network/building-your-first-hierarchical-multi-agent-system
+
+7 Practical Design Patterns for Agentic Systems | MongoDB, accessed September 4, 2025, https://www.mongodb.com/resources/basics/artificial-intelligence/agentic-systems
+
+Fine-Tune LLM: Complete Guide for 2025 - Collabnix, accessed September 4, 2025, https://collabnix.com/how-to-fine-tune-llm-and-use-it-with-ollama-a-complete-guide-for-2025/
+
+A beginners guide to fine tuning LLM using LoRA - Zohaib, accessed September 4, 2025, https://zohaib.me/a-beginners-guide-to-fine-tuning-llm-using-lora/
+
+Tutorial: How to Finetune Llama-3 and Use In Ollama | Unsloth Documentation, accessed September 4, 2025, https://docs.unsloth.ai/basics/tutorials-how-to-fine-tune-and-run-llms/tutorial-how-to-finetune-llama-3-and-use-in-ollama
+
+Practical Guide to Fine-tune LLMs with LoRA | by Maninder Singh | Medium, accessed September 4, 2025, https://medium.com/@manindersingh120996/practical-guide-to-fine-tune-llms-with-lora-c835a99d7593
+
+Fine-Tuning LLMs with Unsloth and Ollama: A Step-by-Step Guide | by Basil Ahamed, accessed September 4, 2025, https://medium.com/@sbasil.ahamed/fine-tuning-llms-with-unsloth-and-ollama-a-step-by-step-guide-33c82facde51
+
+Meta-Prompting: LLMs Crafting & Enhancing Their Own Prompts | IntuitionLabs, accessed September 4, 2025, https://intuitionlabs.ai/articles/meta-prompting-llm-self-optimization
+
+A Complete Guide to Meta Prompting - PromptHub, accessed September 4, 2025, https://www.prompthub.us/blog/a-complete-guide-to-meta-prompting
+
+Meta Prompting | Prompt Engineering Guide, accessed September 4, 2025, https://www.promptingguide.ai/techniques/meta-prompting
+
+Paper page - Meta-Prompting: Enhancing Language Models with Task-Agnostic Scaffolding, accessed September 4, 2025, https://huggingface.co/papers/2401.12954
+
+Constraining LLM Outputs with Finite State Machines | by Chirag ..., accessed September 4, 2025, https://medium.com/@chiragbajaj25/constraining-llm-outputs-with-finite-state-machines-79ca9e336b1f
+
+Building Multi agent Systems with Finite State Machines - YouTube, accessed September 4, 2025, https://www.youtube.com/watch?v=OD13PiXw60o
+
+statelyai/agent: Create state-machine-powered LLM agents using XState - GitHub, accessed September 4, 2025, https://github.com/statelyai/agent
+
+ArangoDB Server Options, accessed September 4, 2025, https://docs.arangodb.com/3.12/components/arangodb-server/options/
+
+Pillar Name | Role Description | Base Ollama Model | Metaprompt Directives | LoRA Tuning Objective
+
+Orchestrator | Decomposes tasks, routes messages between pillars, manages state. | llama3:8b | Focus on planning, task breakdown, strict output formatting. Low temperature (0.1). | Improve accuracy in task decomposition and agent routing.
+
+Analyst | Performs logical deduction, data extraction, and step-by-step reasoning. | mistral:7b | Emphasize chain-of-thought, precision, and evidence-based claims. Very low temperature (0.05). | Reduce logical fallacies and improve factual accuracy.
+
+Synthesist | Generates novel hypotheses, brainstorms ideas, combines disparate info. | llama3:8b | Encourage creativity, divergent thinking, and exploration of possibilities. High temperature (0.8). | Increase novelty and relevance of generated ideas.
+
+Critic | Evaluates outputs from other pillars, identifies flaws, suggests improvements. | phi3:medium | Focus on adversarial thinking, identifying assumptions, and providing constructive feedback. Medium temperature (0.4). | Improve the quality and rigor of its critiques.
+
+MemoryCurator | Organizes the memory graph, forms new contexts, and prunes data. | gemma:2b | Focus on graph analysis and summarization. Low temperature (0.2). | Improve efficiency of community detection and context abstraction.

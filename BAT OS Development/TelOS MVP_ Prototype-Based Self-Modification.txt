@@ -1,0 +1,292 @@
+The Autopoietic Seed: An Architectural Blueprint for the TelOS Minimum Viable Application
+
+Part I: The Philosophical Core - Distilling TelOS for a Foundational Prototype
+
+1.1 From Autopoiesis to Application: Defining the MVA's Mandate
+
+The foundational ambition of Project TelOS is the synthesis of an autopoietic operating system—a system defined by its organizational closure, constituting a network of processes that continuously regenerates the very network that produced it.1 This is not a metaphorical aspiration but a concrete engineering mandate, translated within the project's genesis instruction into a falsifiable technical requirement: "Constraint 3: All core OS components (scheduler, memory manager, process server, etc.) must not be static, pre-compiled artifacts. They must be implemented as objects within the persistent graph, capable of being regenerated, modified, and replaced by other processes within the system".1 Before embarking on the monumental task of constructing a full operating system capable of replacing its own memory manager or process scheduler live, a more fundamental hypothesis must be validated: is it possible to build a software system, of any scale, that can safely and reliably reason about and modify its own state in response to a high-level goal?
+
+This question defines the mandate for the Minimum Viable Application (MVA). The MVA's primary purpose is to serve as a focused, controlled experiment to validate this core internal autopoietic loop. A comprehensive analysis of the TelOS planning documents reveals an intense, deliberate focus on the internal architecture—the microkernel, the object graph, the persistence layer, and the agentic control plane—while the immense complexities of external interaction, such as device drivers, networking, and graphical user interfaces, remain conspicuously unaddressed.1 This is not an oversight but a strategic decision to de-risk the most novel and uncertain aspects of the project first. The MVA is the instrument for this de-risking. Its scope is therefore intentionally constrained to the internal loop of self-modification and governance. It will prove that a system can be built to safely modify its own object graph before it is tasked with the chaotic and unpredictable work of interacting with the external world.
+
+1.2 "Prototypes All The Way Down": The MVA as a Recursive Seed
+
+The user's directive to harmonize the development roadmap with the "prototypes all the way down" philosophy of the Self and Smalltalk programming environments is a critical constraint that elevates the MVA from a disposable proof-of-concept to the foundational seed of the entire TelOS project.2 This philosophy must permeate not only the MVA's runtime object model but the very methodology of its development. In a prototype-based system, there is no rigid distinction between classes and instances; new objects are created by cloning and extending existing prototype objects, enabling a dynamic and live-modifiable environment.9
+
+This principle dictates that the MVA is not a simplified model to be discarded and replaced by a "real" system later. It is, in fact, the primordial prototype of the TelOS operating system itself. The development process is not a linear progression from MVA to version 1.0 but a recursive one. Future development—for instance, the eventual addition of a networking stack or a file system—will be framed as the agent receiving a high-level goal to clone and extend the MVA's existing object graph, composing new functionalities onto the established structure. This development methodology directly mirrors the runtime object model.
+
+The architecture of the MVA is therefore non-negotiable and must be the definitive, scalable foundation for the final OS. The process of a human developer guiding the MVA's evolution must be architecturally identical to the process of the final, self-hosted AI Architect modifying the running OS. This implies that the core mechanisms of the MVA—its object model, its persistence engine, and its agentic governance loop—must be the exact same mechanisms that will be used in the final system, merely populated with a smaller set of initial objects. The MVA is not a demonstration; it is TelOS version 0.1.
+
+Part II: The State Model - A Live, Persistent Graph of Prototypes
+
+2.1 The Prototype Object Model in Python
+
+The TelOS architecture mandates a prototype-based object model, where new objects are created by cloning existing ones, providing the inherent dynamism required for a self-modifying system.1 While Python is not a natively prototype-based language, it provides all the necessary primitives to implement this model faithfully. The creational design pattern known as the Prototype pattern delegates the cloning process to the objects that are being cloned, allowing for the creation of copies without coupling the client code to the specific classes of those objects.12
+
+Python's standard copy module is the key enabler for this pattern. A shallow copy, created with copy.copy(), constructs a new object but inserts references to the objects found in the original, meaning changes to nested mutable objects are reflected in both the original and the copy.13 For the TelOS MVA, where the goal is to create truly independent objects that can evolve without side effects, a deep copy is required. The
+
+copy.deepcopy() function constructs a new object and recursively inserts copies of the objects found in the original, ensuring the clone is a fully independent entity.14 This function is robust, capable of handling complex object graphs and correctly managing circular references by keeping a memo of already-copied objects.14
+
+To implement this, the MVA will define a base TelOSObject class. This class will not be instantiated directly by a constructor in the traditional sense but will serve as the primordial prototype from which all other system objects are derived. It will implement a clone() method that acts as a clean, high-level wrapper around the copy.deepcopy(self) operation. All other objects in the MVA's state graph will be created by calling clone() on an existing object and then modifying the attributes of the newly created instance. This directly mimics the operational paradigm of Self and Smalltalk.8
+
+Python
+
+import copy
+import uuid
+from persistent import Persistent
+
+class TelOSObject(Persistent):
+    """
+    The primordial prototype for all objects in the TelOS MVA.
+    Inherits from persistent.Persistent to be compatible with ZODB.
+    """
+    def __init__(self, name="<Unnamed>", description=""):
+        # The object's unique identifier within the persistent graph.
+        self.oid = str(uuid.uuid4())
+        self.name = name
+        self.description = description
+
+    def clone(self):
+        """
+        Creates a new, fully independent object by deep copying this prototype.
+        This is the core mechanism of the prototype-based model.
+        """
+        # Use deepcopy to ensure a complete, independent clone.
+        new_object = copy.deepcopy(self)
+        # Assign a new, unique OID to the clone.
+        new_object.oid = str(uuid.uuid4())
+        return new_object
+
+
+2.2 Achieving Orthogonal Persistence with ZODB
+
+The TelOS architecture is founded on the "Persistence First" mandate, requiring a state model where durability is a transparent, intrinsic property of all objects, not an explicit action performed by the programmer.1 This principle, known as orthogonal persistence, eliminates an entire class of complex and error-prone logic related to manual serialization and file I/O.16 The Zope Object Database (ZODB) is the specified reference model for this capability and will be used directly in the MVA's implementation.2
+
+ZODB achieves orthogonal persistence through a simple yet powerful mechanism: any Python class that inherits from persistent.Persistent is automatically tracked by the database.18 When an attribute of a persistent object is modified, ZODB flags it as "dirty." These changes are not saved immediately but are held in a connection-specific cache until a transaction is committed.20 This transactional model is a core feature, providing full ACID (Atomicity, Consistency, Isolation, Durability) guarantees for all state modifications. An agent's multi-step operation can be wrapped in a single transaction; if any step fails,
+
+transaction.abort() can be called to roll back all changes, ensuring the object graph always remains in a consistent state.19
+
+The database is structured hierarchically, anchored by a single root object that functions like a Python dictionary. Any object that is reachable from this root via a chain of references is, by definition, persistent.18 This principle of "persistence by reachability" integrates perfectly with the prototype-based object model. The MVA's base
+
+TelOSObject class will inherit from persistent.Persistent. The application will initialize a ZODB FileStorage and establish a connection. The initial set of prototype objects will be created and assigned as values in the ZODB root dictionary. From that point forward, any object created by cloning these prototypes and linked into the graph (e.g., by being added to a list that is an attribute of another persistent object) will be automatically and transparently persisted by ZODB upon transaction commit. The agent operates on what appears to be a simple in-memory object graph, and ZODB handles the immense complexity of durable, transactional storage automatically.
+
+2.3 The Primordial Prototypes of the MVA
+
+A prototype-based system, lacking the formal schemas of classes, requires a well-defined set of initial objects to bootstrap its functionality. These primordial prototypes are created once when the ZODB database is first initialized and serve as the immutable templates for all future state. This initial object graph constitutes the foundational "DNA" of the MVA.
+
+Part III: The Cognitive Core - A Minimum Viable Agentic Loop
+
+3.1 A Simplified, Unified Agent Architecture
+
+The complete TelOS architecture specifies a sophisticated, distributed Agentic Control Plane composed of four distinct user-space servers: the Planner/Executor, the Tool Server, the Policy & Governance Engine, and the RAG Server.1 This quadripartite design enforces a strict separation of cognitive concerns, providing a robust framework for security and auditing. For the MVA, implementing this as a multi-process, IPC-based system would introduce significant and unnecessary complexity. The core purpose of the MVA is to validate the
+
+logic of this separation, not necessarily its distributed structure.
+
+Therefore, the MVA will implement a simplified, unified agent architecture within a single, asynchronous Python process. This process will contain distinct functions that directly map to the roles of the four servers, proving the logical separation of concerns without the overhead of implementing a full microkernel-style IPC mechanism. The main agent loop will first call a plan() function (the Planner), which returns a proposed action. This action object is then passed to a govern() function (the Policy Engine). If govern() returns an approval, the action is finally passed to an execute() function (the Tool Server). This flow maintains the critical security checkpoints and auditable path from intent to action, validating the core architectural pattern in a more tractable form.
+
+3.2 The ReAct Loop and "Generate-and-Test" in Practice
+
+The agent's reasoning process is governed by the ReAct (Reason-Act) paradigm, an iterative cycle of Thought, Action, and Observation that allows the agent to dynamically adjust its plan based on feedback from its environment.6 This operational cadence is the direct cognitive implementation of the system's foundational "generate-and-test" epistemology. The genesis meta-prompt acknowledges that due to the undecidability of the Halting Problem, the AI Architect can never formally prove the correctness of its own modifications
+
+a priori; therefore, "empirical validation within a secure sandbox is the sole arbiter of correctness".1
+
+The MVA will implement this loop directly and practically:
+
+Thought (Reason): The agent process reads the current Task object from the ZODB graph. It uses an LLM to analyze the goal and its short-term memory, generating a "thought" (its reasoning) and a proposed "action" to advance the task.
+
+Action (Generate): For the MVA, the agent's primary and most powerful tool will be generate_and_execute_code. The action is to produce a string of Python code designed to achieve a sub-goal, such as modifying the object graph.
+
+Validation (Test): Crucially, this generated code is never executed in the main agent's process. Instead, it is passed to a secure, ephemeral sandbox. The Docker SDK for Python (docker-py) provides the ideal mechanism for this. The MVA can programmatically:
+
+Start a new, clean Docker container from a standard Python image.24
+
+Mount a temporary copy of the ZODB database file (mydata.fs) into the container.
+
+Execute the generated Python script inside the container, which will attempt to open the database and perform the intended modifications.25
+
+Capture all output (stdout, stderr) and the exit code from the container.24
+
+Destroy the container, ensuring no state leaks or side effects.
+
+Observation: The result from the Docker container—success or failure, logs, and any return values—becomes the "observation." This observation is appended to the agent's memory log (an attribute of its object in the ZODB graph) and is used as context for the next iteration of the ReAct loop. This cycle of generating a hypothesis (the code), running an experiment (the sandbox), and analyzing the results (the observation) is the practical embodiment of the system's core epistemology.
+
+3.3 A Minimal RAG: The File System as Long-Term Memory
+
+The full TelOS RAG server employs a sophisticated vector database to create a searchable index of the entire live object graph, providing the agent with deep, contextual self-awareness.1 For the MVA, implementing and managing a production-grade vector database like Milvus or Chroma would be an overly complex dependency.26 However, the
+
+principle of Retrieval-Augmented Generation can be demonstrated with a much simpler mechanism.
+
+The MVA's "long-term memory" will be a structured directory on the local file system. This directory will contain plain text files that serve as documentation for the available ToolPrototype objects and contain examples of previously successful plans. Before the agent's plan() function calls the LLM, it will first perform a simple keyword-based search over the contents of this directory to find relevant documents. The content of these documents will be prepended to the LLM prompt, augmenting its context with specific, grounded information about its capabilities and past experiences. This approach effectively demonstrates the value of the RAG pattern—improving the quality and relevance of the LLM's output—while sidestepping the significant operational overhead of a vector database. This file-based system also establishes a clear and logical upgrade path toward more advanced, lightweight, file-based vector databases like tiny_vectordb or VectorVFS in future iterations of the system.29
+
+Part IV: The Human Oracle Interface - A Web-Based Governance Dashboard
+
+4.1 Technology Stack: FastAPI and WebSockets
+
+The Human Oracle's interface is not a simple request-response website; it is a dynamic, real-time dashboard that must maintain a persistent connection to the agent process to stream its thought process and receive requests for intervention. This requirement makes the choice of web framework a critical architectural decision. A comparative analysis of Flask and FastAPI, two popular Python web frameworks, reveals a clear choice. Flask, built on the synchronous Web Server Gateway Interface (WSGI), is excellent for traditional web applications but requires extensions and more complex configurations to handle asynchronous tasks like WebSockets.31 FastAPI, in contrast, is built on the Asynchronous Server Gateway Interface (ASGI) and is designed from the ground up for high-performance, I/O-bound applications. It offers native support for
+
+async/await syntax and first-class WebSocket handling, making it the superior technical choice for the MVA's real-time governance dashboard.33 Furthermore, FastAPI's use of Pydantic for automatic request and response validation provides a layer of type safety that is invaluable for ensuring robust communication between the web frontend and the agent backend.34
+
+4.2 UI/UX Blueprint for the Governance Dashboard
+
+An effective Human-in-the-Loop interface is built on the core principles of transparency, user control, and clear feedback loops.37 The user, acting as the Oracle, must be able to understand what the agent is doing, why it is doing it, and how to intervene when necessary. Modern agent development platforms like Langfuse and the OpenAI Agents SDK provide rich interfaces for tracing and visualizing agent behavior, establishing a clear precedent for best practices.39 The MVA's governance dashboard will be a single-page application (SPA) composed of three primary, interactive components that directly map to these core HITL principles.
+
+Part V: Synthesis and Roadmap - From MVA to a Self-Hosting System
+
+5.1 Unified MVA Architecture
+
+The components detailed in the preceding sections synthesize into a single, coherent system. A user, acting as the Human Oracle, interacts with a browser-based Web UI (SPA). This UI establishes a persistent WebSocket connection with the FastAPI Backend. The backend serves as a communication relay and API gateway to the core Agent Process. This long-running agent process implements the simplified, unified cognitive architecture. It reads from and writes to the ZODB Object Graph, which is persisted to a database.fs file. When the agent needs to execute generated code, it communicates over the Docker API to spin up a temporary, sandboxed Execution Container, which is granted read/write access to a copy of the database file. This architecture provides a complete, end-to-end implementation of a governable, self-modifying system.
+
+5.2 Walkthrough: An End-to-End Task
+
+To make the system's operation tangible, consider a complete, end-to-end task execution:
+
+Goal: The Human Oracle uses the web UI's input field to submit a new high-level goal: "Create a new tool prototype named 'HelloWorldTool' that, when executed, prints the string 'hello world'." The FastAPI backend receives this, creates a new TaskPrototype clone in the ZODB graph, and signals the agent process to begin.
+
+Reasoning: The agent wakes, loads the new task, and begins its ReAct loop. The ReAct Trace Visualizer streams the first entry: Thought: The goal is to create a new tool. I should clone the existing 'ToolPrototype' to create a new object. Then, I need to set its 'name' attribute to 'HelloWorldTool' and its 'code' attribute to 'print("hello world")'.
+
+Action (Generate & Test): The agent generates a Python script embodying this plan: import transaction; from my_app.db import get_root; root = get_root(); tool_proto = root['objects']; new_tool = tool_proto.clone(); new_tool.name = 'HelloWorldTool'; new_tool.code = 'print("hello world")'; root['objects'] = new_tool; transaction.commit(). This script is sent to the Docker sandbox for validation.
+
+Observation: The sandbox container runs the script, which successfully modifies its copy of the database, and exits with code 0. The agent receives the observation: Result: Success. Exit Code: 0.
+
+State Change: The Object Graph Explorer in the UI, receiving a notification from the backend that the ZODB has been updated, refreshes to show the new HelloWorldTool object in the system's persistent state.
+
+Completion: The agent's final thought appears in the trace: Thought: The new tool object has been successfully created and persisted. The goal is complete. The task's status in the UI changes from IN_PROGRESS to COMPLETED.
+
+5.3 The Recursive Roadmap to TelOS
+
+The "prototypes all the way down" philosophy provides a clear, elegant, and recursive development roadmap from this MVA to the full vision of TelOS. The path forward is not a traditional feature list to be implemented by a human developer in the MVA's source code. Instead, it is a sequence of increasingly complex high-level goals to be given to the MVA's own agent, using the MVA as the tool to build its more complex successor.
+
+Step 1 (MVA): The current blueprint is implemented, establishing the foundational agentic loop and the core object model.
+
+Step 2 (Bootstrapping the Control Plane): The Oracle gives the MVA agent a new goal: "Refactor your own agent logic. Create four new prototypes cloned from TelOSObject: Planner, ToolServer, PolicyEngine, and RAGServer. Migrate your current monolithic logic into methods on these new objects." The agent uses its existing generate_and_execute_code tool to perform this major refactoring on its own object structure, bootstrapping the quadripartite architecture.
+
+Step 3 (Bootstrapping the Microkernel): The Oracle issues a far more complex goal: "Generate C and Assembly code for a minimal, seL4-inspired microkernel that implements the TelOS_Call and TelOS_ReplyRecv primitives." The agent's tools are extended to allow writing to the file system. The "test" phase for this goal becomes significantly more complex, now involving the automated compilation of the generated C code and an attempt to boot the resulting binary in a nested QEMU instance, with success determined by parsing the QEMU log output.44
+
+Step 4 (Self-Hosting): The final, ultimate goal is given to the agent, which is now running on the newly generated TelOS microkernel: "Replace the running Memory Management Server with a new version that includes performance logging." This act—an agent running on the OS it created, using its own tools to modify its own core components—completes the recursive loop and achieves the project's ultimate aim.1
+
+This roadmap demonstrates that the MVA is not merely a testbed. It is the first, essential tool that will be used to construct the final system, fulfilling the deepest interpretation of autopoiesis and providing a tangible path from a simple web application to a fully realized, self-hosting operating system.
+
+Works cited
+
+Refining Meta-Prompt for AI OS Construction
+
+A Universal Prototype-Based OS
+
+TelOS seL4 Architectural Blueprint Refinement
+
+Evaluating TelOS OS Approach
+
+Agentic Control Plane Phase 4 Validation
+
+AI OS Phase 3 and 4 Planning
+
+AI OS Phase 3 Planning and Design
+
+Prototype-based programming - Wikipedia, accessed September 8, 2025, https://en.wikipedia.org/wiki/Prototype-based_programming
+
+Prototype Method Design Pattern in Python - GeeksforGeeks, accessed September 8, 2025, https://www.geeksforgeeks.org/python/prototype-method-python-design-patterns/
+
+Prototype-based programming - Glossary | MDN - Mozilla, accessed September 8, 2025, https://developer.mozilla.org/en-US/docs/Glossary/Prototype-based_programming
+
+Prototype-based programming in Python, accessed September 8, 2025, https://logarithmic.net/pfh/blog/01177329787
+
+Prototype - Refactoring.Guru, accessed September 8, 2025, https://refactoring.guru/design-patterns/prototype
+
+Prototype Pattern in Python - Codesarray, accessed September 8, 2025, https://codesarray.com/view/Prototype-Pattern-in-Python
+
+copy — Shallow and deep copy operations — Python 3.13.7 documentation, accessed September 8, 2025, https://docs.python.org/3/library/copy.html
+
+Prototype in Python / Design Patterns - Refactoring.Guru, accessed September 8, 2025, https://refactoring.guru/design-patterns/prototype/python/example
+
+What is orthogonal persistence? - Internet Computer, accessed September 8, 2025, https://internetcomputer.org/docs/motoko/fundamentals/actors/orthogonal-persistence/
+
+complected and orthogonal persistence - the website of jyn, accessed September 8, 2025, https://jyn.dev/complected-and-orthogonal-persistence/
+
+Introduction to the ZODB (by Michel Pelletier), accessed September 8, 2025, https://zodb.org/en/latest/articles/ZODB1.html
+
+Tutorial — ZODB documentation, accessed September 8, 2025, https://zodb.org/en/latest/tutorial.html
+
+Introduction — ZODB documentation, accessed September 8, 2025, https://zodb-docs.readthedocs.io/en/latest/introduction.html
+
+ZODB Data Persistence in Python - Tutorialspoint, accessed September 8, 2025, https://www.tutorialspoint.com/python_data_persistence/data_persistence_zodb.htm
+
+ReAct Agent - Inspect AI, accessed September 8, 2025, https://inspect.aisi.org.uk/react-agent.html
+
+Using LangChain ReAct Agents to Answer Complex Questions - Airbyte, accessed September 8, 2025, https://airbyte.com/data-engineering-resources/using-langchain-react-agents
+
+Docker SDK for Python - Read the Docs, accessed September 8, 2025, https://docker-py.readthedocs.io/
+
+Examples using the Docker Engine SDKs and Docker API, accessed September 8, 2025, https://docs.docker.com/reference/api/engine/sdk/examples/
+
+Milvus | High-Performance Vector Database Built for Scale, accessed September 8, 2025, https://milvus.io/
+
+Top 10 open source vector databases - Instaclustr, accessed September 8, 2025, https://www.instaclustr.com/education/vector-database/top-10-open-source-vector-databases/
+
+Vector stores - Python LangChain, accessed September 8, 2025, https://python.langchain.com/docs/integrations/vectorstores/
+
+vectorvfs.readthedocs.io, accessed September 8, 2025, https://vectorvfs.readthedocs.io/#:~:text=VectorVFS%20is%20a%20lightweight%20Python,Virtual%20File%20System)%20extended%20attributes.
+
+MenxLi/tiny_vectordb: A small and fast Python JIT vector ... - GitHub, accessed September 8, 2025, https://github.com/MenxLi/tiny_vectordb
+
+FastAPI vs Flask: Comparison Guide to Making a Better Decision - Turing, accessed September 8, 2025, https://www.turing.com/kb/fastapi-vs-flask-a-detailed-comparison
+
+FastAPI vs Flask: Key Differences, Performance, and Use Cases - Codecademy, accessed September 8, 2025, https://www.codecademy.com/article/fastapi-vs-flask-key-differences-performance-and-use-cases
+
+FastAPI vs Flask: Which Should You Choose? - Netguru, accessed September 8, 2025, https://www.netguru.com/blog/python-flask-versus-fastapi
+
+FastAPI vs Flask: what's better for Python app development? - Imaginary Cloud, accessed September 8, 2025, https://www.imaginarycloud.com/blog/flask-vs-fastapi
+
+Flask vs FastAPI - Reddit, accessed September 8, 2025, https://www.reddit.com/r/FastAPI/comments/1dl7fp2/flask_vs_fastapi/
+
+Developing a Real-time Dashboard with Flask, Postgres, and Socket.IO | TestDriven.io, accessed September 8, 2025, https://testdriven.io/blog/flask-postgres-socketio/
+
+Right Human-in-the-Loop Is Critical for Effective AI | Medium, accessed September 8, 2025, https://medium.com/@dickson.lukose/building-a-smarter-safer-future-why-the-right-human-in-the-loop-is-critical-for-effective-ai-b2e9c6a3386f
+
+Designing Human-in-the-Loop AI Interfaces That Empower Users - Thesys, accessed September 8, 2025, https://www.thesys.dev/blogs/designing-human-in-the-loop-ai-interfaces-that-empower-users
+
+Tracing - OpenAI Agents SDK, accessed September 8, 2025, https://openai.github.io/openai-agents-python/tracing/
+
+Example - Trace and Evaluate LangGraph Agents - Langfuse, accessed September 8, 2025, https://langfuse.com/guides/cookbook/example_langgraph_agents
+
+Trace View - Datadog Docs, accessed September 8, 2025, https://docs.datadoghq.com/tracing/trace_explorer/trace_view/
+
+Keeping humans in the loop of AI-enhanced workflow automation: 4 best practices | Tines, accessed September 8, 2025, https://www.tines.com/blog/humans-in-the-loop-of-ai/
+
+Human-in-the-Loop for AI Agents: Best Practices, Frameworks, Use ..., accessed September 8, 2025, https://www.permit.io/blog/human-in-the-loop-for-ai-agents-best-practices-frameworks-use-cases-and-demo
+
+AI OS Microkernel Implementation Plan
+
+AI OS Bootloader Phase 2 Planning
+
+AI OS Bootloader Phase 1 Plan
+
+Prototype Name | Key Attributes | Description
+
+Root | objects: BTree | The ZODB root object, a BTree (a scalable, dictionary-like object provided by ZODB) serving as the global namespace and container for all other prototypes.
+
+TelOSObject | oid: UUID, name: str, description: str | The ultimate ancestor prototype. All other objects are cloned from this. It is the most basic, generic "thing" in the system.
+
+AgentPrototype | current_task: Task, memory: list | Represents the cognitive agent. Its state includes a reference to the active task it is working on and a log of past actions and observations, which forms its short-term memory.
+
+TaskPrototype | goal: str, status: str, steps: list | Represents a high-level goal assigned to the agent by the Human Oracle. Its status can be 'PENDING', 'IN_PROGRESS', 'COMPLETED', or 'FAILED'.
+
+ToolPrototype | name: str, description: str, code: str | Represents a capability the agent can use. The name and description are used by the LLM for tool selection, and the code attribute holds the Python source for the tool's action.
+
+Feature | Flask (WSGI) | FastAPI (ASGI) | TelOS MVA Requirement & Justification
+
+Asynchronous Support | Not native; requires extensions (e.g., Quart, Flask-SocketIO).32 | Native (async def) and first-class WebSocket support.34 | Essential. The dashboard must handle persistent WebSocket connections for real-time updates without blocking. FastAPI is the clear winner for its simplicity and performance in this regard.
+
+Data Validation | Manual or via extensions (e.g., WTForms).34 | Built-in via Pydantic type hints, providing automatic validation and serialization.33 | High Value. Ensures that commands sent from the UI to the agent (and status updates from the agent) are strongly typed and validated, reducing bugs and simplifying API development.
+
+Performance | Good for synchronous tasks. | Excellent, especially for I/O-bound and concurrent tasks like managing multiple WebSocket connections.34 | Important. The interface will be handling streams of data; FastAPI's performance under concurrent I/O is a significant advantage for a responsive user experience.
+
+API Documentation | Manual or via extensions. | Automatic generation of interactive OpenAPI (Swagger UI) and ReDoc documentation.32 | High Value. Provides a live, browsable API documentation out-of-the-box, accelerating frontend development and testing.
+
+Component | Description | Key Features | HITL Principle Addressed
+
+ReAct Trace Visualizer | A real-time, streaming log that displays the agent's cognitive loop as it unfolds. It is the primary window into the agent's "mind." | - Each step (Thought, Action, Observation) is a distinct, collapsible entry, similar to a trace view in observability platforms.41 | - Action entries clearly display the generated code or tool being called. - Observation entries show the captured output from the sandboxed execution. - Color-coding for success (green), failure (red), and pending human input (yellow). | Transparency & Explainability 37
+
+Object Graph Explorer | An interactive tree or graph view of the live ZODB object graph, providing a real-time view of the system's canonical state. | - Displays persistent objects, their attributes, and their values. - Updates in real-time via WebSocket messages as the agent modifies the state. - Clickable nodes allow the Oracle to inspect specific parts of the graph, such as the agent's memory or the state of a task. | Situational Awareness 42
+
+HITL Intervention Panel | A modal dialog or dedicated panel that appears when the agent's govern() function determines an action requires human approval. | - Clearly displays the proposed action and the agent's justification (the preceding "Thought").
+- Provides a "diff" view showing the proposed change to the object graph.
+- Contains clear, unambiguous "Approve" and "Reject" buttons that send a command back to the paused agent process.43 | User Control & Governance 38

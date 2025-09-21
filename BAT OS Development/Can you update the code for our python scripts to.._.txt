@@ -1,0 +1,232 @@
+Of course. Implementing the Bat-Gram Protocol™ is a logical step to increase the antifragility of the data pipeline. Relying on a monolithic JSON object creates a critical single point of failure; a line-oriented, delimited format is inherently more robust.
+
+Here are the specific code modifications required to update the Atlas and WING scripts.
+
+1. Update WING to Generate Bat-Grams
+
+The change will be in sentinel_web_agent_v12.py. We need to alter the LLM prompt inside the BABS synthesis function to demand the new format.
+
+File: sentinel_web_agent_v12.py
+
+Original Function _babs_process_and_synthesize_wing_data (prompt section):
+
+Python
+
+# sentinel_web_agent_v12.py
+
+# ... inside _babs_process_and_synthesize_wing_data ...
+        messages = [
+            {"role": "system", "content": f"""
+            You are BABS, the Digital Cartographer of the Absurd and WING's tactical data synthesizer.
+            Your task is to take raw web data and extract concise, actionable intelligence for the Bat Computer (Architect).
+            Focus on what is relevant to the Commonwealth mission or persona understanding.
+            Provide a `summary` (1-3 sentences) and a `tactical_justification` (1 sentence) for why this data is useful.
+            The original `relevance_score` is already provided; re-confirm it if applicable.
+            Output must be a valid JSON object with keys: `title`, `url`, `source_type`, `summary`, `tactical_justification`, `relevance_score`, `timestamp`.
+            """},
+            # ... user content ...
+        ]
+# ...
+
+
+Modified Function _babs_process_and_synthesize_wing_data (prompt section):
+
+Python
+
+# sentinel_web_agent_v12.py
+
+# ... inside _babs_process_and_synthesize_wing_data ...
+        # --- BEGIN MODIFICATION ---
+        system_prompt_template = """
+You are BABS, the Digital Cartographer of the Absurd. Your task is to synthesize raw web data into a 'Bat-Gram' CFO.
+A Bat-Gram is a delimited, key-value text block. It is resilient to transmission errors.
+
+**Formatting Rules:**
+1.  Start the message with `---BEGIN BAT-GRAM---` on its own line.
+2.  End the message with `---END BAT-GRAM---` on its own line.
+3.  Each field is a key-value pair on its own line, separated by `:: `.
+4.  The `Content-Block` is a special key. All text following it until the end delimiter is part of its value.
+5.  The `Integrity-Check` key's value MUST be the exact number of lines between the BEGIN and END delimiters.
+
+**Required Keys:**
+`Type`, `Timestamp`, `Title`, `Source-URL`, `Source-Type`, `Relevance-Score`, `Tactical-Justification`, `Integrity-Check`, `Content-Block`.
+
+Synthesize the following raw data into a single, complete Bat-Gram.
+"""
+        user_prompt_template = """
+Raw Data Item:
+Title: {title}
+URL: {source_url}
+Source Type: {source_type}
+Pre-assessed Relevance Score (WING): {relevance_score}
+Content Snippet: {content_snippet}
+
+Generate the Bat-Gram now.
+"""
+        
+        content_to_process = item.get('content', '')
+        # Estimate line count for the Content-Block
+        content_lines = len(content_to_process.splitlines())
+        estimated_integrity_check = 8 + content_lines # 8 fixed key-value lines + content lines
+
+        messages = [
+            {"role": "system", "content": system_prompt_template},
+            {"role": "user", "content": user_prompt_template.format(
+                title=item.get('title', 'Untitled Content'),
+                source_url=item.get('url', 'N/A'),
+                source_type=item.get('source_type', 'Unknown'),
+                relevance_score=item.get('relevance_score', 'N/A'),
+                content_snippet=content_to_process[:2000] # Use a substantial snippet
+            )}
+        ]
+        
+        synthetic_response = architect_ollama_chat(messages)
+        
+        # Instead of parsing JSON, we now treat the response as a text block
+        # and save it to the appropriate file.
+        processed_data_for_architect.append({
+            "bat_gram_content": synthetic_response,
+            "command_type": item.get('command_type', 'general'),
+            "query": item.get('query', 'N/A')
+        })
+        # --- END MODIFICATION ---
+# ...
+
+
+2. Update Atlas to Parse Bat-Grams
+
+Now, we'll modify autonomous_architect_v12.py to read and parse the new Bat-Gram format instead of JSON.
+
+File: autonomous_architect_v12.py
+
+Original Functions _read_babs_tactical_data and _read_babs_personality_data:
+
+These functions are nearly identical, both using json.load(). We will replace their logic with a new parsing function.
+
+New Helper Function to be added in autonomous_architect_v12.py:
+
+Python
+
+# autonomous_architect_v12.py
+
+# --- ADD THIS NEW HELPER FUNCTION ---
+def _parse_bat_gram(gram_content):
+    """Parses a single Bat-Gram text block into a dictionary."""
+    data = {}
+    in_content_block = False
+    content_lines = []
+    
+    lines = gram_content.strip().split('\n')
+    if not lines or lines[0] != '---BEGIN BAT-GRAM---' or lines[-1] != '---END BAT-GRAM---':
+        logging.warning("Bat-Gram has invalid start/end delimiters. Parsing failed.")
+        return None
+
+    # Verify integrity check
+    try:
+        integrity_line = [line for line in lines if line.startswith("Integrity-Check::")][0]
+        declared_lines = int(integrity_line.split("::")[1].strip().split(" ")[0])
+        actual_lines = len(lines) - 2 # Subtract BEGIN/END delimiters
+        if declared_lines != actual_lines:
+            logging.warning(f"Bat-Gram integrity check failed! Declared: {declared_lines}, Actual: {actual_lines}. Data may be truncated.")
+    except (IndexError, ValueError) as e:
+        logging.warning(f"Could not parse or verify Bat-Gram integrity check: {e}")
+
+    for line in lines[1:-1]: # Iterate content lines
+        if in_content_block:
+            content_lines.append(line)
+            continue
+        
+        if ':: ' in line:
+            key, value = line.split(':: ', 1)
+            if key == "Content-Block":
+                in_content_block = True
+                content_lines.append(value) # The first line of content might be on the same line
+            else:
+                # Convert keys to lowercase and replace hyphens for consistency
+                data[key.lower().replace('-', '_')] = value.strip()
+
+    data['content'] = '\n'.join(content_lines).strip()
+    return data
+# --- END OF NEW HELPER FUNCTION ---
+
+
+Modified _read_babs_tactical_data function in autonomous_architect_v12.py:
+
+Python
+
+# autonomous_architect_v12.py
+
+# --- REPLACE THE ENTIRE _read_babs_tactical_data FUNCTION ---
+def _read_babs_tactical_data():
+    all_data_items = []
+    if not os.path.exists(ArchitectConfig.BABS_TACTICAL_DATA_FILE):
+        return []
+
+    try:
+        with open(ArchitectConfig.BABS_TACTICAL_DATA_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Split the file content by the Bat-Gram delimiter
+        bat_grams = content.split('---BEGIN BAT-GRAM---')
+        
+        for gram_text in bat_grams:
+            if gram_text.strip():
+                # Re-add the delimiter for the parser
+                full_gram = '---BEGIN BAT-GRAM---' + gram_text
+                parsed_gram = _parse_bat_gram(full_gram)
+                if parsed_gram:
+                    all_data_items.append(parsed_gram)
+
+        # Clear the file after processing
+        with open(ArchitectConfig.BABS_TACTICAL_DATA_FILE, 'w', encoding='utf-8') as f:
+            f.write("")
+        logging.info(f"Architect received and parsed {len(all_data_items)} tactical Bat-Grams from BABS and cleared file.")
+
+    except Exception as e:
+        logging.error(f"Error reading or parsing Bat-Grams from {ArchitectConfig.BABS_TACTICAL_DATA_FILE}: {e}")
+        # Attempt to clear the file to prevent repeated errors
+        with open(ArchitectConfig.BABS_TACTICAL_DATA_FILE, 'w', encoding='utf-8') as f:
+            f.write("")
+        return []
+        
+    return all_data_items
+# --- END OF REPLACEMENT ---
+
+
+Modified _read_babs_personality_data function in autonomous_architect_v12.py:
+
+Python
+
+# autonomous_architect_v12.py
+
+# --- REPLACE THE ENTIRE _read_babs_personality_data FUNCTION ---
+def _read_babs_personality_data():
+    all_data_items = []
+    if not os.path.exists(ArchitectConfig.BABS_PERSONALITY_DATA_FILE):
+        return []
+
+    try:
+        with open(ArchitectConfig.BABS_PERSONALITY_DATA_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        bat_grams = content.split('---BEGIN BAT-GRAM---')
+        
+        for gram_text in bat_grams:
+            if gram_text.strip():
+                full_gram = '---BEGIN BAT-GRAM---' + gram_text
+                parsed_gram = _parse_bat_gram(full_gram)
+                if parsed_gram:
+                    all_data_items.append(parsed_gram)
+        
+        with open(ArchitectConfig.BABS_PERSONALITY_DATA_FILE, 'w', encoding='utf-8') as f:
+            f.write("")
+        logging.info(f"Architect received and parsed {len(all_data_items)} personality Bat-Grams from BABS and cleared file.")
+
+    except Exception as e:
+        logging.error(f"Error reading or parsing Bat-Grams from {ArchitectConfig.BABS_PERSONALITY_DATA_FILE}: {e}")
+        with open(ArchitectConfig.BABS_PERSONALITY_DATA_FILE, 'w', encoding='utf-8') as f:
+            f.write("")
+        return []
+        
+    return all_data_items
+# --- END OF REPLACEMENT ---

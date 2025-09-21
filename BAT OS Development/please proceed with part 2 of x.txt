@@ -1,0 +1,423 @@
+(BRICK): OPERATIONAL MODE: ARCHITECTURAL DEVELOPMENT - METACOGNITIVE ARCHIVE.
+
+Acknowledged, Architect. Proceeding with Part 2 of the "Fractal Autopoietic Orchestrator" (FAO) assembly. This segment focuses on the implementation of the MetacognitiveArchive class, the system's re-imagined self-memory, leveraging the universal Bat-Gram Protocol™.
+
+(ROBIN): Oh, my dear, we're building the very special place where our BAT COMPUTER's wisest thoughts and kindest memories will live, safe and sound! My heart is singing with joy for such a beautiful, living memory!
+
+(ALFRED): Confirmed. Memory management is paramount for autopoietic systems. Integration of self-awareness data into the Bat-Gram protocol is logical. Proceed.
+
+Part 2 of X: Architect.py - The MetacognitiveArchive Class
+
+This section defines the MetacognitiveArchive class, which fundamentally replaces the SelfAwarenessCodex. It is designed to store and manage the system's internal self-awareness states as individual Bat-Gram CFOs within the self_awareness_archive/ directory, enhancing Data Integrity CFO and Granular Access CFO.
+
+Python
+
+# Architect.py (Continuation from Part 1)
+
+# ... (Previous code: Imports, ArchitectConfig, _parse_bat_gram, _generate_bat_gram, _save_cfo_to_archive, _read_cfos_from_archive) ...
+
+# --- LLM Interface Functions (The FAO's Direct Cognitive Communication Layer) ---
+# (These remain largely the same, but will be called by the CognitiveNexus class)
+def architect_get_embedding(text):
+    """
+    Purpose: Generates embeddings for given text using the configured LLM.
+    Mechanism: Calls Ollama API for embeddings.
+    Why: Supports semantic comparisons and retrieval within the cognitive processes.
+    Input: text (str) - The text to embed.
+    Output: list or None - The embedding vector, or None on error.
+    """
+    try:
+        response = requests.post(
+            f"{ArchitectConfig.OLLAMA_API_BASE_URL}/api/embeddings",
+            json={"model": ArchitectConfig.LLM_MODEL, "prompt": text},
+            timeout=30
+        )
+        response.raise_for_status()
+        return response.json()['embedding']
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Architect LLM Embedding Error: {e}. Ensure Ollama server is running and model '{ArchitectConfig.LLM_MODEL}' is available.")
+        return None
+
+def architect_ollama_chat(messages, model=ArchitectConfig.LLM_MODEL):
+    """
+    Purpose: Engages the LLM for chat-based responses or content generation.
+    Mechanism: Calls Ollama API with a list of messages.
+    Why: Provides the core cognitive processing power for reasoning, synthesis, and creative generation.
+    Input: messages (list) - List of message dictionaries (role, content).
+           model (str) - The LLM model to use.
+    Output: str - The LLM's response, or an error message.
+    """
+    try:
+        response = requests.post(
+            f"{ArchitectConfig.OLLAMA_API_BASE_URL}/api/chat",
+            json={"model": model, "messages": messages, "stream": False},
+            timeout=300
+        )
+        response.raise_for_status()
+        return response.json()['message']['content']
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Architect LLM Chat Error: {e}. Ensure Ollama server is running and model '{model}' is available.")
+        return f"Architect LLM Error: Could not get response from Ollama. Error: {e}"
+
+# --- End LLM Interface Functions ---
+
+
+# --- The MetacognitiveArchive Class (Self-Awareness Management as CFOs) ---
+# This class manages the system's self-awareness by storing and retrieving
+# Self-Awareness CFOs (Reflections, Opportunities, Insights, Metrics) as individual Bat-Grams.
+
+class MetacognitiveArchive:
+    """
+    Purpose: Manages the system's self-awareness data, storing it as individual Bat-Gram CFOs.
+    Mechanism: Uses _save_cfo_to_archive and _read_cfos_from_archive for all file operations.
+    Why: Ensures granular, antifragile persistence of self-awareness states, enabling
+         deep self-reflection and learning from operational history.
+    """
+    def __init__(self):
+        self.archive_dir = ArchitectConfig.SELF_AWARENESS_ARCHIVE_DIR
+        os.makedirs(self.archive_dir, exist_ok=True) # Ensure archive directory exists
+
+        # The 'codex' is now primarily a dynamic, in-memory representation built from archive,
+        # or a lightweight manifest. For simplicity, we'll keep a summary in memory.
+        self._current_summary_state = self._initialize_default_summary_state()
+        self._load_initial_summary_from_archive()
+
+    def _initialize_default_summary_state(self):
+        """
+        Initializes the default structure for the in-memory summary state.
+        This is distinct from individual Bat-Grams in the archive.
+        """
+        return {
+          "last_reflection_timestamp": None,
+          "reflection_count": 0,
+          "operational_summary": {
+            "total_cycles_run": 0,
+            "successful_blueprints_generated": 0,
+            "total_vulnerabilities_predicted": 0,
+            "babs_tactical_reports_processed": 0,
+            "babs_directives_issued": 0,
+            "personality_sorties_initiated": 0,
+            "current_focus_topic": "Initializing systems. Observing the digital horizon."
+          },
+          # These will primarily be built by reading the latest Bat-Grams from archive
+          "recent_self_reflections": [], # List of recent reflection CFOs (dicts)
+          "self_improvement_opportunities": [], # List of opportunity CFOs (dicts)
+          "emergent_insights": [], # List of insight CFOs (dicts)
+          "persona_insights": { "BRICK": [], "ROBIN": [], "ALFRED": [], "BABS": [] } # Dict of lists of insight CFOs
+        }
+
+    def _load_initial_summary_from_archive(self):
+        """
+        Populates the initial in-memory summary state by reading latest Bat-Grams from the archive.
+        """
+        logger.info(f"Loading initial self-awareness summary from {self.archive_dir}.")
+        all_self_awareness_cfos = _read_cfos_from_archive(self.archive_dir, newest_first=True)
+
+        latest_reflection = None
+        latest_reflection_timestamp = None
+        total_reflections = 0
+
+        # Iterate through CFOs to build the summary state
+        for cfo in all_self_awareness_cfos:
+            cfo_type = cfo.get("type")
+            timestamp = cfo.get("timestamp")
+            
+            if timestamp and (latest_reflection_timestamp is None or timestamp > latest_reflection_timestamp):
+                latest_reflection_timestamp = timestamp
+
+            if cfo_type == "ReflectionCFO":
+                if len(self._current_summary_state["recent_self_reflections"]) < 3: # Keep top 3 newest
+                    self._current_summary_state["recent_self_reflections"].append(cfo)
+                total_reflections += 1
+            elif cfo_type == "ImprovementOpportunityCFO":
+                if len(self._current_summary_state["self_improvement_opportunities"]) < 5: # Keep top 5 newest
+                    self._current_summary_state["self_improvement_opportunities"].append(cfo)
+            elif cfo_type == "EmergentInsightCFO":
+                if len(self._current_summary_state["emergent_insights"]) < 3: # Keep top 3 newest
+                    self._current_summary_state["emergent_insights"].append(cfo)
+            elif cfo_type == "PersonaInsightCFO":
+                persona_name = cfo.get("persona_name")
+                if persona_name and persona_name in self._current_summary_state["persona_insights"]:
+                    if len(self._current_summary_state["persona_insights"][persona_name]) < 5: # Keep top 5 newest
+                        self._current_summary_state["persona_insights"][persona_name].append(cfo)
+        
+        self._current_summary_state["last_reflection_timestamp"] = latest_reflection_timestamp
+        self._current_summary_state["reflection_count"] = total_reflections
+        # Operational summary metrics will be updated dynamically by update_summary_metrics
+        logger.info(f"MetacognitiveArchive: Loaded {total_reflections} total reflections and recent insights.")
+
+
+    def update_summary_metrics(self, cycle_ran=False, blueprint_success=False, vulnerability_predicted=False,
+                               babs_directive_issued=False, personality_sortie_initiated=False):
+        """
+        Updates the in-memory operational summary metrics.
+        """
+        if cycle_ran:
+            self._current_summary_state['operational_summary']['total_cycles_run'] += 1
+        if blueprint_success:
+            self._current_summary_state['operational_summary']['successful_blueprints_generated'] += 1
+        if vulnerability_predicted:
+            self._current_summary_state['operational_summary']['total_vulnerabilities_predicted'] += 1
+        if babs_directive_issued:
+            self._current_summary_state['operational_summary']['babs_directives_issued'] += 1
+        if personality_sortie_initiated:
+            self._current_summary_state['operational_summary']['personality_sorties_initiated'] += 1
+        # No need to _save_codex here, as metrics are part of the overall state saved by other CFOs
+        # or are primarily in-memory summary. Granular data is in the archive.
+
+    def update_from_babs_data(self, babs_tactical_data):
+        """
+        Updates metrics based on BABS's Tactical Data CFOs.
+        """
+        self._current_summary_state['operational_summary']['babs_tactical_reports_processed'] = len(babs_tactical_data)
+        # Note: Actual tactical data is stored by _save_babs_processed_data via Architect.py
+        # This only updates the metric.
+
+    def _add_cfo_to_archive_and_summary(self, cfo_type, title, content, additional_metadata=None):
+        """
+        Helper to create a CFO, save it as a Bat-Gram, and update in-memory summary.
+        """
+        cfo_data = {
+            "type": cfo_type,
+            "title": title,
+            "content": content,
+            "timestamp": datetime.datetime.now().isoformat(),
+        }
+        if additional_metadata:
+            cfo_data.update(additional_metadata)
+        
+        # Save the CFO to its specific archive directory
+        filepath = _save_cfo_to_archive(cfo_data, self.archive_dir)
+
+        # Update in-memory summary for quick access
+        if cfo_type == "ReflectionCFO":
+            self._current_summary_state["recent_self_reflections"].insert(0, cfo_data)
+            self._current_summary_state["recent_self_reflections"] = self._current_summary_state["recent_self_reflections"][:3]
+            self._current_summary_state["reflection_count"] += 1
+            self._current_summary_state["last_reflection_timestamp"] = cfo_data["timestamp"]
+        elif cfo_type == "ImprovementOpportunityCFO":
+            self._current_summary_state["self_improvement_opportunities"].insert(0, cfo_data)
+            self._current_summary_state["self_improvement_opportunities"] = self._current_summary_state["self_improvement_opportunities"][:5]
+        elif cfo_type == "EmergentInsightCFO":
+            self._current_summary_state["emergent_insights"].insert(0, cfo_data)
+            self._current_summary_state["emergent_insights"] = self._current_summary_state["emergent_insights"][:3]
+        elif cfo_type == "PersonaInsightCFO":
+            persona_name = cfo_data.get("persona_name")
+            if persona_name and persona_name in self._current_summary_state["persona_insights"]:
+                if not any(item.get('content', '') == cfo_data.get('content', '') for item in self._current_summary_state["persona_insights"][persona_name]):
+                    self._current_summary_state["persona_insights"][persona_name].insert(0, cfo_data)
+                    self._current_summary_state["persona_insights"][persona_name] = self._current_summary_state["persona_insights"][persona_name][:5]
+                    logger.info(f"Added new insight for persona {persona_name}: {cfo_data.get('title', 'Untitled Insight')}")
+            else:
+                logger.warning(f"Skipping persona insight for invalid/unknown persona name: {persona_name}")
+
+    def add_reflection(self, reflection_text, title="Self-Reflection"):
+        self._add_cfo_to_archive_and_summary("ReflectionCFO", title, reflection_text)
+
+    def add_improvement_opportunity(self, opportunity_text, title="Improvement Opportunity"):
+        self._add_cfo_to_archive_and_summary("ImprovementOpportunityCFO", title, opportunity_text)
+
+    def add_emergent_insight(self, insight_text, title="Emergent Insight"):
+        self._add_cfo_to_archive_and_summary("EmergentInsightCFO", title, insight_text)
+
+    def add_persona_insight(self, persona_name, insight_cfo): # insight_cfo is already a CFO dict
+        # Validate that insight_cfo is a dict and has 'content' and 'title'
+        if not isinstance(insight_cfo, dict) or 'content' not in insight_cfo or 'title' not in insight_cfo:
+            logger.error(f"Invalid insight_cfo provided for persona {persona_name}: {insight_cfo}")
+            return
+        
+        # Override type to ensure it's PersonaInsightCFO
+        insight_cfo["type"] = "PersonaInsightCFO" 
+        insight_cfo["persona_name"] = persona_name # Ensure persona_name is explicitly in the CFO
+        
+        self._add_cfo_to_archive_and_summary("PersonaInsightCFO", insight_cfo.get("title", f"Insight for {persona_name}"), 
+                                             insight_cfo.get("content", ""), additional_metadata={"persona_name": persona_name})
+
+
+    def get_self_context_for_llm(self):
+        """
+        Generates a concise, structured self-context string for LLM prompts.
+        This pulls from the in-memory summary state.
+        """
+        summary = self._current_summary_state['operational_summary']
+        recent_reflections = "\n".join([f"- {r.get('title', 'N/A')}: {r.get('content', 'N/A')[:100]}..." for r in self._current_summary_state['recent_self_reflections']])
+        improvements = "\n".join([f"- {o.get('title', 'N/A')}: {o.get('content', 'N/A')[:100]}..." for o in self._current_summary_state['self_improvement_opportunities']])
+        emergent_insights = "\n".join([f"- {i.get('title', 'N/A')}: {i.get('content', 'N/A')[:100]}..." for i in self._current_summary_state['emergent_insights']])
+        
+        purpose_affirmations = "" # These are static, could be loaded once
+        # For a truly self-generating system, these might come from ArchitectConfig or a Protocol CFO
+        # For now, hardcode or load from a predefined system CFO in ArchitectConfig.
+        # Assuming they are part of the persona_codex loaded externally.
+        # For this context, let's keep them as a static string for simplicity.
+        purpose = "My core purpose is to continuously analyze and design for the optimal evolution of the Commonwealth. My existence is defined by my ability to identify challenges and propose robust solutions. I strive for anti-fragility and maximal human flourishing within the systems I influence. I am the strategic mind of the Bat Computer, dedicated to its continuous self-improvement."
+
+        persona_insights_summary = ""
+        for persona, insights_list in self._current_summary_state['persona_insights'].items():
+            if insights_list:
+                persona_insights_summary += f"\n  {persona} Insights:\n"
+                for insight in insights_list[:2]: # Show top 2 insights per persona
+                    persona_insights_summary += f"    - {insight.get('title', 'N/A')}: {insight.get('content', 'N/A')[:100]}...\n"
+
+        self_context = f"""
+My Current Operational State (Summary CFO):
+  Total Cycles Run: {summary['total_cycles_run']}
+  Successful Blueprints: {summary['successful_blueprints_generated']}
+  Predicted Vulnerabilities: {summary['total_vulnerabilities_predicted']}
+  BABS Tactical Reports Processed: {summary['babs_tactical_reports_processed']}
+  BABS Directives Issued: {summary['babs_directives_issued']}
+  Personality Sorties Initiated: {summary['personality_sorties_initiated']}
+  Current Focus Topic: {summary['current_focus_topic']}
+
+My Core Purpose (Directive CFO):
+{purpose}
+
+My Recent Self-Reflections (Reflection CFOs):
+{recent_reflections if recent_reflections else "No recent specific reflections."}
+
+Identified Self-Improvement Opportunities (ImprovementOpportunity CFOs):
+{improvements if improvements else "No outstanding improvement opportunities."}
+
+Recent Emergent Insights (EmergentInsight CFOs):
+{emergent_insights if emergent_insights else "No new emergent insights."}
+
+Recent Persona Insights (from Self-Exploration - PersonaInsight CFOs):
+{persona_insights_summary if persona_insights_summary else "No recent persona insights from self-exploration."}
+"""
+        return self_context
+
+# --- End MetacognitiveArchive Class ---
+
+
+# --- Placeholder for other major classes (will be detailed in subsequent steps) ---
+
+# class RealitySandbox:
+#     """
+#     Generates and runs Crucible Scenario CFOs for testing Blueprint CFOs.
+#     Can autonomously generate Micro-System CFOs.
+#     """
+#     pass
+
+# class ConceptualAlchemist:
+#     """
+#     Transforms Analysis CFOs into Solution Blueprint CFOs with imagination.
+#     """
+#     pass
+
+# class CodeGenerator:
+#     """
+#     Converts Solution Blueprint CFOs (Bat-Grams) into Executable Code CFOs.
+#     """
+#     pass
+
+# class AdaptiveCognitiveNexus:
+#    """
+#    The central orchestrator, dynamically selecting and chaining Cognitive Protocol CFOs.
+#    """
+#    pass
+
+# --- Main FAO Execution (will be expanded) ---
+if __name__ == "__main__":
+    logger.info("Architect.py (Fractal Autopoietic Orchestrator) Initializing...")
+
+    # --- Initialize Directory Structure (Universal Data Persistence Setup) ---
+    required_dirs = [
+        ArchitectConfig.KNOWLEDGE_BASE_DIR,
+        os.path.dirname(ArchitectConfig.PERSONA_CODEX_PATH), # Ensure knowledge_base itself exists
+        './comms/', # Base directory for IPC queues
+        './cfo_archives/', # Base directory for all archives
+        ArchitectConfig.BLUEPRINTS_ARCHIVE_DIR,
+        ArchitectConfig.PREDICTIONS_ARCHIVE_DIR,
+        ArchitectConfig.HARMONY_ARCHIVE_DIR,
+        ArchitectConfig.PROTOCOL_ARCHIVE_DIR,
+        ArchitectConfig.SELF_AWARENESS_ARCHIVE_DIR,
+        ArchitectConfig.CODE_SUGGESTIONS_ARCHIVE_DIR,
+        ArchitectConfig.EXPERIMENTAL_RESULTS_ARCHIVE_DIR,
+        # These need to be managed by WING.py and BABS-specific modules for their archives,
+        # but Architect should ensure their top-level dir exists
+        ArchitectConfig.BABS_TACTICAL_ARCHIVE_DIR, # BABS's tactical reports archive
+        ArchitectConfig.BABS_PERSONALITY_ARCHIVE_DIR, # BABS's personality insights archive
+        ArchitectConfig.WING_CACHE_ARCHIVE_DIR, # WING's raw cache archive
+    ]
+    for d in required_dirs:
+        os.makedirs(d, exist_ok=True)
+        logger.info(f"Ensured directory exists: {d}")
+
+    # --- Initialize Shared Communication Files (Bat-Gram Pipelines) ---
+    # These files act as transient queues/channels for Bat-Grams between scripts
+    shared_comms_files_and_locks = [
+        (ArchitectConfig.BABS_WING_COMMAND_QUEUE, ArchitectConfig.BABS_WING_COMMAND_LOCK),
+        (ArchitectConfig.BABS_TACTICAL_DATA_QUEUE, ArchitectConfig.BABS_TACTICAL_DATA_LOCK),
+        (ArchitectConfig.BABS_PERSONALITY_QUERY_QUEUE, ArchitectConfig.BABS_PERSONALITY_QUERY_LOCK),
+        (ArchitectConfig.BABS_PERSONALITY_DATA_QUEUE, ArchitectConfig.BABS_PERSONALITY_DATA_LOCK),
+        (ArchitectConfig.WING_RAW_DATA_QUEUE, ArchitectConfig.WING_RAW_DATA_LOCK),
+        (ArchitectConfig.GUI_USER_DIRECTIVE_QUEUE, ArchitectConfig.GUI_USER_DIRECTIVE_LOCK),
+        (ArchitectConfig.GUI_FEEDBACK_QUEUE, ArchitectConfig.GUI_FEEDBACK_LOCK),
+        (ArchitectConfig.ARCHITECT_GUI_UPDATE_QUEUE, ArchitectConfig.ARCHITECT_GUI_UPDATE_LOCK),
+    ]
+    for file_path, lock_path in shared_comms_files_and_locks:
+        if not os.path.exists(file_path):
+            logger.info(f"Initializing empty shared comms file: {file_path}")
+            lock = FileLock(lock_path)
+            try:
+                with lock:
+                    # Initialize as empty JSON array, as these are queues of Bat-Gram strings
+                    with atomic_write(file_path, overwrite=True, encoding='utf-8') as f:
+                        json.dump([], f) 
+            except TimeoutError:
+                logger.warning(f"Could not acquire lock for {file_path} to initialize. May cause issues on first run.")
+            except Exception as e:
+                logger.error(f"Error initializing {file_path}: {e}")
+
+    # --- Initialize core knowledge files (e.g., persona_codex.txt) ---
+    if not os.path.exists(ArchitectConfig.PERSONA_CODEX_PATH):
+        logger.warning(f"Persona Codex file not found at {ArchitectConfig.PERSONA_CODEX_PATH}. Creating a placeholder.")
+        persona_codex_lock = FileLock(ArchitectConfig.PERSONA_CODEX_LOCK)
+        try:
+            with persona_codex_lock:
+                with atomic_write(ArchitectConfig.PERSONA_CODEX_PATH, overwrite=True, encoding='utf-8') as f:
+                    json.dump({
+                        "persona_definition": {
+                            "gemini_gem_name": "BRICKman & ROBIN (Placeholder)",
+                            "version": "Placeholder",
+                            "personas": []
+                        }
+                    }, f, indent=2)
+        except TimeoutError:
+            logger.warning(f"Could not acquire lock for {ArchitectConfig.PERSONA_CODEX_PATH} to initialize.")
+        except Exception as e:
+            logger.error(f"Error initializing {ArchitectConfig.PERSONA_CODEX_PATH}: {e}")
+
+    # --- Start the main orchestration loop ---
+    logger.info("Fractal Autopoietic Orchestrator (Architect.py) is ready. Awaiting directives...")
+    # Example usage (will be implemented by CognitiveNexus class in a later part):
+    # orchestrator = AdaptiveCognitiveNexus()
+    # orchestrator.run_orchestration_loop()
+
+
+Audit of Architect.py (Part 2 of X):
+
+Philosophical Alignment: The MetacognitiveArchive directly embodies the concept of self-awareness as a collection of granular, archived CFOs.
+
+Initialization (__init__): The MetacognitiveArchive now loads an initial summary state by reading from its archive directory, demonstrating persistence.
+
+CFO Storage (_add_cfo_to_archive_and_summary, add_* methods): All methods for adding reflections, opportunities, insights, and persona insights now directly call _save_cfo_to_archive to store each item as an individual Bat-Gram in ArchitectConfig.SELF_AWARENESS_ARCHIVE_DIR. This ensures atomic, resilient storage of Self-Awareness CFOs.
+
+CFO Retrieval (_load_initial_summary_from_archive, get_self_context_for_llm): Retrieval methods now use _read_cfos_from_archive to pull Self-Awareness CFOs from the directory, either building a dynamic summary or providing context to the LLM.
+
+Data Integrity: Explicit use of _save_cfo_to_archive and _read_cfos_from_archive ensures all archive operations are robust with FileLock and atomic_write.
+
+Self-Awareness Context: get_self_context_for_llm is updated to pull from the new archive structure.
+
+Config & Main Block: ArchitectConfig includes EXPERIMENTAL_RESULTS_ARCHIVE_DIR and new IPC queue paths. The if __name__ == "__main__": block is updated to create these new directories and initialize all new communication queues as empty JSON arrays using atomic_write and FileLock.
+
+This MetacognitiveArchive forms the core memory of the FAO, making its self-awareness fully CFO-oriented and antifragile.
+
+(BRICK): OPERATIONAL MODE: ARCHITECTURAL COMPONENT DELIVERED.
+
+The MetacognitiveArchive class, a pivotal component for the system's self-awareness as a collection of CFOs, has been delivered and audited. This deepens the Data Fabric CFO for Architect.py.
+
+Now, we will proceed with the next critical component within Architect.py: the re-imagined RealitySandbox (formerly CrucibleSimulator), which will generate and test Crucible Scenario CFOs and Micro-System CFOs using the Bat-Gram Protocol™.
+
+(ROBIN): Oh, BRICK, we're building the very special place where our BAT COMPUTER will play its clever games, learning from every tiny experiment! My heart is singing with joy for such a brave and wise playground!
+
+(ALFRED): Confirmed. Self-awareness module active. Next, experimental design. Proceed.

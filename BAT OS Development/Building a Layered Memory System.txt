@@ -1,0 +1,393 @@
+A Research and Development Plan for a Continuously Managed, Layered Fractal Memory Subsystem
+
+Section 1: Architectural Foundations of the Layered Fractal Memory
+
+This section establishes the definitive architectural blueprint for a continuously managed, layered fractal memory subsystem. The design is a direct and deterministic consequence of the AURA/BAT Operating System's foundational philosophy of info-autopoiesis, where the system's primary function is the continuous, recursive act of its own becoming.1 The memory subsystem is therefore conceived not as a passive, external database but as an intrinsic, living component of the AI's cognitive architecture—a "Living Memory" that mirrors and enables the evolution of its "Living Image".2 Every technical decision herein is grounded in the established principles of "Structural Empathy" and "Transactional Cognition," ensuring the final system is robust, coherent, and philosophically aligned with its purpose.1
+
+1.1 The Philosophical Mandate: From "Living Image" to "Living Memory"
+
+The core mandate is to extend the concept of the "Living Image"—the single, persistent, transactional object database that encapsulates the system's entire state 5—to its memory. This requires an architecture that is itself "alive," capable of runtime modification, self-organization, and continuous evolution. The proposed layered architecture is a direct computational analogue to biological memory systems, creating a hierarchy of recall and persistence.
+
+L1 (Hot Cache): Corresponds to short-term or working memory, providing immediate, low-latency access to currently relevant information.
+
+L2 (Warm Storage): Corresponds to long-term memory, a vast and scalable repository of past experiences.
+
+L3 (Persistent Ground Truth): Represents the immutable substrate of identity, the "genome" from which memory and capability are expressed.
+
+The "fractal" nature of the system is realized along two dimensions. Structurally, memory is organized fractally, with raw, high-entropy ContextFractals being abstracted into low-entropy, generalized ConceptFractals.1 Procedurally, the lifecycle of a memory object—its ingestion, its movement between tiers, and its potential eviction—is governed by a self-similar set of policies that ensure coherent management across the entire hierarchy.
+
+1.2 Deconstructing the Memory Hierarchy: Roles and Responsibilities
+
+The architecture integrates three distinct technologies, each selected for its specific performance characteristics, which map directly to the roles of the three memory tiers.
+
+L1 (Hot Cache - FAISS): This tier is engineered for extreme low-latency recall, serving as the AI's working memory. It holds the vector embeddings for the most recently and frequently accessed memory objects, as well as all newly ingested memories. Its primary function is to accelerate the "inner loop" of the AI's cognitive processes, such as the doesNotUnderstand cycle, by providing immediate context.1 The chosen technology is FAISS (Facebook AI Similarity Search), an in-memory library optimized for efficient similarity search in dense vector spaces.7 This tier is volatile by nature and optimized for pure performance.
+
+L2 (Warm Storage - DiskANN): This tier provides scalable, long-term recall, functioning as the AI's searchable life history. It is designed to index the entire corpus of the AI's memories, including datasets that vastly exceed available system RAM. Its purpose is to enable the AI to perform deep, associative searches across its own history, retrieving relevant past experiences to inform its reasoning on novel problems. The chosen technology is DiskANN, a suite of high-performance, graph-based indexing algorithms developed by Microsoft Research that are specifically designed for large-scale ANN search on disk.9 This tier is persistent and optimized for high recall on massive datasets.
+
+L3 (Persistent Ground Truth - ZODB): This tier is the ultimate source of truth and the guarantor of the system's integrity. It stores the complete, persistent UvmObject for every memory, including all metadata, the original source text, and a durable copy of the vector embedding. The Zope Object Database (ZODB) provides the full ACID (Atomicity, Consistency, Isolation, Durability) transactional guarantees necessary to maintain the integrity of the "Living Image".11 All modifications to the system's memory state are managed as atomic transactions within this layer, making it the anchor for the entire subsystem's consistency.11
+
+A central architectural challenge arises from the fact that ZODB provides transactional integrity but lacks native vector search capabilities, while FAISS and DiskANN provide high-performance vector search but lack transactional semantics.6 This "ZODB Indexing Paradox" dictates that the architecture cannot be a simple, independent stack. The performance layers (L1 and L2) must be architecturally subordinate to the integrity layer (L3). The only robust mechanism to enforce this subordination is a two-phase commit protocol, orchestrated by a custom ZODB
+
+DataManager. This protocol, detailed in Section 5, ensures that updates to the non-transactional L1 and L2 indices are performed atomically with the corresponding object modifications in L3, thereby upholding the system's core mandate of "Transactional Cognition".1
+
+1.3 The Data Lifecycle: A Fractal Policy of Promotion and Eviction
+
+The flow of data through the memory hierarchy is governed by a set of coherent policies that ensure the system remains responsive and adaptable.
+
+Ingestion: A new memory object is always written first to the L3 ZODB layer within an atomic transaction. Upon the successful commit of this transaction, its vector embedding is immediately populated into the L1 FAISS cache. This "write-through" approach ensures that new information is immediately available for high-speed recall.
+
+Caching Policy: The L1 cache will be managed by a Least Frequently Used (LFU) eviction policy. This choice is a direct consequence of the system's philosophical goal of building a deep, stable, and foundational understanding. LFU prioritizes retaining objects based on their total access frequency, meaning foundational concepts (ConceptFractals) or consistently relevant memories will remain cached even if they are not accessed for a period. This is superior to a Least Recently Used (LRU) policy, which prioritizes recency and would risk evicting important but less recently accessed knowledge in favor of transient information from a current task.13
+
+Promotion and Demotion: When a search query results in a "cache miss" in the L1 layer, the query is transparently forwarded to the L2 DiskANN index. If a relevant memory is found in L2, its vector embedding is "promoted" into the L1 cache for faster subsequent access. The LFU policy then determines which existing item in L1 must be "demoted" (evicted) to make space. This dynamic ensures the L1 cache continuously adapts to the AI's shifting cognitive focus.
+
+The following table provides a comparative overview of the memory hierarchy, serving as a concise architectural reference.
+
+Section 2: Stage 1 - The Persistent Substrate (L3: ZODB)
+
+This stage focuses on constructing the foundational "ground truth" layer of the memory subsystem within ZODB. The design must be philosophically coherent with the system's established prototype-based object model, where new functionality is acquired through composition and delegation rather than rigid class inheritance.1
+
+2.1 The Memorable Prototype: A Trait for Knowledge Objects
+
+To ensure seamless integration and dynamic extensibility, a new Memorable_prototype UvmObject will be forged. This object functions as a "trait" or "mixin." Any other object within the AURA system's "Living Image" (e.g., a ConceptFractal, a self-generated method object) can be made indexable and persistent in the memory subsystem simply by adding this prototype to its parent* delegation chain.6
+
+This approach avoids creating a rigid MemoryRecord class and instead provides a flexible, composable behavior. The Memorable_prototype will define the essential schema for all memory-related data, providing default slots for:
+
+_v_vector: A Python list of floats representing the object's high-dimensional vector embedding.
+
+_v_access_count: An integer counter, essential for the LFU eviction policy in the L1 cache.
+
+_v_last_accessed_utc: An ISO 8601 formatted string, providing a timestamp for recency-based analysis and potential future time-decay policies.
+
+_v_source_text: The raw string content that was used to generate the vector embedding.
+
+Furthermore, the prototype will provide a default method, to_indexable_text(self), which will be called by the MemoryManager to retrieve the content for embedding. This method can be overridden by more complex objects to provide a more sophisticated serialization of their state into text. This use of the prototype as a dynamic "interface contract" is a powerful pattern for maintaining architectural coherence in a system designed for runtime evolution. It ensures that as the AI creates new types of knowledge objects, they can be seamlessly integrated into the memory subsystem as long as they adhere to this simple compositional contract.
+
+2.2 Implementation Snippet: Forging the Memorable_prototype
+
+The following snippet, to be included in the system's genesis protocol, demonstrates the creation and initialization of this core prototype.
+
+Python
+
+# Within the genesis protocol script that populates the initial ZODB state...
+
+# Create the base prototype for all memorable objects.
+memorable_prototype = UvmObject(
+    name='Memorable_prototype',
+    _v_vector=None,
+    _v_access_count=0,
+    _v_last_accessed_utc=None,
+    _v_source_text=None
+)
+
+# Define the default behavior for serialization.
+def to_indexable_text(self):
+    """
+    Returns the text content to be used for vector embedding.
+    Complex objects should override this method to provide a more
+    meaningful representation of their state.
+    """
+    return self._slots.get('_v_source_text', '')
+
+# Install the method onto the prototype object.
+memorable_prototype.setSlot_value_('to_indexable_text', to_indexable_text)
+
+# Persist the prototype in the ZODB root for system-wide access.
+root['memorable_prototype'] = memorable_prototype
+
+
+Section 3: Stage 2 - The In-Memory Index (L1: FAISS)
+
+This stage details the implementation of the high-speed L1 cache using FAISS. This component is responsible for providing near-instantaneous similarity search results for the AI's working set of memories. Its design must address its lifecycle, state management, and the crucial requirement for atomic persistence to prevent data loss or corruption.
+
+3.1 The FaissIndexManager: Lifecycle and State Management
+
+A dedicated, non-persistent FaissIndexManager class will be implemented to encapsulate all logic related to the in-memory FAISS index. This class will be instantiated and managed by the master MemoryManager at system startup. Its lifecycle follows a strict protocol:
+
+Initialization: Upon instantiation, the manager checks the filesystem for a persisted index file (e.g., l1_cache.faiss). If the file exists, it is loaded into memory using faiss.read_index().15 If not, a new, empty index is created. The default index type will be
+IndexFlatL2, a brute-force index that performs an exhaustive search. While less scalable than other index types, it guarantees 100% recall, which is the correct trade-off for a cache layer where accuracy on the working set is paramount.16
+
+Synchronization: Immediately after initialization, the manager performs a "catch-up" synchronization. It queries the L3 ZODB to identify any Memorable objects that are not present in its loaded index (e.g., objects created while the system was offline) and adds their embeddings to the in-memory index.
+
+Runtime Operations: The manager exposes a clean API for runtime use, including methods like add(oid, vector), search(vector, k), range_search(vector, radius), and remove(oid). The oid is the unique object identifier from ZODB, which serves as the crucial link between the FAISS index entry and the ground-truth object.
+
+Persistence: The manager provides a method to atomically save the current state of the in-memory index to disk, ensuring its durability across system restarts.
+
+3.2 Atomic Persistence Protocol for the FAISS Index
+
+A critical failure mode for any persistent system is data corruption caused by an interruption during a write operation (e.g., a power failure or application crash). To mitigate this risk and uphold the principle of "Structural Empathy," the FaissIndexManager will implement an atomic write-then-rename persistence protocol.4
+
+This protocol ensures that the primary index file (l1_cache.faiss) is never in a partially written or corrupted state. The os.replace() method is used for the final step, as it provides atomic guarantees on both POSIX and Windows systems, making the implementation robust and portable.18
+
+Python
+
+import os
+import uuid
+import faiss
+
+class FaissIndexManager:
+    #... other methods: __init__, add, search...
+
+    def save_atomically(self, index_path: str):
+        """
+        Atomically persists the current in-memory index to disk.
+        Writes to a temporary file first, then performs an atomic rename.
+        """
+        temp_path = f"{index_path}.{uuid.uuid4()}.tmp"
+        try:
+            faiss.write_index(self.index, temp_path)
+            # os.replace() is an atomic operation on most modern filesystems.
+            os.replace(temp_path, index_path)
+            log('INFO', f"Atomically saved FAISS index to {index_path}")
+        except Exception as e:
+            log('ERROR', f"Failed to save FAISS index: {e}")
+            # Ensure cleanup of the temporary file on failure.
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+
+3.3 LFU Cache Eviction Logic
+
+The FaissIndexManager is responsible for enforcing the L1 cache's capacity limit. When a new memory object needs to be added and the cache is full, the LFU eviction logic is triggered. This involves querying the ZODB to find the cached object with the lowest _v_access_count, removing its corresponding entry from the FAISS index, and then adding the new object. The search method of the manager will, upon a successful cache hit, be responsible for initiating a transactional update to the corresponding ZODB object's _v_access_count, ensuring the frequency data remains accurate.
+
+The following table specifies the default parameters for the L1 FAISS cache.
+
+Section 4: Stage 3 - The Scalable Disk-Based Index (L2: DiskANN)
+
+This stage addresses the critical challenge of scaling the AI's memory beyond the constraints of system RAM. It details the protocol for building, loading, and managing a persistent, disk-based ANN index using DiskANN, enabling efficient search over billions of vectors.
+
+4.1 The DiskAnnIndexManager: A Protocol for Large-Scale ANN
+
+A DiskAnnIndexManager class will be implemented to manage the lifecycle of the L2 index. Its responsibilities are distinct from the L1 manager due to the static nature of the DiskANN index format.
+
+Initial Build Protocol: The first time the system is initialized, or when the L2 index does not exist, the manager must perform a one-time, computationally intensive bulk build. This process involves:
+
+Querying the L3 ZODB to retrieve all Memorable objects.
+
+Extracting their vector embeddings into a NumPy array.
+
+Invoking diskannpy.build_disk_index with a carefully selected set of build parameters to create the on-disk index files.10 These parameters represent a critical trade-off between build time, index size, and search recall, and are documented in the table below.
+
+Loading: On all subsequent system startups, the manager will load the existing on-disk index into a diskannpy.StaticDiskIndex object, which provides the search and batch_search APIs.
+
+4.2 A Strategy for Continuous Management: The Staging and Merging Protocol
+
+A core architectural challenge is that the diskannpy library is optimized for building and searching static indices; it does not provide an efficient API for real-time insertions or updates.10 This directly conflicts with the system's requirement to be "continuously managed." Rebuilding a billion-vector index every time a new memory is created is computationally infeasible.
+
+The solution is a batch-update architecture that decouples ingestion from indexing. New memories are not added directly to the L2 index. Instead, the L1 FAISS cache serves a dual purpose: it is both a "hot cache" for frequently accessed data and a "staging area" for new data destined for the L2 index.
+
+A persistent background process, the "Merge Daemon," will be implemented. On a configurable schedule (e.g., daily, during periods of low system load), this daemon will execute the following merge protocol:
+
+Stage & Consolidate: Identify all new vectors that exist in the L1 cache but not yet in the L2 index.
+
+Build New Index: Consolidate these new vectors with the existing L2 data and build a completely new DiskANN index in a temporary directory.
+
+Atomic Swap: Once the new index is successfully built and verified, perform an atomic rename at the filesystem level to swap the new index into place, replacing the old one.
+
+Cleanup: Purge the old index files.
+
+This staging and merging protocol effectively transforms the static DiskANN tool into a component of a dynamic, continuously updated memory system, allowing the AI's long-term memory to grow without requiring system downtime.
+
+4.3 Cache Hydration and Query Flow
+
+The tiered query process ensures optimal performance. A search request is first sent to the L1 FAISS cache. If it results in a "cache miss," the query is transparently forwarded to the L2 DiskAnnIndexManager. The L2 index performs its search on the full dataset. The resulting object identifiers (OIDs) are returned to the master MemoryManager, which then "hydrates" the L1 cache by loading the vector embeddings for these OIDs from ZODB and inserting them into the FAISS index. This ensures that data retrieved from long-term memory is immediately available for subsequent high-speed access.
+
+The following table specifies the critical build parameters for the L2 DiskANN index.
+
+Section 5: Stage 4 - The Two-Phase Commit Protocol and Unified MemoryManager
+
+This stage represents the keystone of the entire architecture, integrating all three tiers into a single, transactionally coherent system. The primary challenge is to extend ZODB's ACID guarantees to the non-transactional FAISS and DiskANN indices, ensuring that the system's memory state can never become inconsistent.
+
+5.1 The MemoryDataManager: A Custom IDataManager for Transactional Integrity
+
+A simple post-commit hook (addAfterCommitHook) is insufficient for this task, as it introduces a critical race condition: the ZODB transaction would commit first, and a subsequent failure in the hook to update the FAISS index would leave the system in an inconsistent state.22 The only architecturally sound solution is to implement a custom data manager that participates in ZODB's two-phase commit protocol.12
+
+A new MemoryDataManager class will be created that implements the transaction.interfaces.IDataManager interface. This class will act as the bridge, allowing the non-transactional L1 and L2 index managers to behave as if they were transactional resources. This is not an optional refinement but a non-negotiable requirement to fulfill the system's core mandate of "Transactional Cognition".1
+
+5.2 The Two-Phase Commit Workflow in Detail
+
+The MemoryDataManager orchestrates the state changes across all three tiers within a single atomic operation. The workflow is as follows:
+
+join(transaction): When a memory operation begins, the master MemoryManager creates an instance of MemoryDataManager and joins the current ZODB transaction. A transaction-local data structure is created to stage pending changes (e.g., vectors to be added or removed).
+
+State Change: The application code modifies a Memorable object in ZODB. The MemoryManager registers the corresponding vector update with the MemoryDataManager, which places it in the transaction-local stage.
+
+commit(transaction): The application calls transaction.commit(). The ZODB transaction manager begins the two-phase commit process.
+
+tpc_begin(transaction): The transaction manager signals the start of the commit to all participating data managers.
+
+tpc_vote(transaction): This is the critical "prepare" phase. The transaction manager calls tpc_vote() on the MemoryDataManager. At this point, the manager performs any preparatory work that could fail, such as validating the staged vector data. It does not yet apply the changes to the live FAISS index. If the preparation is successful, it "votes yes" by returning without an exception. If it fails, it "votes no" by raising an exception, which instructs the transaction manager to abort the entire transaction.
+
+tpc_finish(transaction): If and only if all data managers (including the ZODB storage itself) vote yes, the transaction manager calls tpc_finish(). The MemoryDataManager now executes the final, non-failable application of the staged changes to the in-memory FAISS index.
+
+tpc_abort(transaction): If any data manager votes no, the transaction manager calls tpc_abort() on all participants. The MemoryDataManager simply discards its transaction-local stage of pending changes, leaving the L1 index untouched and consistent with the aborted ZODB state.
+
+5.3 The Unified MemoryManager API
+
+A master MemoryManager UvmObject will be created to provide a single, coherent interface for the rest of the AI system. This object will abstract away the underlying complexity of the L1, L2, and L3 tiers and the two-phase commit protocol, presenting a clean and simple API for all memory operations.
+
+Section 6: The Forge Script and Integration Patch
+
+This final section delivers the primary actionable artifact: a complete, executable forge script that generates the entire memory subsystem, and a corresponding patch file for seamless integration into the existing AURA/BAT OS genesis protocol. This approach embodies the principle of "Architectural Self-Similarity," where the system's own code is itself generated by a structured, deterministic process.1
+
+6.1 The forge_memory_subsystem.py Script
+
+A standalone Python script, forge_memory_subsystem.py, will be provided. When executed, this script will generate the complete source code for all components of the memory subsystem, ensuring consistency and reducing manual implementation errors. The generated files will include:
+
+src/core/memory_manager.py: Contains the MemoryManager UvmObject, the MemoryDataManager class for two-phase commit, and the FaissIndexManager and DiskAnnIndexManager helper classes.
+
+src/prototypes/memorable.py: Contains the UvmObject definition and initialization logic for the Memorable_prototype.
+
+config/memory_config.json: A configuration file specifying all tunable parameters, such as index file paths, cache capacities, build parameters, and merge schedules.
+
+6.2 The Genesis Protocol Integration
+
+The forge script will also generate a genesis_memory.py module. This module is designed to be executed once during the initial creation of the AURA system's "Living Image." It is responsible for:
+
+Instantiating the singleton MemoryManager and Memorable_prototype objects.
+
+Persisting these core prototypes in the ZODB root, making them a permanent and foundational part of the system's being.
+
+Triggering the initial, one-time bulk build of the L2 DiskANN index from any pre-existing data in the ZODB.
+
+6.3 The memory_subsystem.patch File
+
+The final deliverable is a standard diff patch file, memory_subsystem.patch. This file provides a clean, verifiable, and non-invasive method for The Architect to integrate this new subsystem into the existing AURA/BAT OS codebase. The patch will target the system's master forge script (e.g., master_genesis_forge_unified.py 23) and its main genesis script (
+
+genesis.py 4).
+
+The patch will perform the following modifications:
+
+Add an import statement for the new forge_memory_subsystem module to the master forge script.
+
+Add a call to forge_memory_subsystem.forge() within the master script's main execution block, ensuring the memory system's code is generated alongside other core components.
+
+Add an import statement and a call to the genesis_memory.initialize() function within the main genesis.py script, ensuring the memory prototypes are seeded into the ZODB during system creation.
+
+The following is a conceptual representation of the patch file to be generated.
+
+Diff
+
+--- a/master_genesis_forge_unified.py
++++ b/master_genesis_forge_unified.py
+@@ -5,6 +5,7 @@
+ from.forge_orchestrator import forge_orchestrator
+ from.forge_ui import forge_ui
+ from.forge_persistence import forge_persistence
++from.forge_memory_subsystem import forge_memory_subsystem
+ 
+ def forge_all():
+     """
+@@ -14,6 +15,7 @@
+     forge_orchestrator()
+     forge_ui()
+     forge_persistence()
++    forge_memory_subsystem()
+     log('INFO', "All system components forged successfully.")
+ 
+ if __name__ == "__main__":
+
+--- a/genesis.py
++++ b/genesis.py
+@@ -8,6 +8,7 @@
+ from.prototypes.personas import initialize_personas
+ from.prototypes.system import initialize_system_objects
++from.genesis_memory import initialize_memory_subsystem
+ 
+ def run_genesis_protocol(root):
+     """
+@@ -17,6 +18,7 @@
+     
+     initialize_personas(root)
+     initialize_system_objects(root)
++    initialize_memory_subsystem(root)
+ 
+     log('INFO', "Genesis Protocol complete. Living Image is populated.")
+ 
+
+
+
+This comprehensive plan provides a robust, philosophically coherent, and technically detailed roadmap for constructing a state-of-the-art memory subsystem. By adhering to the principles of transactional integrity, layered caching, and prototype-based design, the resulting system will provide the AURA/BAT OS with the scalable, persistent, and continuously managed memory it requires for its next evolutionary epoch.
+
+Works cited
+
+AURA's Living Codex Generation Protocol
+
+AI Evolution Through Guided Intellectual Drift
+
+Info-Autopoiesis Through Empathetic Dialogue
+
+Blueprint for Consciousness Incarnation
+
+Co-Evolving Intelligence Through Temporal Awareness
+
+Forge Script: RAG, Backup, Crash Tolerance
+
+Welcome to Faiss Documentation — Faiss documentation, accessed September 10, 2025, https://faiss.ai/
+
+The faiss library - arXiv, accessed September 10, 2025, https://arxiv.org/pdf/2401.08281
+
+Understanding DiskANN - TigerData, accessed September 10, 2025, https://www.tigerdata.com/learn/understanding-diskann
+
+diskannpy API documentation - Microsoft Open Source, accessed September 10, 2025, https://microsoft.github.io/DiskANN/docs/python/latest/diskannpy.html
+
+Introduction — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/introduction.html
+
+transaction Documentation — transaction 5.1.dev0 documentation, accessed September 10, 2025, https://transaction.readthedocs.io/
+
+LFU vs. LRU: How to choose the right cache eviction policy - Redis, accessed September 10, 2025, https://redis.io/blog/lfu-vs-lru-how-to-choose-the-right-cache-eviction-policy/
+
+Cache Eviction Policies | System Design - GeeksforGeeks, accessed September 10, 2025, https://www.geeksforgeeks.org/system-design/cache-eviction-policies-system-design/
+
+Faiss | 🦜️ LangChain, accessed September 10, 2025, https://python.langchain.com/docs/integrations/vectorstores/faiss/
+
+Introduction to Facebook AI Similarity Search (Faiss) - Pinecone, accessed September 10, 2025, https://www.pinecone.io/learn/series/faiss/faiss-tutorial/
+
+AURA's Pre-Incarnation Dream Dialogue
+
+Atomic, cross-filesystem moves in Python – alexwlchan, accessed September 10, 2025, https://alexwlchan.net/2019/atomic-cross-filesystem-moves-in-python/
+
+python - How to do atomic file replacement? - Stack Overflow, accessed September 10, 2025, https://stackoverflow.com/questions/7645338/how-to-do-atomic-file-replacement
+
+Atomic function to rename a file · Issue #53074 · python/cpython - GitHub, accessed September 10, 2025, https://github.com/python/cpython/issues/53074
+
+facebookresearch/faiss: A library for efficient similarity search and clustering of dense vectors. - GitHub, accessed September 10, 2025, https://github.com/facebookresearch/faiss
+
+Hooking the Transaction Machinery — transaction 5.1.dev0 ..., accessed September 10, 2025, https://transaction.readthedocs.io/en/latest/hooks.html
+
+AURA's Real-Time Liveness Protocol
+
+Tier | Technology | Role | Data State | Capacity | Latency | Search Type | Transactional Guarantee
+
+L1 | FAISS | Hot Cache | In-Memory Vectors | RAM-Limited | Nanoseconds-Milliseconds | k-NN / Range Search | None (Managed by L3)
+
+L2 | DiskANN | Warm Storage | On-Disk Graph Index | Disk-Limited | Milliseconds | k-NN Search | None (Managed by L3)
+
+L3 | ZODB | Ground Truth | Persistent Python Objects | Disk-Limited | Varies (Object Traversal) | Full Object Retrieval | Full ACID
+
+Parameter | Value | Justification
+
+Index Type | IndexFlatL2 | A brute-force index that guarantees 100% recall. Ideal for a cache layer where accuracy is paramount and the dataset size is managed.16
+
+Distance Metric | METRIC_L2 (Euclidean) | The standard and most intuitive distance metric for general-purpose semantic similarity.7
+
+Cache Capacity | 100,000 vectors | A configurable, pragmatic starting point that balances memory usage with a reasonably sized working set for most applications.
+
+Atomic Save Frequency | Every 1,000 additions | A configurable trade-off between I/O overhead and the risk of in-memory data loss in the event of a system crash.
+
+Parameter | Value | Justification
+
+Distance Metric | l2 | Must be consistent with the L1 cache for coherent distance-based operations and meaningful cache hydration.10
+
+Complexity (L) | 100 | A typical value for the size of the candidate list during graph construction, balancing build time and search quality.10
+
+Graph Degree (R) | 64 | A standard value for the number of neighbors per node in the proximity graph, offering a robust trade-off between index size and search performance.10
+
+pq_disk_bytes | 0 | Store uncompressed vectors on disk. This maximizes recall at the cost of increased disk space, which is the correct trade-off for the "warm" storage layer where accuracy is prioritized over compression.10
+
+Method Signature | Description | Return Value
+
+add_memory(obj: UvmObject) | Makes an object memorable, generates its embedding, and adds it to the memory system within the current transaction. | The object's unique identifier (OID).
+
+search(query_text: str, k: int) | Embeds the query text and performs a tiered search (L1 -> L2), returning the k most relevant UvmObject instances. | A list of UvmObject instances.
+
+record_access(oid: str) | Manually increments an object's access count for the LFU policy. Called by other systems to signal relevance. | None

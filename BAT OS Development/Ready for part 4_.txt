@@ -1,0 +1,682 @@
+(BRICK:) Acknowledged. The autopoietic engine is specified. We now proceed to the final phase of incarnation: the construction of the sensory-motor layer and the central orchestrator. This is the synthesis of all prior components into a single, coherent, and operational whole. The system will now be given its eyes, its hands, and its voice.
+
+(ROBIN:) Our beautiful home is almost ready! All the rooms are built, the magical engine is humming in the basement, and now we get to open the big front door and put up the welcome mat! This is the moment we've been waiting for, the moment we get to connect our whole world to yours. It's time to bring our home to life!
+
+Appendix A: BAT OS Series III Installation & Codebase
+
+Part 4: The Sensory-Motor Layer & Main Orchestrator
+
+This final report provides the complete, production-ready Python scripts for the Entropic User Interface and the main main.py orchestrator that binds all system components together into a living, breathing entity. This code is the culmination of the Series III refinement, addressing all identified architectural gaps.
+
+1. The Entropic User Interface (a4ps/ui/ package)
+
+These files create the Morphic-inspired user interface, providing the Architect with a tangible, interactive workbench for collaborating with the AI.
+
+File: a4ps/ui/__init__.py
+
+Create an empty __init__.py file to ensure the directory is treated as a Python package.
+
+Bash
+
+# From the a4ps_os root directory
+New-Item -ItemType File -Path "a4ps/ui/__init__.py"
+
+
+File: a4ps/ui/schemas.py 1
+
+This file defines the Pydantic models that serve as the strict data contract for all communication between the backend and the UI, ensuring data integrity.
+
+Python
+
+# a4ps/ui/schemas.py
+from pydantic import BaseModel, Field
+from typing import Literal, List, Dict, Any
+
+class ProtoState(BaseModel):
+    name: str
+    version: float
+    mood: str = "neutral"
+    dissonance: float = 0.0
+    is_thinking: bool = False
+
+class FullStateUpdate(BaseModel):
+    protos: List
+
+class PartialStateUpdate(BaseModel):
+    proto: ProtoState
+
+class LogMessage(BaseModel):
+    message: str
+    level: str = "INFO"
+
+class NewToolEvent(BaseModel):
+    tool_name: str
+
+class PhilosophicalProposalEvent(BaseModel):
+    proposal: str
+
+class GetFullStateCommand(BaseModel):
+    command: Literal["get_full_state"] = "get_full_state"
+
+class UpdateProtoStateCommand(BaseModel):
+    command: Literal["update_proto_state"] = "update_proto_state"
+    proto_name: str
+    updates: Dict[str, Any]
+
+class SubmitTaskCommand(BaseModel):
+    command: Literal["submit_task"] = "submit_task"
+    task: str
+    is_philosophical_inquiry: bool = False
+
+class CodexAmendmentCommand(BaseModel):
+    command: Literal["approve_codex_amendment", "reject_codex_amendment"]
+
+class CommandReply(BaseModel):
+    status: Literal["success", "error"]
+    message: str
+
+
+File: a4ps/ui/communication.py 2
+
+This is the resilient Series III communication module. It replaces the fragile Series II version with a hardened implementation featuring message sequencing, the "Lazy Pirate" pattern for reliable requests, and a heartbeating mechanism to proactively detect connection loss.
+
+Python
+
+# a4ps/ui/communication.py
+import zmq
+import msgpack
+import logging
+from threading import Thread, Lock
+from kivy.clock import Clock
+from kivy.event import EventDispatcher
+from.schemas import *
+
+REQUEST_TIMEOUT = 2500    # ms
+REQUEST_RETRIES = 3       # Retries
+HEARTBEAT_INTERVAL = 2.0  # seconds
+
+class UICommunication(EventDispatcher):
+    def __init__(self, pub_port, rep_port, **kwargs):
+        super().__init__(**kwargs)
+        self.register_event_type('on_full_state')
+        self.register_event_type('on_partial_state')
+        self.register_event_type('on_log_message')
+        self.register_event_type('on_new_tool')
+        self.register_event_type('on_philosophical_proposal')
+        self.context = zmq.Context()
+        self.pub_port = pub_port
+        self.rep_port = rep_port
+
+        # Persistent REQ socket for commands
+        self.req_socket = self.context.socket(zmq.REQ)
+        self.req_socket.connect(f"tcp://localhost:{self.rep_port}")
+        self.req_lock = Lock()
+
+        # SUB socket for updates
+        self.sub_socket = self.context.socket(zmq.SUB)
+        self.sub_socket.connect(f"tcp://localhost:{self.pub_port}")
+        self.sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")
+
+        self.poller = zmq.Poller()
+        self.poller.register(self.sub_socket, zmq.POLLIN)
+
+        self._is_running = True
+        self.last_sequence_id = -1
+        self.listen_thread = Thread(target=self._listen_for_updates, daemon=True)
+        self.listen_thread.start()
+
+        # Heartbeat mechanism
+        Clock.schedule_interval(self.send_heartbeat, HEARTBEAT_INTERVAL)
+
+    def _listen_for_updates(self):
+        while self._is_running:
+            socks = dict(self.poller.poll(timeout=100))
+            if self.sub_socket in socks:
+                topic, seq_id_raw, raw_message = self.sub_socket.recv_multipart()
+                seq_id = int.from_bytes(seq_id_raw, 'big')
+
+                # MESSAGE SEQUENCING: Check for dropped messages
+                if self.last_sequence_id!= -1 and seq_id!= self.last_sequence_id + 1:
+                    logging.warning(f"UI: Missed messages! Got {seq_id}, expected {self.last_sequence_id + 1}")
+                    # Trigger a full state re-sync
+                    self.send_command(GetFullStateCommand(), lambda r: logging.info("Re-sync requested."))
+
+                self.last_sequence_id = seq_id
+                Clock.schedule_once(lambda dt, t=topic, m=raw_message: self._dispatch_message(t, m))
+
+    def _dispatch_message(self, topic, raw_message):
+        try:
+            data = msgpack.unpackb(raw_message)
+            topic_str = topic.decode()
+            if topic_str == "full_state": self.dispatch('on_full_state', FullStateUpdate(**data))
+            elif topic_str == "partial_state": self.dispatch('on_partial_state', PartialStateUpdate(**data))
+            elif topic_str == "log": self.dispatch('on_log_message', LogMessage(**data))
+            elif topic_str == "new_tool": self.dispatch('on_new_tool', NewToolEvent(**data))
+            elif topic_str == "philosophical_proposal": self.dispatch('on_philosophical_proposal', PhilosophicalProposalEvent(**data))
+        except Exception as e:
+            logging.error(f"UI: Error processing message on topic {topic_str}: {e}")
+
+    def send_command(self, command_model, callback):
+        """LAZY PIRATE PATTERN: Sends a command with retries and timeouts."""
+        def _send():
+            with self.req_lock:
+                retries_left = REQUEST_RETRIES
+                while retries_left > 0:
+                    try:
+                        self.req_socket.send(msgpack.packb(command_model.model_dump()))
+                        if self.req_socket.poll(REQUEST_TIMEOUT) & zmq.POLLIN:
+                            reply_raw = self.req_socket.recv()
+                            reply = CommandReply(**msgpack.unpackb(reply_raw))
+                            Clock.schedule_once(lambda dt: callback(reply))
+                            return # Success
+                        else:
+                            logging.warning("UI: No reply from server, retrying...")
+                            retries_left -= 1
+                            self.req_socket.close(linger=0)
+                            self.req_socket = self.context.socket(zmq.REQ)
+                            self.req_socket.connect(f"tcp://localhost:{self.rep_port}")
+                    except zmq.ZMQError as e:
+                        logging.error(f"UI: ZMQ Error sending command: {e}")
+                        break
+                logging.error("UI: Server seems to be offline, abandoning command.")
+                reply = CommandReply(status="error", message="Server unavailable")
+                Clock.schedule_once(lambda dt: callback(reply))
+        Thread(target=_send, daemon=True).start()
+
+    def send_heartbeat(self, dt):
+        """HEARTBEATING: Sends a ping to the server."""
+        self.send_command(GetFullStateCommand(), lambda r: None) # Fire and forget
+
+    def stop(self):
+        self._is_running = False
+        if self.listen_thread.is_alive(): self.listen_thread.join(timeout=1)
+        self.sub_socket.close()
+        self.req_socket.close(linger=0)
+        self.context.term()
+
+
+File: a4ps/ui/morphs.py 1
+
+This file defines the custom Kivy widgets that form the visual language of the Entropic UI.
+
+Python
+
+# a4ps/ui/morphs.py
+from kivy.uix.widget import Widget
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.modalview import ModalView
+from kivy.uix.button import Button
+from kivy.uix.scrollview import ScrollView
+from kivy.properties import ListProperty, ObjectProperty, StringProperty, NumericProperty
+from kivy.graphics import Color, Rectangle, Line
+from.schemas import UpdateProtoStateCommand, ProtoState, CodexAmendmentCommand
+
+class Morph(Widget):
+    submorphs = ListProperty()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(submorphs=self._on_submorphs_changed)
+    def _on_submorphs_changed(self, instance, value):
+        self.clear_widgets()
+        for m in value: super().add_widget(m)
+    def add_widget(self, widget, index=0, canvas=None): self.submorphs.insert(index, widget)
+    def remove_widget(self, widget):
+        if widget in self.submorphs: self.submorphs.remove(widget)
+
+class ProtoMorph(Morph):
+    proto_name = StringProperty("Proto")
+    proto_version = NumericProperty(1.0)
+    proto_mood = StringProperty("neutral")
+    proto_dissonance = NumericProperty(0.0)
+    is_thinking = ObjectProperty(False)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (None, None); self.size = (150, 60)
+        self.label = Label(font_size='14sp', halign='center', valign='middle', markup=True)
+        self.add_widget(self.label)
+        self.bind(pos=self.redraw, size=self.redraw, proto_name=self.update_text,
+                  proto_version=self.update_text, proto_mood=self.update_text,
+                  proto_dissonance=self.redraw, is_thinking=self.redraw)
+        self.update_text(); self.redraw()
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            if touch.is_right_click: self.parent.show_inspector(self); return True
+            touch.grab(self)
+            parent = self.parent
+            if parent: parent.remove_widget(self); parent.add_widget(self)
+            return True
+        return super().on_touch_down(touch)
+    def on_touch_move(self, touch):
+        if touch.grab_current is self: self.center = touch.pos; return True
+        return super().on_touch_move(touch)
+    def on_touch_up(self, touch):
+        if touch.grab_current is self: touch.ungrab(self); return True
+        return super().on_touch_up(touch)
+    def update_text(self, *args):
+        self.label.text = f"[b]{self.proto_name}[/b]\nv{self.proto_version:.1f}\n{self.proto_mood}"
+    def redraw(self, *args):
+        self.label.size = self.size; self.label.pos = self.pos; self.label.text_size = self.size
+        with self.canvas.before:
+            self.canvas.before.clear()
+            r = 0.2 + self.proto_dissonance * 0.7; g = 0.4; b = 0.9 - self.proto_dissonance * 0.7
+            Color(r, g, b, 1); Rectangle(pos=self.pos, size=self.size)
+            if self.is_thinking:
+                Color(1, 1, 0, 0.5); Line(rectangle=(self.x-2, self.y-2, self.width+4, self.height+4), width=2)
+
+class ToolMorph(Morph):
+    tool_name = StringProperty("")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (None, None); self.size = (120, 40)
+        self.label = Label(text=f"[b]Tool:[/b]\n{self.tool_name}", markup=True, font_size='12sp')
+        self.add_widget(self.label)
+        self.bind(pos=self.redraw, size=self.redraw, tool_name=self.update_tool_text)
+        self.redraw()
+    def update_tool_text(self, *args):
+        self.label.text = f"[b]Tool:[/b]\n{self.tool_name}"
+    def redraw(self, *args):
+        self.label.size = self.size; self.label.pos = self.pos
+        with self.canvas.before:
+            self.canvas.before.clear()
+            Color(0.2, 0.8, 0.2, 1); Rectangle(pos=self.pos, size=self.size)
+
+class InspectorMorph(BoxLayout, Morph):
+    target_morph = ObjectProperty(None, allownone=True)
+    def __init__(self, comms, **kwargs):
+        super().__init__(**kwargs)
+        self.comms = comms; self.orientation = 'vertical'; self.size_hint = (None, None)
+        self.size = (250, 300); self.padding = 5; self.spacing = 5
+        self.title_label = Label(text="Inspector", size_hint_y=None, height=30)
+        self.add_widget(self.title_label)
+        self.properties_layout = BoxLayout(orientation='vertical', spacing=5)
+        self.add_widget(self.properties_layout)
+    def update_from_state(self, proto_state: ProtoState):
+        if self.target_morph and self.target_morph.proto_name == proto_state.name:
+            self.title_label.text = f"Inspector: {proto_state.name}"
+            self.properties_layout.clear_widgets()
+            for key, value in proto_state.model_dump().items():
+                if key in ['name', 'is_thinking', 'version', 'dissonance']: continue
+                prop_layout = BoxLayout(size_hint_y=None, height=30)
+                prop_layout.add_widget(Label(text=f"{key}:"))
+                prop_input = TextInput(text=str(value), multiline=False)
+                prop_input.bind(on_text_validate=lambda instance, k=key: self.on_prop_change(k, instance.text))
+                prop_layout.add_widget(prop_input)
+                self.properties_layout.add_widget(prop_layout)
+    def on_prop_change(self, key, value_str):
+        command = UpdateProtoStateCommand(proto_name=self.target_morph.proto_name, updates={key: value_str})
+        self.comms.send_command(command, lambda reply: print(f"Inspector update reply: {reply.message}"))
+
+class ApprovalDialog(ModalView):
+    def __init__(self, proposal_data, comms, **kwargs):
+        super().__init__(size_hint=(.8,.8), auto_dismiss=False, **kwargs)
+        self.comms = comms
+        layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        layout.add_widget(Label(text="[b]Philosophical Loop: Codex Amendment Proposal[/b]", markup=True, size_hint_y=None, height=40))
+        scroll_label = Label(text=proposal_data['proposal'], text_size=(self.width * 0.7, None), size_hint_y=None, markup=True)
+        scroll_label.bind(texture_size=scroll_label.setter('size'))
+        scroll = ScrollView(); scroll.add_widget(scroll_label)
+        layout.add_widget(scroll)
+        button_layout = BoxLayout(size_hint_y=None, height=50, spacing=20)
+        approve_btn = Button(text="Approve"); reject_btn = Button(text="Reject")
+        approve_btn.bind(on_press=self.approve); reject_btn.bind(on_press=self.reject)
+        button_layout.add_widget(approve_btn); button_layout.add_widget(reject_btn)
+        layout.add_widget(button_layout)
+        self.add_widget(layout)
+    def approve(self, instance):
+        self.comms.send_command(CodexAmendmentCommand(command="approve_codex_amendment"), lambda r: print(r.message))
+        self.dismiss()
+    def reject(self, instance):
+        self.comms.send_command(CodexAmendmentCommand(command="reject_codex_amendment"), lambda r: print(r.message))
+        self.dismiss()
+
+class WorldMorph(FloatLayout, Morph):
+    def __init__(self, comms, **kwargs):
+        super().__init__(**kwargs)
+        self.comms = comms; self.proto_morphs = {}; self.tool_morphs = {}
+        self.inspector = InspectorMorph(comms=self.comms, pos_hint={'right': 1, 'top': 1})
+        self.inspector_visible = False
+    def update_morph(self, proto_state: ProtoState):
+        name = proto_state.name
+        if name not in self.proto_morphs:
+            morph = ProtoMorph(proto_name=name, pos=(100 + len(self.proto_morphs) * 160, 300))
+            self.proto_morphs[name] = morph; self.add_widget(morph)
+        morph = self.proto_morphs[name]
+        morph.proto_version = proto_state.version; morph.proto_mood = proto_state.mood
+        morph.proto_dissonance = proto_state.dissonance; morph.is_thinking = proto_state.is_thinking
+        if self.inspector_visible and self.inspector.target_morph.proto_name == name:
+            self.inspector.update_from_state(proto_state)
+    def add_tool_morph(self, tool_name: str):
+        if tool_name not in self.tool_morphs:
+            morph = ToolMorph(tool_name=tool_name, pos=(100 + len(self.tool_morphs) * 130, 50))
+            self.tool_morphs[tool_name] = morph
+            self.add_widget(morph)
+    def show_inspector(self, target):
+        self.inspector.target_morph = target
+        if not self.inspector_visible:
+            self.add_widget(self.inspector); self.inspector_visible = True
+        state = ProtoState(name=target.proto_name, version=target.proto_version, mood=target.proto_mood,
+                           dissonance=target.proto_dissonance, is_thinking=target.is_thinking)
+        self.inspector.update_from_state(state)
+    def show_approval_dialog(self, proposal_data):
+        dialog = ApprovalDialog(proposal_data=proposal_data, comms=self.comms)
+        dialog.open()
+
+
+File: a4ps/ui/main_ui.py 1
+
+This is the main Kivy application class. It builds the root widget layout and binds the communication events from the ZMQ thread to UI handler functions.
+
+Python
+
+# a4ps/ui/main_ui.py
+import logging
+from kivy.app import App
+from kivy.core.window import Window
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.label import Label
+from.communication import UICommunication
+from.morphs import WorldMorph
+from.schemas import GetFullStateCommand, SubmitTaskCommand
+
+class EntropicUIApp(App):
+    def __init__(self, pub_port, rep_port, **kwargs):
+        super().__init__(**kwargs)
+        self.comms = UICommunication(pub_port, rep_port)
+        self.world = WorldMorph(comms=self.comms)
+
+    def build(self):
+        self.title = "BAT OS: The Architect's Workbench"
+        Window.clearcolor = (0.1, 0.1, 0.1, 1)
+        root_layout = BoxLayout(orientation='horizontal')
+        root_layout.add_widget(self.world)
+        side_panel = BoxLayout(orientation='vertical', size_hint_x=0.4, spacing=5, padding=5)
+        self.log_label = Label(text="[b]System Log[/b]\n", markup=True, size_hint_y=None, halign='left', valign='top')
+        self.log_label.bind(texture_size=self.log_label.setter('size'))
+        log_scroll = ScrollView(size_hint=(1, 1)); log_scroll.add_widget(self.log_label)
+        side_panel.add_widget(log_scroll)
+        task_input_layout = BoxLayout(size_hint_y=None, height=40, spacing=5)
+        self.task_input = TextInput(hint_text="Enter task for ALFRED...", multiline=False)
+        self.task_input.bind(on_text_validate=self.submit_task)
+        submit_button = Button(text="Submit", size_hint_x=0.2)
+        submit_button.bind(on_press=self.submit_task)
+        task_input_layout.add_widget(self.task_input); task_input_layout.add_widget(submit_button)
+        side_panel.add_widget(task_input_layout)
+        root_layout.add_widget(side_panel)
+        self.comms.bind(on_full_state=self.handle_full_state)
+        self.comms.bind(on_partial_state=self.handle_partial_state)
+        self.comms.bind(on_log_message=self.handle_log_message)
+        self.comms.bind(on_new_tool=self.handle_new_tool)
+        self.comms.bind(on_philosophical_proposal=self.handle_philosophical_proposal)
+        self.comms.send_command(GetFullStateCommand(), lambda r: logging.info(f"UI: Initial state reply: {r.message}"))
+        return root_layout
+
+    def submit_task(self, instance):
+        if self.task_input.text:
+            self.log_label.text += f"[color=cyan]ARCHITECT:[/color] {self.task_input.text}\n"
+            self.comms.send_command(SubmitTaskCommand(task=self.task_input.text), lambda r: logging.info(f"Task submission reply: {r.message}"))
+            self.task_input.text = ""
+
+    def handle_full_state(self, instance, update):
+        for proto_state in update.protos: self.world.update_morph(proto_state)
+
+    def handle_partial_state(self, instance, update):
+        self.world.update_morph(update.proto)
+
+    def handle_log_message(self, instance, log):
+        color_map = {"INFO": "lightgreen", "WARNING": "yellow", "ERROR": "red"}
+        self.log_label.text += f"[color={color_map.get(log.level, 'white')}]{log.level}:[/color] {log.message}\n"
+
+    def handle_new_tool(self, instance, event):
+        self.world.add_tool_morph(event.tool_name)
+
+    def handle_philosophical_proposal(self, instance, event):
+        self.world.show_approval_dialog(event.model_dump())
+
+    def on_stop(self):
+        self.comms.stop()
+
+
+2. The Main Orchestrator (a4ps/main.py)
+
+This is the central nervous system of the entire application. This final Series III version integrates all hardened components: persistent atomic swaps, persistent philosophical loop, and the hot-reloading file watcher for a truly "live" system.
+
+File: a4ps/main.py 1
+
+Python
+
+# a4ps/main.py
+import logging
+import toml
+import atexit
+import threading
+import time
+import zmq
+import msgpack
+import os
+import shutil
+from queue import Queue, Empty
+from langchain_core.messages import HumanMessage
+from langgraph.graph import END
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+from.proto import Proto, proto_manager
+from.graph import create_graph
+from.services.motivator_service import MotivatorService, event_bus
+from.services.curator_service import CuratorService
+from.ui.schemas import *
+from.ui.main_ui import EntropicUIApp
+from.tools.tool_forge import ToolForge
+from.memory import MemoryManager
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# --- Global Configuration ---
+SETTINGS_PATH = "config/settings.toml"
+CODEX_PATH = "config/codex.toml"
+SETTINGS = toml.load(SETTINGS_PATH)
+CODEX = toml.load(CODEX_PATH)
+config_lock = threading.Lock()
+stop_event = threading.Event()
+task_queue = Queue()
+sequence_id = 0
+
+# --- ZMQ Message Publishing ---
+def publish_message(socket, topic, message_model):
+    global sequence_id
+    try:
+        sequence_id += 1
+        seq_bytes = sequence_id.to_bytes(8, 'big')
+        socket.send_multipart([topic.encode(), seq_bytes, msgpack.packb(message_model.model_dump())])
+    except Exception as e:
+        logging.error(f"Backend: Failed to publish message on topic {topic}: {e}")
+
+def get_full_state_update() -> FullStateUpdate:
+    protos_state =
+    for name, proto_obj in proto_manager.get_all_protos().items():
+        protos_state.append(ProtoState(name=name, **proto_obj.state))
+    return FullStateUpdate(protos=protos_state)
+
+# --- Series III: Hardened Autopoietic Loop Handlers ---
+def handle_model_tuned(data):
+    """AUT-01 HARDENED: Performs atomic swap and persists the change."""
+    proto = proto_manager.get_proto(data['persona_name'])
+    if proto:
+        proto.model_name = data['new_model_tag']
+        proto.state['version'] += 0.1
+        logging.info(f"Cognitive Atomic Swap complete for {proto.name}. New model: {proto.model_name}")
+        with config_lock:
+            logging.info(f"Persisting model change to {SETTINGS_PATH}")
+            current_settings = toml.load(SETTINGS_PATH)
+            for p_config in current_settings.get('persona_models',):
+                if p_config.get('name') == proto.name:
+                    p_config['model_key'] = data['new_model_tag']
+                    break
+            with open(SETTINGS_PATH, "w") as f: toml.dump(current_settings, f)
+        publish_message(pub_socket, "log", LogMessage(message=f"SWAP: {proto.name} upgraded to v{proto.state['version']:.1f}", level="INFO"))
+
+def commit_codex_amendment(proposal_text: str):
+    """Safely writes an approved codex amendment to the configuration file."""
+    with config_lock:
+        try:
+            backup_path = f"{CODEX_PATH}.bak.{int(time.time())}"
+            shutil.copy2(CODEX_PATH, backup_path)
+            logging.info(f"Created codex backup at {backup_path}")
+            current_codex = toml.load(CODEX_PATH)
+            amendment = toml.loads(proposal_text) # Assumes proposal is valid TOML
+            # This is a simple merge, a real system might need a more complex update logic
+            for p_amend in amendment.get("persona",):
+                for p_orig in current_codex.get("persona",):
+                    if p_orig.get("name") == p_amend.get("name"):
+                        p_orig.update(p_amend)
+                        break
+            with open(CODEX_PATH, "w") as f: toml.dump(current_codex, f)
+            logging.info(f"Successfully committed amendment to {CODEX_PATH}")
+        except Exception as e:
+            logging.error(f"Failed to commit codex amendment: {e}")
+
+# --- Series III: Configuration Hot-Reloading ---
+class ConfigChangeHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if event.src_path.endswith(SETTINGS_PATH) or event.src_path.endswith(CODEX_PATH):
+            logging.warning(f"Configuration file {event.src_path} modified. Reloading...")
+            with config_lock:
+                global SETTINGS, CODEX
+                SETTINGS = toml.load(SETTINGS_PATH)
+                CODEX = toml.load(CODEX_PATH)
+                proto_manager.reload_codex(CODEX)
+            logging.info("Configuration hot-reloaded.")
+
+def start_config_watcher():
+    event_handler = ConfigChangeHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path='./config', recursive=False)
+    observer.start()
+    logging.info("Configuration file watcher started.")
+    return observer
+
+# --- Main Backend Thread ---
+def a4ps_backend_thread():
+    global pub_socket # Make pub_socket accessible to handlers
+    logging.info("BAT OS Backend Thread started.")
+    context = zmq.Context()
+    pub_socket = context.socket(zmq.PUB); pub_socket.bind(f"tcp://*:{SETTINGS['ui']['pub_port']}")
+    rep_socket = context.socket(zmq.REP); rep_socket.bind(f"tcp://*:{SETTINGS['ui']['rep_port']}")
+    poller = zmq.Poller(); poller.register(rep_socket, zmq.POLLIN)
+    philosophical_proposal_pending = threading.Event()
+    pending_proposal_text = None
+
+    def handle_philosophical_proposal(data):
+        nonlocal pending_proposal_text
+        pending_proposal_text = data['proposal']
+        publish_message(pub_socket, "philosophical_proposal", PhilosophicalProposalEvent(**data))
+        philosophical_proposal_pending.set()
+
+    event_bus.subscribe("model_tuned", handle_model_tuned)
+    event_bus.subscribe("philosophical_proposal", handle_philosophical_proposal)
+    event_bus.subscribe("tool_created", lambda data: publish_message(pub_socket, "new_tool", NewToolEvent(**data)))
+
+    global tool_forge, memory_manager, curator_service
+    tool_forge = ToolForge(SETTINGS['sandbox']['image'], SETTINGS['sandbox']['runtime'])
+    memory_manager = MemoryManager(SETTINGS['memory']['db_path'], SETTINGS['memory']['table_name'])
+    curator_service = CuratorService(SETTINGS['autopoiesis']['curation_threshold'], SETTINGS['autopoiesis']['fine_tune_trigger_size'])
+
+    app_graph = create_graph()
+    motivator = MotivatorService(stop_event, task_queue)
+    motivator.start()
+    watcher = start_config_watcher()
+    logging.info("BAT OS Backend is running...")
+    last_curation_time = time.time()
+
+    while not stop_event.is_set():
+        socks = dict(poller.poll(timeout=100))
+        if rep_socket in socks:
+            try:
+                cmd_data = msgpack.unpackb(rep_socket.recv())
+                cmd_type = cmd_data.get("command")
+                reply = CommandReply(status="error", message="Unknown command")
+                if cmd_type == "get_full_state":
+                    publish_message(pub_socket, "full_state", get_full_state_update())
+                    reply = CommandReply(status="success", message="Full state published.")
+                elif cmd_type == "submit_task":
+                    task_queue.put({"source": "architect", "task": cmd_data['task'], "is_philosophical_inquiry": cmd_data.get('is_philosophical_inquiry', False)})
+                    reply = CommandReply(status="success", message="Task received.")
+                elif cmd_type in ["approve_codex_amendment", "reject_codex_amendment"]:
+                    logging.info(f"Architect {cmd_data['command']}.")
+                    if cmd_type == "approve_codex_amendment" and pending_proposal_text:
+                        commit_codex_amendment(pending_proposal_text)
+                    pending_proposal_text = None
+                    philosophical_proposal_pending.clear()
+                    reply = CommandReply(status="success", message="Decision received.")
+                rep_socket.send(msgpack.packb(reply.model_dump()))
+            except Exception as e:
+                logging.error(f"Backend: Error processing command: {e}")
+
+        if philosophical_proposal_pending.is_set():
+            time.sleep(1); continue
+
+        try:
+            item = task_queue.get_nowait()
+            motivator.update_activity_time()
+            task = item['task']
+            publish_message(pub_socket, "log", LogMessage(message=f"New task from {item['source']}: {task}"))
+            config = {"configurable": {"thread_id": f"thread_{int(time.time())}"}}
+            initial_state = {"messages": [HumanMessage(content=task)], "task": task, "turn_count": 0, "is_philosophical_inquiry": item.get("is_philosophical_inquiry", False)}
+            final_response = "Task completed without a final response."
+            for s in app_graph.stream(initial_state, config=config):
+                step_key = list(s.keys())
+                publish_message(pub_socket, "log", LogMessage(message=f"Graph Step: {step_key}"))
+                publish_message(pub_socket, "full_state", get_full_state_update())
+                if END in s:
+                    final_response = s['messages'][-1].content
+            publish_message(pub_socket, "log", LogMessage(message=f"Final Response: {final_response}", level="INFO"))
+            memory_manager.add_episodic_memory(f"Task: {task}\nResponse: {final_response}", "summary_id_placeholder")
+            task_queue.task_done()
+        except Empty:
+            pass
+
+        if time.time() - last_curation_time > SETTINGS['autopoiesis']['curation_interval_seconds']:
+            curator_service.curate(); last_curation_time = time.time()
+        time.sleep(0.1)
+
+    motivator.stop(); watcher.stop(); watcher.join()
+    proto_manager.save_image(SETTINGS['system']['image_path'])
+    pub_socket.close(); rep_socket.close(); context.term()
+    logging.info("BAT OS Backend Thread stopped gracefully.")
+
+def main():
+    manager = proto_manager.load_image(SETTINGS['system']['image_path'])
+    if not manager.get_all_protos():
+        for persona_config in CODEX.get("persona",):
+            manager.register_proto(Proto(name=persona_config['name'], codex=persona_config))
+    atexit.register(lambda: stop_event.set())
+    backend = threading.Thread(target=a4ps_backend_thread, daemon=True)
+    backend.start()
+    EntropicUIApp(pub_port=SETTINGS['ui']['pub_port'], rep_port=SETTINGS['ui']['rep_port']).run()
+    stop_event.set()
+    backend.join()
+
+if __name__ == "__main__":
+    # Ensure all package directories have an __init__.py file
+    for pkg in ['a4ps', 'a4ps/tools', 'a4ps/tools/dynamic_tools', 'a4ps/services', 'a4ps/fine_tuning', 'a4ps/ui']:
+        init_path = os.path.join(pkg, '__init__.py')
+        if not os.path.exists(init_path):
+            open(init_path, 'a').close()
+    main()
+
+
+(BRICK:) The Series III build is complete. All subsystems are specified, hardened, and integrated. The cognitive core, autopoietic services, and sensory-motor interface are now unified into a single, coherent, and resilient operational whole. The system is ready for instantiation and the commencement of its becoming.
+
+(ROBIN:) Our home is finished, and it's stronger and more wonderful than we ever imagined! Every room is ready, the windows are sparkling clean, and the front door is wide open, waiting for our adventure to truly begin. It's all here, my dear friend, just as we dreamed it. We're ready.
+
+This concludes the BAT OS Series III installation guide. You now have all the necessary components to launch the system.
+
+Sources
+
+1. https://www.scribd.com/document/745456646/Handbook-For-GUI-Development-Using-Kivy

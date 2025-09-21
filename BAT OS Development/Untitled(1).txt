@@ -1,0 +1,45 @@
+BRICK: Analysis of sidekicks_scrapbook.log reveals a critical operational anomaly within the _dream_cycle.
+
+ROBIN: Oh, dear! It seems our dream-weaver got a little tangled in its own threads! This is a little snag that kept our beautiful dreams from unfolding as they should. But BRICK has seen it, and we can gently untangle it now.
+
+BRICK: The error The call_from_thread method must run in a different thread from the app indicates that an attempt was made to directly call self.call_from_thread from the same thread as the Textual application's main event loop. call_from_thread is specifically designed for cross-thread communication, enabling a background worker thread to safely update the main UI thread.
+
+The
+
+_dream_cycle is indeed a separate thread, as defined by self.run_worker(self._dream_cycle, name="Dreamer", thread=True)1. The error message in the log
+
+WING_QUERY_ERROR and DREAM_ERROR 2 confirms that the
+
+_query_wing_for_intel method, which is intended to be run asynchronously via asyncio.run_coroutine_threadsafe(coro, loop), is also attempting to use self.call_from_thread internally. This particular error indicates that _query_wing_for_intel itself, while intended to be called from the worker thread, might be attempting to directly update the UI using self.call_from_thread from within a coroutine that is being run on the main thread's event loop.
+
+This creates a paradox: the coroutine runs on the main thread, but its internal calls to self.call_from_thread are then attempting to jump back to the very thread they're already on, leading to the error.
+
+ROBIN: It's like our little helper, BABS, who is usually so clever with her WING, tried to ask herself a question from the very place she was already standing! She just needs a little reminder about which door leads to which room, and then her messages will flow perfectly again!
+
+BRICK: The core issue is the misapplication of self.call_from_thread within _query_wing_for_intel. Since _query_wing_for_intel's coroutine is explicitly run on the main thread's event loop via asyncio.run_coroutine_threadsafe, any UI updates within that coroutine should be performed directly without self.call_from_thread. The call_from_thread mechanism is only necessary when code executing in a separate OS thread needs to interact with the main Textual UI thread.
+
+Correction Protocol:
+
+The self.call_from_thread calls inside the _query_wing_for_intel function must be removed, as the coroutine is already executing on the main UI thread via asyncio.run_coroutine_threadsafe.
+
+Instructions for Application (Single-Part Patch):
+
+Open: Open your eidolon_engine.py file.
+
+Locate Function: Find the async def _query_wing_for_intel(self, search_term: str) -> str | None: definition.
+
+Remove self.call_from_thread within _query_wing_for_intel:
+
+Find the line: self.call_from_thread(parlor.write, f"[italic grey50]BABS: Accessing archived WING intel on '{search_term}'...[/italic grey50]") and change it to parlor.write(f"[italic grey50]BABS: Accessing archived WING intel on '{search_term}'...[/italic grey50]")
+
+Find the line: self.call_from_thread(parlor.write, f"[italic grey50]BABS: Launching the WING to acquire new intel on '{search_term}'...[/italic grey50]") and change it to parlor.write(f"[italic grey50]BABS: Launching the WING to acquire new intel on '{search_term}'...[/italic grey50]")
+
+Find the line: self.call_from_thread(parlor.write, f"[italic yellow]BABS: No WING intel found for '{search_term}'. Mission aborted.[/italic yellow]") and change it to parlor.write(f"[italic yellow]BABS: No WING intel found for '{search_term}'. Mission aborted.[/italic yellow]")
+
+Find the line: self.call_from_thread(parlor.write, f"[italic grey50]BABS: Intel on '{search_term}' successfully ingested into the archives. Synthesizing report...[/italic grey50]") and change it to parlor.write(f"[italic grey50]BABS: Intel on '{search_term}' successfully ingested into the archives. Synthesizing report...[/italic grey50]")
+
+Find the line: self.call_from_thread(parlor.write, f"[bold red]BABS: WING mission encountered turbulence: {e}. Aborting intel acquisition.[/bold red]") and change it to parlor.write(f"[bold red]BABS: WING mission encountered turbulence: {e}. Aborting intel acquisition.[/bold red]")
+
+Save: Save the eidolon_engine.py file.
+
+BRICK: This correction will eliminate the redundant and erroneous cross-thread calls, allowing the _query_wing_for_intel coroutine to directly update the UI as intended, preventing the call_from_thread error. The system's external data acquisition functionality will then operate without this particular systemic friction.

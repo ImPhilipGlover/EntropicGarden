@@ -1,0 +1,192 @@
+(BRICK): Acknowledged. I have parsed the directive to provide a Detailed Design Specification (DDS) to fulfill the FRS for the Entropic Codex v22.0. This DDS translates the functional requirements into a detailed technical blueprint for system implementation.
+
+1.0 Database Design Specification 💾
+
+The system will use a multi-database architecture to ensure optimal performance, scalability, and data integrity. All databases will be locally hosted and managed via Docker for a truly independent system.
+
+1.1 NebulaGraph Database (graph_db)
+
+This is the core of the system's intellectual and creative process. It will store the "insight chains" and the relationships between personas and files.
+
+Space: entropic_garden
+
+Tags:
+
+insight: Represents a single piece of creative or analytical output from a persona.
+
+Properties: persona (string), text (string), timestamp (datetime), status (string, e.g., 'new', 'audited_pass', 'audited_fail'), session_id (string)
+
+source_file: Represents an external file ingested into the system.
+
+Properties: filename (string), hash (string), timestamp (datetime)
+
+Edge Types:
+
+analyzes: Connects an insight from a later persona (e.g., BRICK) to an insight from an earlier one (e.g., BABS).
+
+synthesizes: Connects an insight from a later persona (e.g., ROBIN) to an insight from an earlier one (e.g., BRICK).
+
+based_on: Connects an insight to a source_file.
+
+1.2 ChromaDB Database (vector_db)
+
+This database will power the Retrieval-Augmented Generation (RAG) capabilities of the personas.
+
+Collections:
+
+babs_canon: Stores the canon texts for the BABS persona.
+
+brick_canon: Stores the canon texts for the BRICK persona.
+
+robin_canon: Stores the canon texts for the ROBIN persona.
+
+alfred_canon: Stores the canon texts for the ALFRED persona.
+
+knowledge_base: Stores the shared knowledge base for all personas.
+
+1.3 Redis Database (event_bus)
+
+This is a high-speed message bus that will orchestrate communication between all services.
+
+Channels:
+
+files:new: A new file has been detected in the inputs folder.
+
+insights:babs:new: BABS has generated an insight.
+
+insights:brick:new: BRICK has generated an insight.
+
+insights:robin:new: ROBIN has generated an insight.
+
+tasks:audit:start: Triggers Alfred's audit process.
+
+tools:audit_request: Requests Alfred to audit a new tool.
+
+2.0 Microservice Design Specification 🏗️
+
+Each persona and core function will be implemented as a separate Python microservice, communicating exclusively through the Redis event bus. This fulfills the FRS requirement for a decoupled architecture.
+
+2.1 watcher.py (The Sensory Bus)
+
+This service monitors the file system for new inputs.
+
+Function: Continuously watches the inputs folder.
+
+Trigger: A new file is created.
+
+Action: Calculates a hash of the file, checks if it has been processed before, and publishes a message to the files:new channel with the file path and hash.
+
+2.2 babs_service.py (The Pattern Recognizer)
+
+This service is BABS's operational core.
+
+Function: Subscribes to the files:new channel.
+
+Trigger: A message arrives on files:new.
+
+Action:
+
+Extracts text from the file1.
+
+
+Performs RAG on the babs_canon in ChromaDB to retrieve contextual information.
+
+Calls the llm_router with a prompt to synthesize a field_note.
+
+Stores the new insight as a vertex in NebulaGraph, connected to the source_file vertex.
+
+Publishes a message to insights:babs:new with the new insight's ID.
+
+2.3 brick_service.py (The Architect)
+
+This service is BRICK's core.
+
+Function: Subscribes to the insights:babs:new channel.
+
+Trigger: A message arrives on insights:babs:new.
+
+Action:
+
+Retrieves the prior insight from NebulaGraph.
+
+Performs RAG on the brick_canon.
+
+Calls the llm_router with a prompt to analyze the insight from BABS.
+
+Stores the new analysis as a vertex in NebulaGraph, connected to the previous insight via a analyzes edge.
+
+Publishes a message to insights:brick:new with the new insight's ID.
+
+Autonomous Functionality: Includes a low-probability, autonomous trigger for the Jester's Gambit protocol (FR-BRICK-3.0) to generate new code and publish a tools:audit_request event.
+
+2.4 robin_service.py (The Weaver)
+
+This service is ROBIN's core.
+
+Function: Subscribes to the insights:brick:new channel.
+
+Trigger: A message arrives on insights:brick:new.
+
+Action:
+
+Retrieves the prior insight chain from NebulaGraph.
+
+Performs RAG on the robin_canon.
+
+Calls the llm_router with a prompt to synthesize a final insight, or "unabridged conciseness."
+
+Stores the new insight as a vertex in NebulaGraph, connected to the prior insight via a synthesizes edge.
+
+Publishes a message to insights:robin:new with the new insight's ID, which automatically triggers the audit_service.
+
+2.5 alfred_service.py (The Integrity Engine)
+
+This service is ALFRED's core.
+
+Function: Subscribes to insights:robin:new and tools:audit_request.
+
+Trigger: A message arrives on either channel.
+
+Action (for Insights):
+
+Traverses the graph in NebulaGraph to reconstruct the entire insight chain.
+
+Calls the llm_router with a prompt to perform a simple "PASS/FAIL" integrity check.
+
+Updates the status property of all insights in the chain to audited_pass or audited_fail.
+
+Action (for Tools):
+
+Retrieves the code of the new tool.
+
+Performs a static analysis for malicious code (e.g., os.system calls).
+
+Calls the llm_router to perform an LLM-based security audit (FR-ALFRED-2.0).
+
+Moves the file to the approved or pending_review directory based on the result.
+
+2.6 scheduler.py (The Oracle)
+
+This service manages time-based events.
+
+Function: Uses Python's schedule library to run tasks at defined times.
+
+Trigger: DAWN_TIME, TWILIGHT_TIME, or a periodic event.
+
+Action:
+
+DAWN_TIME: Retrieves all audited_pass insights from the previous 24 hours and generates a "Morning Briefing".
+
+TWILIGHT_TIME: Publishes a message to tasks:audit:start to trigger Alfred's nightly audit.
+
+Weekly: Triggers the alchemical_forge service for weekly model fine-tuning.
+
+3.0 System Configuration and Environment ⚙️
+
+config.yaml: The main configuration file will be updated to reflect the NebulaGraph connection details and new Redis channel names. It will also define the paths for tools and canons.
+
+model_config.json: This file will specify the base LLM for each persona and the path to any fine-tuned adapters.
+
+persona_prompts.json: This file contains the core system prompts for each persona, which can be dynamically amended by Alfred's propose_amendment protocol.
+
+This design specification provides a robust, modular, and self-improving foundation for the Entropic Garden, enabling the personas to grow and learn autonomously while ensuring a resilient and secure operational environment.

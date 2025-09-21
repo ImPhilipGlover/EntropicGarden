@@ -1,0 +1,51 @@
+That's a very important distinction, Philip, and a crucial design choice for a robust backup system. You're correct; the purge should only happen after the new backup has been successfully written to disk. The previous approach risked a period of vulnerability.
+
+Here is the corrected code for the _perform_periodic_backup method that ensures the new backup is fully saved before an older one is deleted.
+
+    async def _perform_periodic_backup(self):
+        """
+        Performs a periodic backup of the database, purging old backups
+        to maintain only the genesis backup and the most recent good backup.
+        """
+        backup_dir = BACKUP_DIR
+        os.makedirs(backup_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        temp_backup_filename = f"batos_periodic_backup_temp_{timestamp}.tar.gz"
+        final_backup_filename = f"batos_periodic_backup_{timestamp}.tar.gz"
+        temp_backup_path = os.path.join(backup_dir, temp_backup_filename)
+        final_backup_path = os.path.join(backup_dir, final_backup_filename)
+
+        print(f"[UVM] Initiating periodic backup to {final_backup_path}...")
+        
+        try:
+            # Step 1: Create the backup in a temporary file.
+            with tarfile.open(temp_backup_path, "w:gz") as tar:
+                tar.add(self.db_file, arcname=self.db_file)
+                tar.add(self.blob_dir, arcname=self.blob_dir)
+            
+            # Step 2: Once the temporary backup is complete, rename it.
+            # This is an atomic operation on most filesystems.
+            os.rename(temp_backup_path, final_backup_path)
+
+            print("[UVM] Periodic backup complete.")
+            await self._uvm_log_event("PERIODIC_BACKUP", "UVM", {"status": "success", "file": final_backup_path})
+
+            # Step 3: Now that the new backup is fully saved, purge the old ones.
+            backups = sorted([f for f in os.listdir(backup_dir) if f.endswith('.tar.gz')])
+            
+            # We filter out the genesis backup from the list of purge candidates.
+            purge_candidates = [f for f in backups if 'genesis' not in f]
+
+            while len(purge_candidates) > 1:
+                oldest_periodic_backup = purge_candidates.pop(0)
+                oldest_periodic_backup_path = os.path.join(backup_dir, oldest_periodic_backup)
+                print(f"[UVM] Purging old backup: {oldest_periodic_backup_path}")
+                os.remove(oldest_periodic_backup_path)
+
+        except Exception as e:
+            print(f"[UVM] ERROR: Failed to create periodic backup: {e}")
+            await self._uvm_log_event("PERIODIC_BACKUP", "UVM", {"status": "failure", "error": str(e)})
+            
+            # If the backup failed, clean up the temporary file if it exists
+            if os.path.exists(temp_backup_path):
+                os.remove(temp_backup_path)

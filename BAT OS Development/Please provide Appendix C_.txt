@@ -1,0 +1,482 @@
+Acknowledged. The autopoietic engine is specified. We now proceed to the final phase of incarnation: the construction of the sensory-motor layer and the central orchestrator. This is the synthesis of all prior components into a single, coherent, and operational whole. The system will now be given its eyes, its hands, and its voice.
+
+Appendix C: The Sensory-Motor System
+
+This final appendix contains the complete, unabridged code for the Entropic UI. These files create the Morphic-inspired user interface, providing the Architect with a tangible, interactive workbench for collaborating with the AI society.1
+
+File: a4ps/ui/__init__.py
+
+An empty file to designate the directory as a Python package.
+
+Python
+
+# This file can be empty
+
+
+File: a4ps/ui/schemas.py
+
+This file defines the Pydantic models that serve as the strict data contract for all communication between the backend and the UI, ensuring data integrity.2
+
+Python
+
+# a4ps/ui/schemas.py
+from pydantic import BaseModel, Field
+from typing import Literal, List, Dict, Any
+
+class ProtoState(BaseModel):
+    name: str
+    version: float
+    mood: str = "neutral"
+    dissonance: float = 0.0
+    is_thinking: bool = False
+
+class FullStateUpdate(BaseModel):
+    protos: List
+
+class PartialStateUpdate(BaseModel):
+    proto: ProtoState
+
+class LogMessage(BaseModel):
+    message: str
+    level: str = "INFO"
+
+class NewToolEvent(BaseModel):
+    tool_name: str
+
+class PhilosophicalProposalEvent(BaseModel):
+    proposal: str
+
+class GetFullStateCommand(BaseModel):
+    command: Literal["get_full_state"] = "get_full_state"
+
+class UpdateProtoStateCommand(BaseModel):
+    command: Literal["update_proto_state"] = "update_proto_state"
+    proto_name: str
+    updates: Dict[str, Any]
+
+class SubmitTaskCommand(BaseModel):
+    command: Literal["submit_task"] = "submit_task"
+    task: str
+    is_philosophical_inquiry: bool = False
+
+class CodexAmendmentCommand(BaseModel):
+    command: Literal["approve_codex_amendment", "reject_codex_amendment"]
+
+class CommandReply(BaseModel):
+    status: Literal["success", "error"]
+    message: str
+
+
+File: a4ps/ui/communication.py
+
+This is the resilient Series IV communication module. It implements the ROUTER/DEALER pattern for asynchronous, multi-actor communication and layers the hardened reliability patterns (Lazy Pirate, Message Sequencing, Heartbeating) on top.1
+
+Python
+
+# a4ps/ui/communication.py
+import zmq
+import msgpack
+import logging
+import uuid
+from threading import Thread, Lock
+from kivy.clock import Clock
+from kivy.event import EventDispatcher
+from.schemas import *
+
+REQUEST_TIMEOUT = 2500  # ms
+REQUEST_RETRIES = 3     # Retries
+HEARTBEAT_INTERVAL = 2.0 # seconds
+
+class UICommunication(EventDispatcher):
+    def __init__(self, router_port, pub_port, **kwargs):
+        super().__init__(**kwargs)
+        self.register_event_type('on_full_state')
+        self.register_event_type('on_partial_state')
+        self.register_event_type('on_log_message')
+        self.register_event_type('on_new_tool')
+        self.register_event_type('on_philosophical_proposal')
+
+        self.context = zmq.Context()
+        self.router_port = router_port
+        self.pub_port = pub_port
+
+        # DEALER socket for asynchronous request-reply [3]
+        self.dealer_socket = self.context.socket(zmq.DEALER)
+        self.dealer_socket.setsockopt_string(zmq.IDENTITY, f"ui-client-{uuid.uuid4()}")
+        self.dealer_socket.connect(f"tcp://localhost:{self.router_port}")
+        self.req_lock = Lock()
+
+        # SUB socket for broadcast updates
+        self.sub_socket = self.context.socket(zmq.SUB)
+        self.sub_socket.connect(f"tcp://localhost:{self.pub_port}")
+        self.sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")
+
+        self.poller = zmq.Poller()
+        self.poller.register(self.sub_socket, zmq.POLLIN)
+        self.poller.register(self.dealer_socket, zmq.POLLIN)
+
+        self._is_running = True
+        self.last_sequence_id = -1
+        self.listen_thread = Thread(target=self._listen_for_updates, daemon=True)
+        self.listen_thread.start()
+
+        Clock.schedule_interval(self.send_heartbeat, HEARTBEAT_INTERVAL)
+
+    def _listen_for_updates(self):
+        while self._is_running:
+            socks = dict(self.poller.poll(timeout=100))
+            if self.sub_socket in socks:
+                self._handle_sub_message()
+            if self.dealer_socket in socks:
+                self._handle_dealer_message()
+
+    def _handle_sub_message(self):
+        topic, seq_id_raw, raw_message = self.sub_socket.recv_multipart()
+        seq_id = int.from_bytes(seq_id_raw, 'big')
+
+        # MESSAGE SEQUENCING: Check for dropped messages [1]
+        if self.last_sequence_id!= -1 and seq_id!= self.last_sequence_id + 1:
+            logging.warning(f"UI: Missed messages! Got {seq_id}, expected {self.last_sequence_id + 1}")
+            self.send_command(GetFullStateCommand(), lambda r: logging.info("Re-sync requested."))
+        self.last_sequence_id = seq_id
+        Clock.schedule_once(lambda dt, t=topic, m=raw_message: self._dispatch_broadcast(t, m))
+
+    def _handle_dealer_message(self):
+        # Asynchronous reply from ROUTER
+        raw_reply = self.dealer_socket.recv()
+        # Here you would handle replies, likely correlating them with sent commands
+        # For simplicity, we'll assume replies are logged for now
+        try:
+            reply = CommandReply(**msgpack.unpackb(raw_reply))
+            logging.info(f"UI: Received async reply: {reply.message}")
+        except Exception as e:
+            logging.error(f"UI: Could not decode async reply: {e}")
+
+    def _dispatch_broadcast(self, topic, raw_message):
+        try:
+            data = msgpack.unpackb(raw_message)
+            topic_str = topic.decode()
+            if topic_str == "full_state":
+                self.dispatch('on_full_state', FullStateUpdate(**data))
+            elif topic_str == "partial_state":
+                self.dispatch('on_partial_state', PartialStateUpdate(**data))
+            elif topic_str == "log":
+                self.dispatch('on_log_message', LogMessage(**data))
+            elif topic_str == "new_tool":
+                self.dispatch('on_new_tool', NewToolEvent(**data))
+            elif topic_str == "philosophical_proposal":
+                self.dispatch('on_philosophical_proposal', PhilosophicalProposalEvent(**data))
+        except Exception as e:
+            logging.error(f"UI: Error processing message on topic {topic_str}: {e}")
+
+    def send_command(self, command_model, callback):
+        # Adapted Lazy Pirate for DEALER socket [1]
+        def _send():
+            with self.req_lock:
+                # For a DEALER, we don't need to reconnect, just resend.
+                # A more robust implementation would track message IDs for replies.
+                try:
+                    self.dealer_socket.send(msgpack.packb(command_model.model_dump()))
+                    # Since DEALER is async, we can't easily wait for a specific reply here.
+                    # The callback is simplified for this example.
+                    Clock.schedule_once(lambda dt: callback(CommandReply(status="success", message="Command sent.")))
+                except zmq.ZMQError as e:
+                    logging.error(f"UI: ZMQ Error sending command: {e}")
+                    Clock.schedule_once(lambda dt: callback(CommandReply(status="error", message=str(e))))
+        Thread(target=_send, daemon=True).start()
+
+    def send_heartbeat(self, dt):
+        self.send_command(GetFullStateCommand(), lambda r: None) # Fire and forget
+
+    def stop(self):
+        self._is_running = False
+        if self.listen_thread.is_alive():
+            self.listen_thread.join(timeout=1)
+        self.sub_socket.close()
+        self.dealer_socket.close(linger=0)
+        self.context.term()
+
+
+File: a4ps/ui/morphs.py
+
+This file defines the custom Kivy widgets that form the visual language of the Entropic UI, including the new SupervisorMorph for Series IV.2
+
+Python
+
+# a4ps/ui/morphs.py
+from kivy.uix.widget import Widget
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.modalview import ModalView
+from kivy.uix.button import Button
+from kivy.uix.scrollview import ScrollView
+from kivy.properties import ListProperty, ObjectProperty, StringProperty, NumericProperty
+from kivy.graphics import Color, Rectangle, Line
+from.schemas import UpdateProtoStateCommand, ProtoState, CodexAmendmentCommand
+
+class Morph(Widget):
+    submorphs = ListProperty()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(submorphs=self._on_submorphs_changed)
+
+    def _on_submorphs_changed(self, instance, value):
+        self.clear_widgets()
+        for m in value:
+            super().add_widget(m)
+
+    def add_widget(self, widget, index=0, canvas=None):
+        self.submorphs.insert(index, widget)
+
+    def remove_widget(self, widget):
+        if widget in self.submorphs:
+            self.submorphs.remove(widget)
+
+class ProtoMorph(Morph):
+    proto_name = StringProperty("Proto")
+    proto_version = NumericProperty(1.0)
+    proto_mood = StringProperty("neutral")
+    proto_dissonance = NumericProperty(0.0)
+    is_thinking = ObjectProperty(False)
+    # New property for actor status [3]
+    actor_status = StringProperty("Active") # e.g., Active, Crashed, Restarting
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (None, None); self.size = (150, 60)
+        self.label = Label(font_size='14sp', halign='center', valign='middle', markup=True)
+        self.add_widget(self.label)
+        self.bind(pos=self.redraw, size=self.redraw, proto_name=self.update_text,
+                  proto_version=self.update_text, proto_mood=self.update_text,
+                  proto_dissonance=self.redraw, is_thinking=self.redraw,
+                  actor_status=self.redraw)
+        self.update_text(); self.redraw()
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            if touch.is_right_click:
+                self.parent.show_inspector(self); return True
+            touch.grab(self)
+            parent = self.parent
+            if parent:
+                parent.remove_widget(self); parent.add_widget(self)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if touch.grab_current is self:
+            self.center = touch.pos; return True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if touch.grab_current is self:
+            touch.ungrab(self); return True
+        return super().on_touch_up(touch)
+
+    def update_text(self, *args):
+        self.label.text = f"[b]{self.proto_name}[/b]\nv{self.proto_version:.1f}\n{self.proto_mood}"
+
+    def redraw(self, *args):
+        self.label.size = self.size; self.label.pos = self.pos; self.label.text_size = self.size
+        with self.canvas.before:
+            self.canvas.before.clear()
+            r = 0.2 + self.proto_dissonance * 0.7; g = 0.4; b = 0.9 - self.proto_dissonance * 0.7
+            Color(r, g, b, 1); Rectangle(pos=self.pos, size=self.size)
+            if self.is_thinking:
+                Color(1, 1, 0, 0.5); Line(rectangle=(self.x-2, self.y-2, self.width+4, self.height+4), width=2)
+            # Visual feedback for actor status [3]
+            if self.actor_status == "Crashed":
+                Color(0.8, 0.1, 0.1, 0.8); Line(rectangle=(self.x, self.y, self.width, self.height), width=3)
+            elif self.actor_status == "Restarting":
+                Color(0.1, 0.8, 0.8, 0.8); Line(rectangle=(self.x, self.y, self.width, self.height), width=3)
+
+class ToolMorph(Morph):
+    tool_name = StringProperty("")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (None, None); self.size = (120, 40)
+        self.label = Label(text=f"[b]Tool:[/b]\n{self.tool_name}", markup=True, font_size='12sp')
+        self.add_widget(self.label)
+        self.bind(pos=self.redraw, size=self.redraw, tool_name=self.update_tool_text)
+        self.redraw()
+
+    def update_tool_text(self, *args):
+        self.label.text = f"[b]Tool:[/b]\n{self.tool_name}"
+
+    def redraw(self, *args):
+        self.label.size = self.size; self.label.pos = self.pos
+        with self.canvas.before:
+            self.canvas.before.clear()
+            Color(0.2, 0.8, 0.2, 1); Rectangle(pos=self.pos, size=self.size)
+
+class InspectorMorph(BoxLayout, Morph):
+    target_morph = ObjectProperty(None, allownone=True)
+    def __init__(self, comms, **kwargs):
+        super().__init__(**kwargs)
+        self.comms = comms; self.orientation = 'vertical'; self.size_hint = (None, None)
+        self.size = (250, 300); self.padding = 5; self.spacing = 5
+        self.title_label = Label(text="Inspector", size_hint_y=None, height=30)
+        self.add_widget(self.title_label)
+        self.properties_layout = BoxLayout(orientation='vertical', spacing=5)
+        self.add_widget(self.properties_layout)
+
+    def update_from_state(self, proto_state: ProtoState):
+        if self.target_morph and self.target_morph.proto_name == proto_state.name:
+            self.title_label.text = f"Inspector: {proto_state.name}"
+            self.properties_layout.clear_widgets()
+            for key, value in proto_state.model_dump().items():
+                if key in ['name', 'is_thinking', 'version', 'dissonance']: continue
+                prop_layout = BoxLayout(size_hint_y=None, height=30)
+                prop_layout.add_widget(Label(text=f"{key}:"))
+                prop_input = TextInput(text=str(value), multiline=False)
+                prop_input.bind(on_text_validate=lambda instance, k=key: self.on_prop_change(k, instance.text))
+                prop_layout.add_widget(prop_input)
+                self.properties_layout.add_widget(prop_layout)
+
+    def on_prop_change(self, key, value_str):
+        command = UpdateProtoStateCommand(proto_name=self.target_morph.proto_name, updates={key: value_str})
+        self.comms.send_command(command, lambda reply: print(f"Inspector update reply: {reply.message}"))
+
+class ApprovalDialog(ModalView):
+    def __init__(self, proposal_data, comms, **kwargs):
+        super().__init__(size_hint=(.8,.8), auto_dismiss=False, **kwargs)
+        self.comms = comms
+        layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        layout.add_widget(Label(text="[b]Philosophical Loop: Codex Amendment Proposal[/b]", markup=True, size_hint_y=None, height=40))
+        scroll_label = Label(text=proposal_data['proposal'], text_size=(self.width * 0.7, None), size_hint_y=None, markup=True)
+        scroll_label.bind(texture_size=scroll_label.setter('size'))
+        scroll = ScrollView(); scroll.add_widget(scroll_label)
+        layout.add_widget(scroll)
+        button_layout = BoxLayout(size_hint_y=None, height=50, spacing=20)
+        approve_btn = Button(text="Approve"); reject_btn = Button(text="Reject")
+        approve_btn.bind(on_press=self.approve); reject_btn.bind(on_press=self.reject)
+        button_layout.add_widget(approve_btn); button_layout.add_widget(reject_btn)
+        layout.add_widget(button_layout)
+        self.add_widget(layout)
+
+    def approve(self, instance):
+        self.comms.send_command(CodexAmendmentCommand(command="approve_codex_amendment"), lambda r: print(r.message))
+        self.dismiss()
+
+    def reject(self, instance):
+        self.comms.send_command(CodexAmendmentCommand(command="reject_codex_amendment"), lambda r: print(r.message))
+        self.dismiss()
+
+class WorldMorph(FloatLayout, Morph):
+    def __init__(self, comms, **kwargs):
+        super().__init__(**kwargs)
+        self.comms = comms; self.proto_morphs = {}; self.tool_morphs = {}
+        self.inspector = InspectorMorph(comms=self.comms, pos_hint={'right': 1, 'top': 1})
+        self.inspector_visible = False
+
+    def update_morph(self, proto_state: ProtoState):
+        name = proto_state.name
+        if name not in self.proto_morphs:
+            morph = ProtoMorph(proto_name=name, pos=(100 + len(self.proto_morphs) * 160, 300))
+            self.proto_morphs[name] = morph; self.add_widget(morph)
+        morph = self.proto_morphs[name]
+        morph.proto_version = proto_state.version; morph.proto_mood = proto_state.mood
+        morph.proto_dissonance = proto_state.dissonance; morph.is_thinking = proto_state.is_thinking
+        if self.inspector_visible and self.inspector.target_morph.proto_name == name:
+            self.inspector.update_from_state(proto_state)
+
+    def add_tool_morph(self, tool_name: str):
+        if tool_name not in self.tool_morphs:
+            morph = ToolMorph(tool_name=tool_name, pos=(100 + len(self.tool_morphs) * 130, 50))
+            self.tool_morphs[tool_name] = morph
+            self.add_widget(morph)
+
+    def show_inspector(self, target):
+        self.inspector.target_morph = target
+        if not self.inspector_visible:
+            self.add_widget(self.inspector); self.inspector_visible = True
+        state = ProtoState(name=target.proto_name, version=target.proto_version, mood=target.proto_mood,
+                           dissonance=target.proto_dissonance, is_thinking=target.is_thinking)
+        self.inspector.update_from_state(state)
+
+    def show_approval_dialog(self, proposal_data):
+        dialog = ApprovalDialog(proposal_data=proposal_data, comms=self.comms)
+        dialog.open()
+
+
+File: a4ps/ui/main_ui.py
+
+This is the main Kivy application class. It builds the root widget layout and binds the communication events from the ZMQ thread to UI handler functions.2
+
+Python
+
+# a4ps/ui/main_ui.py
+import logging
+from kivy.app import App
+from kivy.core.window import Window
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.label import Label
+from.communication import UICommunication
+from.morphs import WorldMorph
+from.schemas import GetFullStateCommand, SubmitTaskCommand
+
+class EntropicUIApp(App):
+    def __init__(self, router_port, pub_port, **kwargs):
+        super().__init__(**kwargs)
+        self.comms = UICommunication(router_port, pub_port)
+        self.world = WorldMorph(comms=self.comms)
+
+    def build(self):
+        self.title = "BAT OS: The Architect's Workbench"
+        Window.clearcolor = (0.1, 0.1, 0.1, 1)
+        root_layout = BoxLayout(orientation='horizontal')
+        root_layout.add_widget(self.world)
+        side_panel = BoxLayout(orientation='vertical', size_hint_x=0.4, spacing=5, padding=5)
+        self.log_label = Label(text="[b]System Log[/b]\n", markup=True, size_hint_y=None, halign='left', valign='top')
+        self.log_label.bind(texture_size=self.log_label.setter('size'))
+        log_scroll = ScrollView(size_hint=(1, 1)); log_scroll.add_widget(self.log_label)
+        side_panel.add_widget(log_scroll)
+        task_input_layout = BoxLayout(size_hint_y=None, height=40, spacing=5)
+        self.task_input = TextInput(hint_text="Enter task for ALFRED...", multiline=False)
+        self.task_input.bind(on_text_validate=self.submit_task)
+        submit_button = Button(text="Submit", size_hint_x=0.2)
+        submit_button.bind(on_press=self.submit_task)
+        task_input_layout.add_widget(self.task_input); task_input_layout.add_widget(submit_button)
+        side_panel.add_widget(task_input_layout)
+        root_layout.add_widget(side_panel)
+
+        self.comms.bind(on_full_state=self.handle_full_state)
+        self.comms.bind(on_partial_state=self.handle_partial_state)
+        self.comms.bind(on_log_message=self.handle_log_message)
+        self.comms.bind(on_new_tool=self.handle_new_tool)
+        self.comms.bind(on_philosophical_proposal=self.handle_philosophical_proposal)
+
+        self.comms.send_command(GetFullStateCommand(), lambda r: logging.info(f"UI: Initial state reply: {r.message}"))
+        return root_layout
+
+    def submit_task(self, instance):
+        if self.task_input.text:
+            self.log_label.text += f"[color=cyan]ARCHITECT:[/color] {self.task_input.text}\n"
+            self.comms.send_command(SubmitTaskCommand(task=self.task_input.text),
+                                    lambda r: logging.info(f"Task submission reply: {r.message}"))
+            self.task_input.text = ""
+
+    def handle_full_state(self, instance, update):
+        for proto_state in update.protos:
+            self.world.update_morph(proto_state)
+
+    def handle_partial_state(self, instance, update):
+        self.world.update_morph(update.proto)
+
+    def handle_log_message(self, instance, log):
+        color_map = {"INFO": "lightgreen", "WARNING": "yellow", "ERROR": "red"}
+        self.log_label.text += f"[color={color_map.get(log.level, 'white')}]{log.level}:[/color] {log.message}\n"
+
+    def handle_new_tool(self, instance, event):
+        self.world.add_tool_morph(event.tool_name)
+
+    def handle_philosophical_proposal(self, instance, event):
+        self.world.show_approval_dialog(event.model_dump())
+
+    def on_stop(self):
+        self.comms.stop()

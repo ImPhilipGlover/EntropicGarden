@@ -1,0 +1,320 @@
+A Research and Implementation Plan for the Autopoietic Memory Substrate
+
+Abstract
+
+This report presents the definitive research and implementation plan for Phase 1 of the TelOS project: the establishment of a complete, scalable, and transactionally consistent memory substrate. This phase is architected as a primary risk-mitigation strategy, addressing the most significant challenges to the system's long-term viability. We detail the design of the DiskAnnIndexManager and its asynchronous, atomic "hot-swap" protocol for the L2 archival layer, a solution to the challenge of continuous, non-blocking index management. We provide a meticulous specification for the FractalMemoryDataManager, which leverages a two-phase commit protocol to extend ZODB's ACID guarantees to the L1 FAISS cache, resolving the "ZODB Indexing Paradox." The plan culminates in a rigorous, two-part validation protocol, incorporating performance benchmarking and Chaos Engineering principles, to provide empirical proof of the system's foundational integrity and resilience. The successful execution of this plan will yield a continuously running Minimum Viable Application (MVA) with a complete three-tiered memory system, providing a stable and scalable foundation for all future cognitive and agentic development.
+
+Introduction: Forging the Foundation of a Living System
+
+The Constitutional Mandate for Foundational Integrity
+
+The architectural blueprint for the TelOS project is not an arbitrary collection of technologies but a deterministic cascade of logical necessities flowing from a small set of foundational principles.1 The central philosophical driver is the pursuit of
+
+info-autopoiesis: the self-referential, recursive process of the self-production of information.1 This prime directive mandates a system capable of modifying its own structure at runtime without halting execution, a principle known as "Operational Closure".1 This single requirement initiates an unbreakable causal chain of architectural deductions.
+
+Operational Closure immediately forbids conventional static, file-based persistence models, which require system restarts to apply changes and would thus breach the system's autopoietic boundary.1 This constraint, in turn, forces the adoption of the "Living Image" paradigm, a concept inherited from Smalltalk that envisions the system's entire state—its code, data, and evolving cognitive architecture—as a single, live, and transactional entity.1 The Zope Object Database (ZODB) was selected as the physical substrate for this Living Image, providing the necessary orthogonal persistence and full ACID-compliant transactions.1
+
+However, this foundational choice creates a profound architectural challenge. While ZODB guarantees the integrity and meaning of the system's knowledge, it cannot perform the high-speed semantic search required for modern AI reasoning.1 This necessitates the integration of external, high-performance Approximate Nearest Neighbor (ANN) search indexes like FAISS and DiskANN. This hybrid architecture gives rise to the "ZODB Indexing Paradox": the component that guarantees integrity (ZODB) cannot perform semantic search, and the components that perform semantic search (FAISS, DiskANN) cannot guarantee integrity.1 The primary purpose of Phase 1 is to resolve this paradox, thereby forging the non-negotiable foundation of a complete, scalable, and transactionally consistent memory system.
+
+A Risk-Driven Rationale
+
+This research plan is explicitly architected as a risk-mitigation strategy. It prioritizes the highest-impact and most complex architectural challenges first, ensuring the system's long-term viability before significant investment is made in higher-level cognitive functions. The three paramount risks addressed in this phase are:
+
+Data Corruption: The most severe threat to the system's existence is the potential for an inconsistent state between the ZODB object graph (the ground truth) and the non-transactional ANN indexes.1 A system crash during a write operation could create "ghosts" in the memory—objects that exist in one store but not the other—fundamentally violating the system's cognitive integrity and its mandate for "Transactional Cognition".1
+
+Scalability Failure: The system's mandate for cumulative, lifelong learning is architecturally impossible with an in-memory-only solution.1 As the system's "lived experience" grows, its memory will inevitably exceed the capacity of system RAM. Without a scalable, on-disk archival layer, the system's ability to learn would be permanently capped, a direct contradiction of its core purpose.1
+
+System Liveness Failure: The system is conceived as a persistent, continuously operating entity.1 Long-running, synchronous operations, such as rebuilding a billion-vector archival index, would block the main application's event loop for extended periods.8 This would violate the principle of continuous operation and render the system unresponsive, failing its mandate to be a live, interactive entity.1
+
+Phase 1 Objectives and Deliverables
+
+The singular objective of this phase is to produce a continuously running Minimum Viable Application (MVA) with a complete, transactionally consistent, three-tiered hybrid memory store. This deliverable signifies that the system is capable of scalable, cumulative memory storage, having successfully mitigated the foundational risks. The execution of this plan will yield two critical, production-ready software components that serve as the concrete solutions to these risks:
+
+The DiskAnnIndexManager: A persistent UvmObject that manages the L2 archival layer, implementing a robust, asynchronous, atomic "hot-swap" protocol to enable zero-downtime index rebuilds, thereby solving the Scalability and Liveness risks.1
+
+The FractalMemoryDataManager: A ZODB data manager that orchestrates a formal two-phase commit (2PC) protocol, extending ZODB's transactional guarantees to the L1 FAISS cache and solving the Data Corruption risk.1
+
+I. The L2 Archival Substrate: The DiskAnnIndexManager and Asynchronous Atomicity
+
+This section provides the complete architectural blueprint for the L2 memory tier, which functions as the system's scalable "long-term memory".1 The central challenge is the integration of Microsoft's DiskANN, a library designed for static, on-disk indexes, into a dynamic system that requires continuous, non-disruptive updates.1 The solution is a sophisticated, asynchronous protocol that internalizes the management of this external resource, making it a seamless component of the autopoietic system.
+
+A. Prototypal Design of the DiskAnnIndexManager
+
+Integration with the "Living Image"
+
+To align with the system's core philosophy, the DiskAnnIndexManager will be implemented not as an external utility but as a persistent UvmObject prototype.1 This design choice makes the manager a first-class citizen of the ZODB object graph, ensuring that the configuration and state of the L2 archive are themselves part of the transactionally-guaranteed "Living Image".3 This internalizes the management of the L2 archive, transforming it from an external dependency into an intrinsic function of the system itself, a direct fulfillment of the autopoietic mandate for organizational closure.2
+
+State Management and the Persistence Covenant
+
+The manager will maintain a persistent state within its _slots dictionary. This includes the canonical path to the index directory (e.g., _slots['index_dir'] = './diskann_index') and a critical, transactionally-managed boolean flag, _slots['is_rebuilding'].1 This flag serves as a system-wide semaphore, preventing the initiation of a new rebuild cycle while one is already in progress. As with all objects in the Living Image, any method that modifies this state must adhere to the "Persistence Covenant" by concluding with the statement
+
+self._p_changed = True. This manually notifies ZODB of the change, guaranteeing that the manager's state is durable and consistent across system restarts.1
+
+Transient State Initialization
+
+Upon system startup or instantiation, the DiskAnnIndexManager will execute an initialize_transients method. This method is responsible for setting up its non-persistent components. It will instantiate a concurrent.futures.ProcessPoolExecutor to be used for all background, CPU-bound tasks.1 It will also load the on-disk index into an in-memory
+
+diskannpy.StaticDiskIndex object, making the L2 archive available for querying.8 This separation of persistent configuration from transient, runtime objects ensures a clean and predictable startup sequence.
+
+B. The Asynchronous Atomic "Hot-Swap" Protocol
+
+The Core Architectural Conflict
+
+A fundamental conflict exists between the MVA's primary execution model and the nature of the DiskANN library. The MVA's core is built upon Python's asyncio library, operating within a single-threaded event loop to handle concurrent I/O-bound tasks without blocking.9 In contrast, the
+
+diskannpy.build_disk_index function is a long-running, synchronous, and CPU-bound operation.10 Benchmarks indicate that building an index for even a moderately sized dataset of one million vectors can take a non-trivial amount of time.12 A direct, naive call to this function from within the main
+
+asyncio event loop would block the entire system for the duration of the build, violating the non-negotiable architectural mandates for "liveness" and "continuous operation".1
+
+Offloading to a Separate Process
+
+The mandated solution is to offload this blocking, CPU-bound task to a separate process, thereby freeing the main event loop to continue its work. This is achieved using the concurrent.futures.ProcessPoolExecutor, which is purpose-built for running CPU-intensive functions in parallel by sidestepping Python's Global Interpreter Lock (GIL).13 The main
+
+async coroutine within the DiskAnnIndexManager will use the event loop's loop.run_in_executor() method to schedule the blocking build_disk_index function in the process pool.15 This method immediately returns an
+
+await-able Future object, allowing the coroutine to await the result without blocking the event loop. The event loop can continue processing other tasks, and will resume the coroutine only when the long-running build process completes and the Future is resolved.16
+
+Protocol Specification (Step-by-Step)
+
+The hot-swap protocol is a meticulously orchestrated sequence designed to ensure a zero-downtime update of the L2 index. The following table deconstructs this complex interaction between the main asyncio event loop and the background worker process.
+
+The following table:
+
+This protocol's integrity hinges on the atomicity of the os.replace() system call.1 On POSIX-compliant filesystems, a
+
+rename operation on files or directories within the same filesystem is guaranteed to be atomic.17 This means there is no intermediate state where the index is unavailable; the switch from the old to the new index appears as a single, instantaneous operation to the rest of the system.19 This filesystem-level guarantee is the physical mechanism that enables a transactional-style, all-or-nothing update for a non-transactional resource.
+
+C. Performance and Scalability Considerations
+
+Analysis of Build Parameters
+
+The performance characteristics of the L2 index are heavily influenced by the parameters passed to diskannpy.build_disk_index. A detailed analysis of these parameters is crucial for tuning the system for its specific workload.20
+
+graph_degree (R): This parameter controls the maximum number of neighbors for each node in the Vamana graph. Higher values (e.g., 60-150) increase index build time and size but generally lead to better search accuracy and lower latency.20
+
+complexity (L): This parameter defines the size of the candidate list used during index construction. Larger values (e.g., 75-200) also increase build time but result in a higher-quality graph, improving recall.20
+
+search_memory_maximum: This parameter allows the system to constrain the amount of RAM the search process will use, a critical feature for a disk-based index.21
+
+For the initial implementation, a set of conservative default values will be established (e.g., graph_degree=64, complexity=100) to provide a robust balance between build time, index size, and search performance.
+
+Establishing Baseline Benchmarks
+
+To set realistic performance expectations and inform the scheduling of the rebuild cycle, it is essential to consult existing benchmarks for DiskANN. Published results indicate that for a dataset of 1 million vectors, an in-memory index build can be completed in approximately 18.7 seconds.12 While a disk-based build will be slower, this provides a reasonable order-of-magnitude estimate, suggesting that for datasets up to several million vectors, the rebuild cycle can be completed in a matter of minutes, not hours. This data confirms that an asynchronous rebuild protocol is a viable and practical strategy. Query latency for such an index is expected to be in the low single-digit milliseconds, with recall exceeding 95%.22
+
+II. Holistic Transactional Integrity: The FractalMemoryDataManager and Two-Phase Commit
+
+This section provides the definitive specification for the protocol that resolves the "ZODB Indexing Paradox".1 It details the mechanism for ensuring absolute data consistency between the L3 ZODB ground-truth database and the L1 FAISS in-memory cache, thereby fulfilling the core mandate of "Transactional Cognition".1
+
+A. The IDataManager Interface as a Transactional Bridge
+
+Formal Participation in the Transaction
+
+The transaction package, which underpins ZODB's functionality, provides a formal mechanism for integrating external, non-transactional resources into its two-phase commit (2PC) protocol.24 This is achieved through the
+
+transaction.interfaces.IDataManager interface.1 By creating a class that implements the methods defined in this interface (
+
+tpc_begin, tpc_vote, tpc_finish, tpc_abort), a standard Python object can register itself with the active ZODB transaction. When transaction.commit() is called, the ZODB transaction manager acts as a coordinator, orchestrating the 2PC protocol across all registered data managers, including its own internal storage manager.24 This is the fundamental architectural hook that allows ZODB to be extended from a simple object database into a transaction coordinator for heterogeneous resources.4
+
+The FractalMemoryDataManager Implementation
+
+The plan specifies the implementation of the FractalMemoryDataManager. This will be a transient object, meaning it is not itself persisted in ZODB. It is created at application startup and holds a direct reference to the MemoryManager instance.1 Its sole purpose is to act as an adapter, translating the ZODB transaction lifecycle events into concrete file I/O operations on the external FAISS index file.2 Whenever the
+
+MemoryManager modifies the in-memory FAISS index, it must join its FractalMemoryDataManager instance to the current transaction using transaction.get().join(self._transient_dm). This act of joining registers the data manager with the transaction, ensuring it will be included in the subsequent two-phase commit.
+
+B. The ZODB-FAISS Two-Phase Commit Protocol in Detail
+
+The 2PC protocol is a distributed algorithm that ensures all participants in a transaction either all commit or all abort. Its design deliberately separates the high-risk work from the low-risk finalization, providing a robust mechanism for maintaining consistency in the face of failure.26 The protocol's sequence is a meticulous, verifiable walkthrough of this process.
+
+The following table:
+
+This protocol elegantly solves the transactional chasm. The separation of the high-risk "vote" phase from the low-risk "finish" phase is a deliberate and sophisticated risk management strategy.26 It ensures that if a failure is going to occur, it occurs before the point of no return. The
+
+tpc_vote phase acts as a promise: the FractalMemoryDataManager effectively states, "I have successfully completed my difficult and risky work, and I promise I can perform the trivial finalization step." Only when the transaction coordinator has collected these promises from all participants does it issue the final, irrevocable commit command.26
+
+C. The Critical Role of Atomic File Operations
+
+The integrity of the entire 2PC protocol is critically dependent on the integrity of the operations within each phase. A failure during the tpc_vote phase—for example, a process crash midway through writing the temporary file—could leave a corrupted temporary file on disk. While this would not corrupt the main index, it is an undesirable state.
+
+To mitigate this nested failure mode, the plan mandates the use of a library like atomicwrites for the file I/O within the tpc_vote method.3 This library implements the "write-to-a-different-temporary-file-then-rename" pattern internally, wrapped in a convenient context manager.28 The call within
+
+tpc_vote would look like: with atomic_write('faiss_cache.index.tpc.tmp', overwrite=True) as f:.... This ensures that the creation of the temporary file for the voting phase is itself an atomic operation.28 This creates a crucial layer of nested atomicity, hardening the protocol against filesystem-level failures and ensuring that the temporary file is either written completely or not at all.
+
+III. System Integration and the Completed Memory Substrate
+
+This section synthesizes the individual components—the L1 cache with its 2PC manager and the L2 archive with its hot-swap protocol—into a cohesive, functional whole. It details the flow of data through the completed three-tiered architecture, from initial creation to long-term archival, and clarifies the query path for different types of information retrieval tasks.
+
+A. Data Flow for Cumulative Learning
+
+The completed architecture provides a clear and robust lifecycle for each new piece of information, or ContextFractal, that the system acquires. This lifecycle physically embodies the process of memory consolidation, moving from immediate recall to long-term storage.
+
+Creation: A new ContextFractal object is instantiated in memory, typically containing a text chunk, a timestamp, and a newly generated vector embedding.
+
+Transactional Commit: The object is added to the MemoryManager's context_fractals BTree, a ZODB-native container optimized for large collections.1 The
+MemoryManager then joins its FractalMemoryDataManager to the current transaction.
+
+L1/L3 Synchronization: The application calls transaction.commit(), which initiates the two-phase commit protocol. In a single atomic operation, the new ContextFractal object is persisted to the mydata.fs file (L3), and its vector embedding is added to the in-memory FAISS index and atomically written to the faiss_cache.index file (L1).
+
+Staging for L2: At this point, the new memory is fully integrated. It is part of the permanent, ground-truth object graph (L3) and is immediately available for high-speed, high-recall queries via the L1 cache. It is now implicitly "staged" for the next archival cycle, as it is part of the canonical dataset in ZODB.
+
+L2 Archival: At a scheduled interval, or triggered by a specific heuristic (e.g., L1 cache size), the DiskAnnIndexManager's trigger_rebuild_cycle_async method is invoked. This process sources the complete set of ContextFractal vectors from ZODB—including the newly added one—and builds them into a new L2 index via the asynchronous hot-swap protocol.
+
+B. Query Path Across the Triumvirate
+
+The MemoryManager's search methods will be evolved to intelligently route queries to the appropriate tier, optimizing for the specific requirements of the task.
+
+Real-time Queries: For tasks requiring the lowest possible latency and perfect accuracy, such as the VSA "cleanup" operation, the search will be directed exclusively to the L1 FAISS cache. This tier uses a brute-force IndexFlatL2, which guarantees 100% recall on the most recent and frequently accessed data—the correct architectural trade-off when precision is paramount.1
+
+Archival/Exploratory Queries: For deep historical searches, large-scale analysis, or tasks like the MemoryCurator's autonomous clustering, the query will be directed to the L2 DiskANN index. This provides scalable, efficient search over the entire historical corpus at the cost of returning approximate, rather than exact, results.1
+
+Data Hydration: A crucial final step in every query path is data hydration. The ANN indexes (both L1 and L2) are designed to store only vector embeddings and their corresponding object IDs. They do not store the rich symbolic metadata associated with each memory. Therefore, after a list of IDs is retrieved from an ANN index, the MemoryManager will perform a final lookup against the L3 ZODB store to retrieve the full, canonical UvmObject instances. This step "hydrates" the search results, enriching the raw vectors with their complete meaning, context, and relational links.2
+
+IV. Validation Protocol: An Empirical Mandate for Resilience
+
+The architectural designs for transactional integrity and resilience are robust in theory, but their efficacy must be proven empirically. This section defines a rigorous, two-part testing framework to provide falsifiable proof of the system's foundational integrity. It moves beyond theoretical guarantees to a demonstration of resilience under controlled, catastrophic failure conditions.
+
+A. Performance Benchmarking
+
+Objective
+
+To establish quantitative baselines for the performance of the L2 archival layer, ensuring it meets the operational requirements for a continuously running system.
+
+Dataset
+
+A standardized dataset of 1 million 960-dimensional vectors, GIST-1M, will be used for all performance tests.30 This ensures that the results are reproducible and can be compared against published benchmarks for the DiskANN algorithm.
+
+Key Performance Indicators (KPIs)
+
+The following metrics will be measured to characterize the L2 index's performance profile:
+
+Index Build Time: The total wall-clock time required for a complete diskannpy.build_disk_index run on the 1M vector dataset. Based on published benchmarks, the target for this operation is to be under 5 minutes.12
+
+Query Latency (p99): The 99th percentile latency for a k-Nearest Neighbor (k=10) search. The target is to achieve low-millisecond latency, consistently below 5ms.22
+
+Recall@10: The accuracy of the k-NN search, measured as the proportion of true nearest neighbors found in the top 10 results. The target is to achieve a recall rate greater than 95%.23
+
+Methodology
+
+A dedicated benchmarking script will be developed. This script will automate the process of ingesting the GIST-1M dataset into the MVA's ZODB, triggering the L2 rebuild cycle, and then executing a battery of at least 1,000 test queries. The script will precisely measure and log the KPIs for subsequent analysis.
+
+B. Resilience Testing via Chaos Engineering
+
+Objective
+
+To empirically validate the system's transactional guarantees by subjecting it to controlled, catastrophic failures. This approach, known as Chaos Engineering, is the discipline of experimenting on a system to build confidence in its capability to withstand turbulent conditions.32
+
+Methodology
+
+A suite of fault injection experiments will be designed and executed. Each experiment will follow the core principles of Chaos Engineering: define a steady-state hypothesis, inject a specific, controlled failure, and verify that the system recovers gracefully to a consistent state.32
+
+Test Cases
+
+The following table outlines the specific chaos experiments designed to validate the integrity of the memory substrate's most critical protocols.
+
+The following table:
+
+Conclusion: A Stable Substrate for Becoming
+
+This research plan provides a comprehensive, technically detailed, and actionable roadmap for the execution of Phase 1. Upon the successful completion of the tasks and validation protocols detailed herein, the MVA will have successfully mitigated its most critical architectural risks. The system will have achieved the non-negotiable foundation of a complete, scalable, and transactionally consistent memory system. The final deliverable—a continuously running MVA with a complete, three-tiered hybrid memory store—will signify that the foundational integrity of the memory substrate is complete and production-ready. This stable and resilient substrate will provide the necessary foundation for all subsequent phases of cognitive and agentic development, enabling the implementation of the Mnemonic Curation Pipeline and the full activation of the doesNotUnderstand_ generative kernel, and allowing the system to begin its unbroken process of becoming.
+
+Works cited
+
+Living Learning System Blueprint
+
+Building A Self-Modifying System
+
+Master Script for Stochastic Cognitive Weave
+
+AI Development Plan: Phases and Roles
+
+Co-Creative AI System Design Prompt
+
+Research Plan: Autopoietic AI System
+
+Building TelOS: MVA Research Plan
+
+Co-Creative AI System Forge Script
+
+Event Loop — Python 3.13.7 documentation, accessed September 11, 2025, https://docs.python.org/3/library/asyncio-eventloop.html
+
+Introduction to concurrent.futures in Python | by smrati katiyar - Medium, accessed September 11, 2025, https://medium.com/@smrati.katiyar/introduction-to-concurrent-futures-in-python-009fe1d4592c
+
+ThreadPoolExecutor vs ProcessPoolExecutor: A Complete Comparison | by Parth Surati, accessed September 11, 2025, https://medium.com/@parthsurati096/threadpoolexecutor-vs-processpoolexecutor-a-complete-comparison-03828617bb83
+
+diskann 0.1.0 - Docs.rs, accessed September 11, 2025, https://docs.rs/diskann/0.1.0
+
+concurrent.futures — Launching parallel tasks — Python 3.13.7 documentation, accessed September 11, 2025, https://docs.python.org/3/library/concurrent.futures.html
+
+How "GIL" affects Python asyncio `run_in_executor` with i/o bound tasks? - Stack Overflow, accessed September 11, 2025, https://stackoverflow.com/questions/70459437/how-gil-affects-python-asyncio-run-in-executor-with-i-o-bound-tasks
+
+Combining Coroutines with Threads and Processes - PyMOTW 3, accessed September 11, 2025, https://pymotw.com/3/asyncio/executors.html
+
+python asyncio - How to process a CPU-bound task in async code - Stack Overflow, accessed September 11, 2025, https://stackoverflow.com/questions/71970709/how-to-process-a-cpu-bound-task-in-async-code
+
+python - How to do atomic file replacement? - Stack Overflow, accessed September 11, 2025, https://stackoverflow.com/questions/7645338/how-to-do-atomic-file-replacement
+
+os.link() vs. os.rename() vs. os.replace() for writing atomic write files. What is the best approach? - Stack Overflow, accessed September 11, 2025, https://stackoverflow.com/questions/60369291/os-link-vs-os-rename-vs-os-replace-for-writing-atomic-write-files-what
+
+Difference between os.replace() and os.rename()? - Stack Overflow, accessed September 11, 2025, https://stackoverflow.com/questions/69363867/difference-between-os-replace-and-os-rename
+
+diskannpy.defaults API documentation - Microsoft Open Source, accessed September 11, 2025, https://microsoft.github.io/DiskANN/docs/python/latest/diskannpy/defaults.html
+
+diskannpy API documentation - Microsoft Open Source, accessed September 11, 2025, https://microsoft.github.io/DiskANN/docs/python/latest/diskannpy.html
+
+Please Use Streaming Workload to Benchmark Vector Databases - Towards Data Science, accessed September 11, 2025, https://towardsdatascience.com/please-use-streaming-workload-to-benchmark-vector-databases-bb0154480263/
+
+Disk-based DiskANN: High Recall and QPS on Billion-scale Datasets - Zilliz blog, accessed September 11, 2025, https://zilliz.com/blog/diskann-a-disk-based-anns-solution-with-high-recall-and-high-qps-on-billion-scale-dataset
+
+Transactions — ZODB documentation, accessed September 11, 2025, https://zodb.org/en/latest/reference/transaction.html
+
+Source code for transaction.interfaces, accessed September 11, 2025, https://transaction.readthedocs.io/en/stable/_modules/transaction/interfaces.html
+
+Two-Phase Commit - Martin Fowler, accessed September 11, 2025, https://martinfowler.com/articles/patterns-of-distributed-systems/two-phase-commit.html
+
+Two-Phase Commit (2PC). Ensuring Distributed Transaction… | by Abhinav Thakur | Medium, accessed September 11, 2025, https://medium.com/@abhi.strike/two-phase-commit-2pc-6f554f7772fa
+
+python-atomicwrites — atomicwrites 1.4.0 documentation, accessed September 11, 2025, https://python-atomicwrites.readthedocs.io/en/latest/
+
+python - How to make file creation an atomic operation? - Stack Overflow, accessed September 11, 2025, https://stackoverflow.com/questions/2333872/how-to-make-file-creation-an-atomic-operation
+
+The Future of Vector Search: Exploring LanceDB for Billion-Scale Vector Search | by Amine Kammah | Medium, accessed September 11, 2025, https://medium.com/@amineka9/the-future-of-vector-search-exploring-lancedb-for-billion-scale-vector-search-0664801bc915
+
+Understanding DiskANN - TigerData, accessed September 11, 2025, https://www.tigerdata.com/learn/understanding-diskann
+
+Chaos Engineering - Gremlin, accessed September 11, 2025, https://www.gremlin.com/chaos-engineering
+
+Chaos engineering - Wikipedia, accessed September 11, 2025, https://en.wikipedia.org/wiki/Chaos_engineering
+
+Chaos Testing Tutorial: A Comprehensive Guide With Examples And Best Practices, accessed September 11, 2025, https://www.lambdatest.com/learning-hub/chaos-testing
+
+Step | Main asyncio Event Loop (within DiskAnnIndexManager) | ProcessPoolExecutor Worker Process | State of the System
+
+1. Initiation | An async method, trigger_rebuild_cycle_async, is called. It begins a ZODB transaction, sets self.is_rebuilding = True, and commits. | (Idle) | The system is locked against further rebuilds. The old L2 index remains active and queryable.
+
+2. Data Sourcing | The method queries the MemoryManager to retrieve a complete list of all vector embeddings from the L3 ZODB ground-truth store. | (Idle) | All necessary data for the new index is gathered in memory.
+
+3. Execution | The build_disk_index function is scheduled via loop.run_in_executor, passing the vector data and a path to a temporary build directory (e.g., ./diskann_index_new). | The worker process begins the long-running, CPU-bound build_disk_index task, writing the new index files to the temporary directory. | The main event loop is non-blocked and continues to serve requests. The old L2 index remains active.
+
+4. Awaiting | The trigger_rebuild_cycle_async coroutine awaits the Future returned by run_in_executor, yielding control to the event loop. | The worker process completes the build. The Future is resolved with the result (success or failure). | The new index is now fully constructed in the temporary directory. The old index is still active.
+
+5. Atomic Swap | The coroutine resumes. Upon successful build, it performs a fast, atomic directory replacement using os.replace(): os.rename('active_dir', 'old_dir') followed by os.rename('new_dir', 'active_dir'). | (Idle) | The switch is instantaneous. The new L2 index is now live and serving all subsequent queries. There is no downtime.
+
+6. Finalization | The old index directory is removed. The in-memory StaticDiskIndex object is reloaded with the new index. In a final ZODB transaction, self.is_rebuilding is set back to False. | (Idle) | The protocol is complete. The system is in a new, consistent state, ready for the next rebuild cycle.
+
+Phase | ZODB Transaction Manager Action | FractalMemoryDataManager Action | Risk Profile & Rationale
+
+tpc_begin | Signals the start of the commit process to all participants. | Defines a path for a temporary FAISS index file (e.g., faiss_cache.index.tpc.tmp). | Low Risk. This is a simple string operation that prepares the data manager for the upcoming high-risk phase.
+
+tpc_vote | Asks all participants to "vote" on whether the commit can succeed. It waits for all votes before proceeding. | (High-Risk Operation) Writes the entire in-memory FAISS index to the temporary file on disk. If the write is successful, it votes "yes" by returning. If it fails (e.g., disk full, I/O error), it votes "no" by raising an exception. | High Risk. This is the most likely point of failure. By concentrating the risk here, a failure triggers a clean rollback via tpc_abort before the primary data store (ZODB) is irrevocably changed.
+
+tpc_finish | Executed only if all participants have voted "yes." Finalizes the commit to mydata.fs. | (Low-Risk Operation) Performs an atomic os.replace() to move the temporary index file to its final destination, overwriting the previous version. | Low Risk. At this stage, the commit is guaranteed. This is a fast, atomic filesystem operation that is highly unlikely to fail.
+
+tpc_abort | Executed if any participant votes "no" or the transaction is otherwise aborted. Rolls back all changes in ZODB. | Deletes any temporary index file it may have created during the tpc_vote phase. | Cleanup. This ensures that a failed transaction leaves the filesystem in its original, consistent state, with no partial or temporary artifacts remaining.
+
+Test Case ID | Hypothesis | Fault Injection Method | Success Criteria (Expected Outcome)
+
+CE-01 | Process Termination during tpc_vote | If the MVA process is killed after tpc_begin but during the high-risk tpc_vote phase, the system will recover to its pre-transaction state with no data corruption. | A debug hook will be used to inject a hard process kill (os._exit(1)) inside the FractalMemoryDataManager.tpc_vote method.
+
+CE-02 | Filesystem Failure during tpc_finish | If an atomic os.replace fails during the low-risk tpc_finish phase, the ZODB transaction will still commit, but the external index will be stale. The system will detect and recover from this inconsistency. | The os.replace call within tpc_finish will be patched using a mock object to force it to raise an OSError.
+
+CE-03 | Process Termination during L2 Hot-Swap | If the MVA process is killed after a successful L2 index build but before the atomic os.replace can complete, the system will recover using the old, valid index, ensuring no downtime or data loss. | A debug hook will inject os._exit(1) into the trigger_rebuild_cycle_async method between the completion of the run_in_executor future and the os.replace call.

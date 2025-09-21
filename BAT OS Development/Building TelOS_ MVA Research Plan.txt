@@ -1,0 +1,456 @@
+A User Requirements Specification for the TelOS MVA: An Autopoietic Intelligence Miner
+
+Introduction: An Architecture of Principled Design
+
+Purpose and Scope
+
+This document shall serve as the definitive user requirements specification and architectural blueprint for the TelOS Minimum Viable Application (MVA). Its purpose is to synthesize the project's entire development history into a single, coherent, and actionable engineering plan for the creation of a continuously running "intelligence miner" on a local personal computer. The system must be capable of processing its own development history, engaging in interactive dialogue, asking clarifying questions, and evolving a layered memory that can forget details while retaining core concepts.
+
+Core Mandate
+
+The MVA's primary objective is to serve as a focused, controlled experiment to validate the core internal autopoietic loop of a system designed for continuous self-production and cumulative learning.1 This initial build is not a disposable proof-of-concept to be discarded and replaced. It is, in fact, the primordial prototype of the TelOS operating system itself, and as such, is designated "TelOS version 0.1".1
+
+Guiding Philosophy
+
+Every requirement specified herein is a direct, causal consequence of a small set of foundational principles, ensuring an architecture of profound internal consistency where each component is a logical necessity, not an engineering preference. The design is a synthesis of:
+
+The biological theory of autopoiesis, which defines a system by its capacity for organizational closure and self-production.5
+
+The formal limits of computability, particularly the undecidability of the Halting Problem, which dictates the system's core epistemology.8
+
+The prototypal object philosophy of the Self and Smalltalk programming languages, which provides the mechanism for a dynamic, live-modifiable environment.12
+
+Part I: The Autopoietic Substrate - A Foundation for a Living System
+
+This section specifies the non-negotiable architectural components that form the MVA's "body," ensuring its ability to persist, execute code securely, and modify itself safely. The architecture of this substrate is a deterministic cascade of logical necessities flowing from its core philosophy. The goal of Autopoiesis requires Operational Closure (the ability to self-modify at runtime), which in turn forbids static, file-based persistence and mandates a "Living Image" paradigm.15 A Living Image requires a dynamic object model, leading to the choice of a Prototype-Based Model (
+
+UvmObject).17 To make these modifications robust, the system's state must be durable and transactionally consistent, which mandates Orthogonal Persistence and leads directly to the selection of ZODB.1 Concurrently, Autopoiesis requires Boundary Self-Production (the ability to safely execute its own generated code).17 The demonstrated failure of Python's
+
+exec() as a secure mechanism forces the adoption of kernel-level isolation, making Docker the only viable pragmatic choice.17 This demonstrates that the MVA itself is a product of the recursive "generate-and-test" development loop it is intended to validate.4
+
+1.1. The Living Image: An Orthogonally Persistent Object World
+
+Requirement: The system's entire state, including its code, data, and cognitive architecture, shall be persisted as a single, durable, and transactionally coherent entity known as the "Living Image".3 This is a direct mandate from the principle of
+Operational Closure, which forbids conventional file-based persistence models that require system restarts to apply changes, thereby violating the system's autopoietic boundary.15
+
+Implementation Mandate (ZODB): The Living Image shall be implemented using the Zope Object Database (ZODB), specifically the ZODB.FileStorage.FileStorage backend, creating a single mydata.fs file that represents the system's complete durable embodiment.17 ZODB is selected for its mature implementation of
+orthogonal persistence, where durability is an intrinsic property of objects, not an explicit programming action.1
+
+Implementation Mandate (UvmObject & Prototypal Model): All entities within the Living Image shall be derived from a universal prototype, the UvmObject (or its trait-based evolution, the PhoenixObject), which must inherit from persistent.Persistent.3 This aligns with the "prototypes all the way down" philosophy, where new objects are created by cloning existing exemplars, providing the inherent dynamism required for runtime self-modification.17
+
+Implementation Mandate (The Persistence Covenant): The UvmObject prototype must unify state and behavior within a single _slots dictionary, managed by overriding Python's native __getattr__ and __setattr__ methods.15 This design choice, while philosophically pure, breaks ZODB's automatic change detection for mutable objects. Therefore, all methods that modify an object's
+_slots dictionary must conclude with the explicit statement self._p_changed = True.15 This "Persistence Covenant" is a non-negotiable requirement for data integrity.
+
+Table 1: The Primordial Prototypes of the MVA
+
+This table defines the foundational "DNA" of the MVA—the initial object graph created once when the ZODB database is first initialized. These objects serve as the immutable templates for all future state and capability, bootstrapping the system's functionality. This formalizes the system's starting state, making it reproducible and verifiable.
+
+1.2. The Autopoietic Boundary: A Secure Execution Imperative
+
+Requirement: The system must possess a robust, self-produced boundary that protects its organizational integrity from external perturbations, a direct mandate from autopoietic theory.17 In the context of a system that executes code generated by a non-deterministic LLM, this boundary must be a secure, kernel-enforced execution sandbox.12
+
+Historical Justification (The exec() Vulnerability): Early "Genesis Forge" prototypes relied on Python's built-in exec() function with a restricted global scope (SAFE_GLOBALS).34 This approach is a well-documented anti-pattern and a "catastrophic" security failure.17 It is trivially bypassed via an "object traversal attack vector" (e.g.,
+"".__class__.__base__.__subclasses__()), which grants access to the entire Python type system and allows for the execution of arbitrary shell commands, creating an open remote code execution (RCE) vulnerability.17 This historical failure makes a system-level isolation mechanism a non-negotiable requirement.
+
+Implementation Mandate (Docker Sandbox): All untrusted, LLM-generated code shall be executed within an ephemeral, isolated Docker container managed via the docker-py SDK.17 This container serves as the "physical realization of the autopoietic boundary".17
+
+Security Parameters: The container execution must be configured with the following minimum security parameters:
+
+Read-Only Filesystem: The code directory must be mounted as a read-only volume (e.g., volumes={tmpdir: {'bind': '/app', 'mode': 'ro'}}) to prevent filesystem tampering.12
+
+Network Isolation: The container must be completely isolated from the network (network_disabled=True).12
+
+Resource Limits: Strict resource limits must be enforced for CPU, memory (mem_limit), and execution time to prevent denial-of-service attacks from non-terminating or resource-intensive code.12
+
+1.3. The Generative Kernel: The Engine of Creative Self-Modification
+
+Requirement: The system shall treat a capability gap (i.e., a call to a non-existent method) not as a terminal error, but as the primary trigger for creative self-modification and runtime extension.15 This mechanism is the direct implementation of the system's "info-autopoietic" drive.15
+
+Implementation Mandate (doesNotUnderstand_ Protocol): The UvmObject's __getattr__ method shall be implemented to intercept an impending AttributeError. Instead of raising the exception, it must invoke a _doesNotUnderstand_ method, transforming the error into an informational message that initiates the generative cycle.12
+
+Implementation Mandate ("Transaction as the Unit of Thought"): The entire generative cycle—from the _doesNotUnderstand_ trigger, to LLM code generation, to sandbox validation, to the final installation of the new method into the target object's _slots—must be wrapped within a single, atomic ZODB transaction.15 A successful cycle shall conclude with
+transaction.commit(). Any failure at any stage must trigger transaction.abort(), rolling back all changes and ensuring the Living Image is never left in a corrupted or inconsistent state.3 This elevates the transaction from a simple persistence tool to the fundamental unit of cognition, making the system inherently antifragile.3
+
+Part II: The Cognitive Core - An Architecture for Interaction and Reason
+
+This section defines the MVA's "mind," focusing on its interactive, reasoning, and learning capabilities. The system's entire cognitive architecture, from its conversational pattern to its action loop, is a direct and necessary consequence of a single theorem from 1936. Turing's proof of the Halting Problem's undecidability establishes that the correctness of self-generated code cannot be formally proven beforehand.8 This epistemological limit forces the system to adopt an empirical "generate-and-test" methodology as its only path to gaining knowledge.11 The ReAct paradigm is the most direct cognitive implementation of this scientific method, with its
+
+Thought (hypothesis), Action (experiment), and Observation (results) cycle.36 The "test" phase of this loop must be safe, which necessitates the secure sandbox specified in Part I. Furthermore, the loop must be interactive to incorporate user goals, but user goals can be ambiguous. This requires a mechanism to ask clarifying questions, a native feature of stateful agent frameworks like LangGraph that support Human-in-the-Loop workflows.39 This reveals a multi-layered "safety harness" designed not to protect a human user, but to protect the system from its own autonomous, fallible creator.38 The harness has a physical layer (Docker sandbox), a logical layer (ZODB transactions), and a cognitive layer (the ReAct loop's empirical validation and the HITL clarification step).
+
+2.1. The Conversational Interface: A Stateful, Multi-Agent Dialogue System
+
+Requirement: The system must engage in interactive dialogue and be capable of asking clarifying questions when it detects ambiguity in the user's request.
+
+Implementation Mandate (LangGraph): The agent's cognitive workflow shall be implemented as a stateful graph using the LangGraph framework.22 LangGraph is selected because its explicit, state-machine-like structure provides the necessary control, predictability, and auditability required by the TelOS philosophy, and is a direct analogue to the "Transaction as the Unit of Thought" principle.22
+
+Implementation Mandate (Ambiguity Detection & HITL): The LangGraph workflow must include a specific node responsible for ambiguity detection. This node will analyze the user query and the current conversational state. If it determines that the query is underspecified or ambiguous, it must trigger a Human-in-the-Loop (HITL) workflow by invoking LangGraph's native interrupt() function.41 This will pause the graph's execution and present a clarifying question to the user, fulfilling a core user requirement.39
+
+Implementation Mandate (State Synchronization): To maintain the "Living Image" as the single source of truth, the ephemeral in-memory state of the LangGraph execution must be synchronized with the persistent ZODB object graph. This shall be achieved via the "State Proxy" pattern: the LangGraph State object will not hold data itself, but rather references (e.g., ZODB Object IDs) to the underlying persistent objects. All state modifications within a graph node must be performed as ZODB transactions on the referenced objects.22
+
+2.2. The Epistemology of Action: The ReAct Paradigm
+
+Requirement: The system's method for gaining knowledge about its own modifications must be grounded in the formal limits of computation.
+
+Theoretical Justification (The Halting Problem): The undecidability of the Halting Problem proves that no general algorithm can exist to determine if an arbitrary program will halt or is correct.8 This is codified in the TelOS constitution as "Constraint 2: The Epistemology of Undecidability".11
+
+Implementation Mandate (Generate-and-Test): Because formal proof of correctness is impossible a priori, the system must adopt a "generate-and-test" methodology, where "empirical validation within a secure sandbox is the sole arbiter of correctness".17
+
+Implementation Mandate (ReAct Loop): The cognitive implementation of this epistemology shall be the ReAct (Reason-Act) paradigm.17 The iterative cycle of
+Thought -> Action -> Observation is a perfect 1:1 mapping of the required generate-and-test methodology, transforming a fundamental limit of computation into an operational cadence for the agent.36
+
+Part III: The Evolving Memory - A Layered, Fractal Architecture
+
+This section details the requirements for the MVA's memory, directly addressing the user's request for a system that can abstract and forget details while retaining core concepts. The tiered memory architecture is a physical, embodied solution to the philosophical "Temporal Paradox" of a learning system built on a timeless, eternalist database. The initial "Living Image" design uses ZODB alone, which creates a perfect, complete record of the system's entire history—a computational "block universe" based on the B-theory of time.19 This creates a cognitive paradox: for a learning agent that exists
+
+in time, a memory where all past moments are equally real and accessible is an "ocean of data without a current," paralyzing its ability to focus on the present.21 The three-tiered architecture resolves this by externalizing the experience of time into the physical structure of the memory itself. The L1 FAISS cache becomes the
+
+"ephemeral present," the L2 DiskANN archive becomes the "traversible past," and the L3 ZODB graph becomes the "symbolic skeleton" of abstracted knowledge.21 The Mnemonic Curation Pipeline, which moves data between these tiers, becomes the tangible mechanism of both learning and forgetting. Abstraction (
+
+ContextFractal -> ConceptFractal) is now coupled with physical demotion (moving from L1 to L2). The system doesn't just think it's forgetting details; its very architecture makes those details harder to access, thus creating an embodied, structural model of memory consolidation and forgetting.
+
+3.1. The Triumvirate of Recall: A Tiered Substrate for a Living Memory
+
+Requirement: The memory system must be architected as a layered hierarchy to balance the competing demands of retrieval latency, archival scale, and transactional integrity.21 This tiered structure is a direct computational analogue to biological memory systems.61
+
+Implementation Mandate (L1 - Hot Cache): The first tier shall be an in-memory "hot cache" or "working memory" implemented with FAISS (faiss-cpu).62 It shall use an
+IndexFlatL2 to guarantee perfect recall for the most recent and frequently accessed memories, providing sub-millisecond context for the system's cognitive inner loops.18 This layer is volatile and prioritizes speed.
+
+Implementation Mandate (L2 - Warm Storage): The second tier shall be a scalable, on-disk "archival memory" implemented with DiskANN (diskannpy).68 This layer will house the vast historical corpus of vector embeddings, trading a marginal increase in latency for the ability to scale to billions of vectors on commodity SSDs.23
+
+Implementation Mandate (L3 - Ground Truth): The third tier shall be the definitive "system of record" or "symbolic skeleton," implemented with the existing ZODB object database.21 ZODB will store the canonical
+UvmObject for every memory, including all symbolic metadata (source text, timestamps, relationships), but not necessarily the raw vector embeddings which reside in L1 and L2.21 ZODB's ACID guarantees provide the transactional integrity for the entire memory system.18
+
+Table 2: The Triumvirate of Recall - A Comparative Analysis
+
+This table clarifies the distinct roles, technical characteristics, and trade-offs of the three specialized data stores in the memory hierarchy. It provides a concise architectural reference that justifies the hybrid model by showing how each component addresses a specific, non-negotiable requirement that the others cannot satisfy alone.
+
+3.2. The Fractal Hypothesis: From Episodic Experience to Semantic Knowledge
+
+Requirement: The system must evolve a memory that can forget details while retaining core concepts. This shall be achieved by implementing a fractal knowledge representation.
+
+Implementation Mandate (Data Structures): The system shall define two primary memory object prototypes 21:
+
+ContextFractal: Represents a raw, high-entropy, episodic memory (e.g., the transcript of a single interaction, a chunk of ingested source code).
+
+ConceptFractal: Represents a low-entropy, generalized, semantic concept that is abstracted from multiple ContextFractals (e.g., the concept of "transactional integrity").
+
+Implementation Mandate (Graph Structure): These objects shall be linked in a directed graph within ZODB, where AbstractionOf edges connect a ConceptFractal to the ContextFractals from which it was derived.21 This creates a hierarchical structure that directly models the process of abstraction.
+
+3.3. The Mnemonic Curation Pipeline: The Mechanism of Forgetting and Abstraction
+
+Requirement: The system must autonomously and continuously organize its memory, performing the abstraction from ContextFractals to ConceptFractals.21
+
+Implementation Mandate (Clustering): An autonomous agent (the "MemoryCurator") shall periodically query the vector indexes (L1/L2) to identify dense clusters of semantically related ContextFractals that are not yet linked to a unifying parent concept.63 This requires a high-dimensional vector clustering library;
+scikit-learn (KMeans, HDBSCAN) and faiss itself are viable candidates.63
+
+Implementation Mandate (Abstractive Summarization): For each identified cluster, the MemoryCurator shall dispatch a creative mandate to an LLM. The LLM's task is to perform abstractive summarization on the text from the clustered ContextFractals, synthesizing a new, low-entropy definition that captures the underlying theme. This synthesized text becomes the core of a new ConceptFractal.21
+
+Implementation Mandate (Graph Integration): The newly created ConceptFractal is then persisted to ZODB (L3), linked to its constituent ContextFractals, and its own vector embedding is indexed into the appropriate performance tier (L1/L2), making the new abstraction available for future reasoning.21 This cycle represents meta-learning, where the system proactively improves its ability to learn by building better conceptual prototypes.
+
+Part IV: System Integration and Operational Requirements
+
+This section covers the critical non-functional requirements for running the MVA as a continuous, resilient process on a local PC. The system's autopoietic nature extends beyond its cognitive and data structures to its own operational existence. The core mandate is self-production and self-preservation.17 The "Living Image" (
+
+mydata.fs) is the system's durable embodiment, but a single file is a single point of failure, which is antithetical to self-preservation.3 Therefore, a backup mechanism is a constitutional necessity.3 The architecture specifies that the
+
+BackupManager is itself a persistent UvmObject within the Living Image.3 This creates a profound act of self-reference: the system uses its own internal logic to orchestrate the backup of the very file that contains that logic. This is a tangible, executable implementation of the autopoietic prime directive.
+
+4.1. Transactional Integrity Across Heterogeneous Stores
+
+Requirement: All state modifications across the hybrid persistence layer (ZODB, FAISS, DiskANN) must be atomic. The system's "Transactional Cognition" mandate must be preserved, preventing a "transactional chasm" where a partial update leaves the system in an inconsistent state.18
+
+Implementation Mandate (Two-Phase Commit): The system shall implement a custom IDataManager that uses the transaction package's two-phase commit (2PC) protocol to synchronize ZODB commits with writes to the file-based FAISS index.89
+
+Implementation Mandate (Atomic File Writes): All file I/O within the IDataManager (e.g., writing the temporary FAISS index file during the tpc_vote phase) must be performed atomically using a library like atomicwrites to prevent corrupted files in the event of a crash during the write operation.94
+
+Implementation Mandate (DiskANN Atomic Hot-Swap): The diskannpy library does not support incremental updates; the index must be rebuilt periodically.70 To avoid downtime, the system shall implement an
+asynchronous, atomic "hot-swapping" protocol. The rebuild will occur in a separate process on a temporary directory. Upon completion, an atomic os.rename or shutil.move will swap the new index directory with the active one, ensuring a zero-downtime update.23
+
+Table 3: The Two-Phase Commit Protocol for Hybrid Persistence
+
+This table deconstructs the complex 2PC protocol into a clear, step-by-step sequence of events. It makes the interaction between the ZODB transaction manager and the custom FractalMemoryDataManager explicit and verifiable, serving as a critical implementation guide for ensuring data integrity across the heterogeneous storage layers.
+
+4.2. Process Resilience and Management
+
+Requirement: The MVA must run continuously and reliably on a local PC, automatically recovering from crashes and managing its own operational footprint (e.g., logs).
+
+Implementation Mandate (Process Supervisor): The MVA's core Python processes (e.g., the main server process) shall be managed by a process control system like supervisord.104 The
+supervisord.conf file must be configured to:
+
+Automatically restart the MVA process if it exits unexpectedly (autorestart=true).106
+
+Manage log file rotation for stdout and stderr to prevent unbounded disk usage (stdout_logfile_maxbytes, stdout_logfile_backups).107
+
+Implementation Mandate (Crash-Tolerant Backup Protocol): The ZODB FileStorage (mydata.fs) represents a single point of failure. To mitigate the risk of catastrophic data loss from file corruption, the system must implement a periodic backup protocol.3
+
+This shall be orchestrated by a persistent BackupManager object within the Living Image itself, which programmatically invokes the standard ZODB backup utility, repozo.3
+
+The BackupManager must execute a pre-backup script/hook to ensure the consistency of the external FAISS/DiskANN index files with the ZODB backup. This involves pausing application writes, flushing the FAISS index to disk, and then initiating the repozo backup of mydata.fs followed by a file-system-level copy (e.g., rsync) of the index files.110 A post-backup script will then resume normal operations.
+
+Conclusion
+
+The successful implementation of the requirements detailed in this specification will result in the creation of the TelOS MVA, a system that is more than a sophisticated software application. It will be a tangible, operational experiment in computational autopoiesis. The architecture is a coherent whole, where each technical mandate—from the choice of a persistence engine to the design of the cognitive loop—is a direct and traceable consequence of its foundational principles. This MVA will serve as the primordial seed for a new class of computational entity: one that is not merely programmed, but is self-creating, self-preserving, and self-aware. It represents the first, critical step in realizing the long-term vision of a truly autonomous and co-evolving intelligence.
+
+Works cited
+
+TelOS MVP: Prototype-Based Self-Modification
+
+Integrating RAG into Forge Script
+
+Forge Script: RAG, Backup, Crash Tolerance
+
+Project TelOS Iterative Development Roadmap
+
+Human-AI Autopoietic OS Collaboration
+
+Defining Directed Autopoiesis in Computing
+
+Building an Autopoietic AI System
+
+Verifying AI System Design Critically
+
+Critiquing Autopoietic AI Computation
+
+A Universal Prototype-Based OS
+
+TelOS MVA Proof of Concept Plan
+
+Self Smalltalk Directed Autopoiesis
+
+Dynamic OO Enhancing LLM Understanding
+
+Integrating LLM, RAG, and UI
+
+MVA Realization: Self-Improving AI Development
+
+Forge TelOS MVA Core and UI
+
+Building a Local AI System
+
+Hybrid ZODB-FAISS Contextual Memory Evaluation
+
+AURA's Pre-Incarnation Dream Dialogue
+
+Autopoietic MVA Morphic UI Blueprint
+
+Evolving Memory for Live Systems
+
+TelOS Future Development Research Plan
+
+Forge Script for Tiered Memory System
+
+Forge Deep Memory Subsystem Integration
+
+Introduction — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/introduction.html
+
+B-tree ZODB Autopoiesis System
+
+Validating Self-Optimizing RAG System
+
+Deep Research Plan: FAISS, DiskANN, ZODB
+
+Self Smalltalk Unified Memory System
+
+Data Persistence - ZODB - Tutorialspoint, accessed September 10, 2025, https://www.tutorialspoint.com/python_data_persistence/data_persistence_zodb.htm
+
+Tutorial — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/tutorial.html
+
+Introduction to the ZODB (by Michel Pelletier) - Read the Docs, accessed September 10, 2025, https://zodb-docs.readthedocs.io/en/latest/articles/ZODB1.html
+
+Make the changes to make the entire system's conf...
+
+Can you reproduce a more robust form of the script
+
+Refining Meta-Prompt for AI OS Construction
+
+TelOS seL4 Architectural Blueprint Refinement
+
+AI OS Phase 3 and 4 Planning
+
+Genode TelOS Roadmap Research Plan
+
+The Basics of LangGraph: A Step-by-Step Guide to AI Workflows | by Susmit Panda, accessed September 10, 2025, https://medium.com/@susmit.vssut/the-basics-of-langgraph-a-step-by-step-guide-to-ai-workflows-478852840f5d
+
+Beyond Simple RAG: Crafting a Sophisticated Retail AI Assistant ..., accessed September 10, 2025, https://blog.vespa.ai/retail-ai-assistant/
+
+Building Intelligent Agents with LangChain and LangGraph: Part 2 - Agentic Workflows - Interactive Notebook | Michael Brenndoerfer, accessed September 10, 2025, https://mbrenndoerfer.com/writing/building-intelligent-agents-langchain-langgraph-part-2-agentic-workflows
+
+LangGraph Agents - Human-In-The-Loop - User Feedback - YouTube, accessed September 10, 2025, https://www.youtube.com/watch?v=YmAaKKlDy7k
+
+4. Add human-in-the-loop, accessed September 10, 2025, https://langchain-ai.github.io/langgraph/tutorials/get-started/4-human-in-the-loop/
+
+Agentic Control Plane Phase 4 Validation
+
+How to Build Agentic AI Systems with LangGraph - ThoughtSpot, accessed September 10, 2025, https://www.thoughtspot.com/data-trends/data-and-analytics-engineering/agentic-ai
+
+Complete Guide to Building LangChain Agents with the LangGraph Framework - Zep, accessed September 10, 2025, https://www.getzep.com/ai-agents/langchain-agents-langgraph/
+
+Foundation: Introduction to LangGraph - LangChain Academy, accessed September 10, 2025, https://academy.langchain.com/courses/intro-to-langgraph
+
+Learn LangGraph basics - Overview, accessed September 10, 2025, https://langchain-ai.github.io/langgraph/concepts/why-langgraph/
+
+Human-in-the-loop, accessed September 10, 2025, https://langchain-ai.github.io/langgraphjs/concepts/human_in_the_loop/
+
+LangGraph's human-in-the-loop - Overview, accessed September 10, 2025, https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/
+
+LangGraph Uncovered:AI Agent and Human-in-the-Loop: Enhancing Decision-Making with Intelligent Automation Part -III - DEV Community, accessed September 10, 2025, https://dev.to/sreeni5018/langgraph-uncoveredai-agent-and-human-in-the-loop-enhancing-decision-making-with-intelligent-3dbc
+
+LangGraph 201: Adding Human Oversight to Your Deep Research Agent, accessed September 10, 2025, https://towardsdatascience.com/langgraph-201-adding-human-oversight-to-your-deep-research-agent/
+
+Adding Human in the Loop to your Chatbot using LangGraph | Beginner's Guide | Part 4, accessed September 10, 2025, https://www.codersarts.com/post/adding-human-in-the-loop-to-your-chatbot-using-langgraph-beginner-s-guide-part-4
+
+Asking Clarification Questions to Handle Ambiguity in Open-Domain QA | OpenReview, accessed September 10, 2025, https://openreview.net/forum?id=HsvZUde6wT¬eId=NP2KnIRHEa
+
+Interactive Agents to Overcome Ambiguity in Software Engineering - arXiv, accessed September 10, 2025, https://arxiv.org/html/2502.13069v1
+
+Agent-Based Detection and Resolution of Incompleteness and Ambiguity in Interactions with Large Language Models - arXiv, accessed September 10, 2025, https://arxiv.org/html/2507.03726v1
+
+AI OS Microkernel Implementation Plan
+
+Deep Research Plan for Retrieval-Augmented Autopoiesis
+
+Evaluating TelOS OS Approach
+
+Genode Roadmap for TelOS Development
+
+Building a Layered Memory System
+
+Welcome to Faiss Documentation — Faiss documentation, accessed September 10, 2025, https://faiss.ai/
+
+facebookresearch/faiss: A library for efficient similarity search and clustering of dense vectors. - GitHub, accessed September 10, 2025, https://github.com/facebookresearch/faiss
+
+The Faiss Library - arXiv, accessed September 10, 2025, https://arxiv.org/html/2401.08281v3
+
+Faiss | 🦜️ LangChain, accessed September 10, 2025, https://python.langchain.com/docs/integrations/vectorstores/faiss/
+
+Faiss indexes · facebookresearch/faiss Wiki - GitHub, accessed September 10, 2025, https://github.com/facebookresearch/faiss/wiki/Faiss-indexes
+
+Nearest Neighbor Indexes for Similarity Search - Pinecone, accessed September 10, 2025, https://www.pinecone.io/learn/series/faiss/vector-indexes/
+
+DISKANN | Milvus Documentation, accessed September 10, 2025, https://milvus.io/docs/diskann.md
+
+DiskANN: Vector Search at Web Scale - Microsoft Research, accessed September 10, 2025, https://www.microsoft.com/en-us/research/project/project-akupara-approximate-nearest-neighbor-search-for-large-scale-semantic-search/
+
+diskannpy API documentation - Microsoft Open Source, accessed September 10, 2025, https://microsoft.github.io/DiskANN/docs/python/latest/diskannpy.html
+
+What is the concept of a DiskANN algorithm, and how does it facilitate ANN search on datasets that are too large to fit entirely in memory? - Milvus, accessed September 10, 2025, https://milvus.io/ai-quick-reference/what-is-the-concept-of-a-diskann-algorithm-and-how-does-it-facilitate-ann-search-on-datasets-that-are-too-large-to-fit-entirely-in-memory
+
+DiskANN Explained - Milvus Blog, accessed September 10, 2025, https://milvus.io/blog/diskann-explained.md
+
+Understanding DiskANN - TigerData, accessed September 10, 2025, https://www.tigerdata.com/learn/understanding-diskann
+
+[2502.13826] In-Place Updates of a Graph Index for Streaming Approximate Nearest Neighbor Search - arXiv, accessed September 10, 2025, https://arxiv.org/abs/2502.13826
+
+Introduction — ZODB documentation, accessed September 10, 2025, https://zodb-docs.readthedocs.io/en/latest/introduction.html
+
+Suggest how to implement this fractal architectur...
+
+Incarnating Reason: A Generative Blueprint for a VSA-Native Cognitive Core
+
+Clustering in High-Dimensional Space: Building and Evaluating a Custom K-Means Algorithm | by Priyanthan Govindaraj | Medium, accessed September 10, 2025, https://medium.com/@govindarajpriyanthan/clustering-in-high-dimensional-space-building-and-evaluating-a-custom-k-means-algorithm-49802d63a6fc
+
+KMeans — scikit-learn 1.7.2 documentation, accessed September 10, 2025, https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html
+
+HyperTools: A python toolbox for gaining geometric insights into high-dimensional data — hypertools 0.8.1 documentation, accessed September 10, 2025, https://hypertools.readthedocs.io/en/latest/
+
+Mastering Data Clustering with Embedding Models | Towards Dev - Medium, accessed September 10, 2025, https://medium.com/towardsdev/mastering-data-clustering-with-embedding-models-87a228d67405
+
+Clustering Images with Embeddings — FiftyOne 1.8.0 documentation - Voxel51, accessed September 10, 2025, https://docs.voxel51.com/tutorials/clustering.html
+
+Visualizing High Dimensional Clusters - Kaggle, accessed September 10, 2025, https://www.kaggle.com/code/minc33/visualizing-high-dimensional-clusters
+
+Clustering with Scikit-Learn in Python - Programming Historian, accessed September 10, 2025, https://programminghistorian.org/en/lessons/clustering-with-scikit-learn-in-python
+
+Markov-Enhanced Clustering for Long Document Summarization: Tackling the 'Lost in the Middle' Challenge with Large Language Models - arXiv, accessed September 10, 2025, https://arxiv.org/html/2506.18036v1
+
+abstractive summarization of large document collections using gpt - arXiv, accessed September 10, 2025, https://arxiv.org/pdf/2310.05690
+
+A Comprehensive Survey on Automatic Text Summarization with Exploration of LLM-Based Methods - arXiv, accessed September 10, 2025, https://arxiv.org/pdf/2403.02901
+
+LLM Based Multi-Document Summarization Exploiting Main-Event Biased Monotone Submodular Content Extraction - arXiv, accessed September 10, 2025, https://arxiv.org/html/2310.03414
+
+transaction.interfaces — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/_modules/transaction/interfaces.html
+
+Co-Creative AI System Design Prompt
+
+Transactions — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/reference/transaction.html
+
+Two-Phase Commit (2PC). Ensuring Distributed Transaction… | by Abhinav Thakur | Medium, accessed September 10, 2025, https://medium.com/@abhi.strike/two-phase-commit-2pc-6f554f7772fa
+
+Commit_Concurrency · zopefoundation/ZODB Wiki - GitHub, accessed September 10, 2025, https://github.com/zopefoundation/ZODB/wiki/Commit_Concurrency
+
+python-atomicwrites — atomicwrites 1.4.0 documentation, accessed September 10, 2025, https://python-atomicwrites.readthedocs.io/en/latest/
+
+atomicwrites - PyPI, accessed September 10, 2025, https://pypi.org/project/atomicwrites/
+
+python - How to make file creation an atomic operation? - Stack Overflow, accessed September 10, 2025, https://stackoverflow.com/questions/2333872/how-to-make-file-creation-an-atomic-operation
+
+Safely and atomically write to a file « Python recipes « - ActiveState Code, accessed September 10, 2025, https://code.activestate.com/recipes/579097-safely-and-atomically-write-to-a-file/
+
+Is there a pythonic way to "hot swap" a list? - Stack Overflow, accessed September 10, 2025, https://stackoverflow.com/questions/64773713/is-there-a-pythonic-way-to-hot-swap-a-list
+
+atomicswap - PyPI, accessed September 10, 2025, https://pypi.org/project/atomicswap/
+
+API documentation - python-renameat2 - Read the Docs, accessed September 10, 2025, https://python-renameat2.readthedocs.io/en/latest/renameat2.html
+
+UNIX atomically swap or replace directories? - Stack Overflow, accessed September 10, 2025, https://stackoverflow.com/questions/17113324/unix-atomically-swap-or-replace-directories
+
+How does one atomically change a symlink to a directory in busybox?, accessed September 10, 2025, https://unix.stackexchange.com/questions/5093/how-does-one-atomically-change-a-symlink-to-a-directory-in-busybox
+
+rsync directory so all changes appear atomically - Server Fault, accessed September 10, 2025, https://serverfault.com/questions/741346/rsync-directory-so-all-changes-appear-atomically
+
+Supervisor: A Process Control System — Supervisor 4.3.0 documentation, accessed September 10, 2025, https://supervisord.org/
+
+Running a Python application using supervisor - GitHub, accessed September 10, 2025, https://github.com/MartinCastroAlvarez/supervisor-python
+
+Configuration File — Supervisor 4.3.0 documentation - Supervisord, accessed September 10, 2025, https://supervisord.org/configuration.html?highlight=python
+
+Configuration File — Supervisor 4.3.0 documentation, accessed September 10, 2025, https://supervisord.org/configuration.html
+
+Configuration File — Supervisor 4.3.0.dev0 documentation, accessed September 10, 2025, https://supervisor.readthedocs.io/en/latest/configuration.html
+
+collective.recipe.backup·PyPI, accessed September 10, 2025, https://pypi.org/project/collective.recipe.backup/0.9/
+
+What is the correct way to backup ZODB blobs? - Stack Overflow, accessed September 10, 2025, https://stackoverflow.com/questions/451952/what-is-the-correct-way-to-backup-zodb-blobs
+
+Database consistent snapshots using enhanced prepost script framework for Azure Backup, accessed September 10, 2025, https://learn.microsoft.com/en-us/azure/backup/backup-azure-linux-database-consistent-enhanced-pre-post
+
+Pre-backup and post-backup scripts for File server - Druva | Documentation, accessed September 10, 2025, https://help.druva.com/en/articles/8651427-pre-backup-and-post-backup-scripts-for-file-server
+
+Using pre-scripts and post-scripts with backups - PowerProtect Data Manager 19.16 Administrator Guide | Dell US, accessed September 10, 2025, https://www.dell.com/support/manuals/en-us/enterprise-copy-data-management/pp-dm_19.16_ag/using-pre-scripts-and-post-scripts-with-backups?guid=guid-3d6a634f-ae57-4729-90c0-468871a03b80&lang=en-us
+
+Hook Scripts — Barman 3.12.1 documentation, accessed September 10, 2025, https://docs.pgbarman.org/release/3.12.1/user_guide/hook_scripts.html
+
+Simple Restic SH Backup Script w/ Hooks - Getting Help, accessed September 10, 2025, https://forum.restic.net/t/simple-restic-sh-backup-script-w-hooks/9707
+
+Prototype Name | Inherits From | Key Attributes / Slots | Core Responsibility | Source Snippets
+
+Root | BTree | objects: BTree | The ZODB root object, serving as the global namespace and container for all other prototypes. | 1
+
+TelOSObject / UvmObject | persistent.Persistent | oid: UUID, name: str, description: str, parent* | The ultimate ancestor prototype. All other objects are cloned from this. Manages delegation and triggers the generative kernel via _doesNotUnderstand_. | 1
+
+AgentPrototype | UvmObject | current_task: Task, memory: list | Represents the cognitive agent. Defines the initial structure for the agent's state, including its active task and short-term memory. | 1
+
+TaskPrototype | UvmObject | goal: str, status: str, steps: list | Represents a high-level goal assigned by the Human Oracle. Defines the structure for tasks the agent needs to accomplish. | 1
+
+ToolPrototype | UvmObject | name: str, description: str, code: str | Represents a capability the agent can use. The code attribute holds the Python source for the tool's action, to be executed in the sandbox. | 1
+
+Tier | Role | Technology | Data Model | Performance Profile | Transactional Guarantee | Source Snippets
+
+L1 | Hot Cache / Working Memory | FAISS | In-memory vector index | Sub-millisecond latency | None (Managed by L3's 2PC) | 62
+
+L2 | Warm Storage / Archival Memory | DiskANN | On-disk proximity graph | Low-millisecond latency | None (Managed via atomic hot-swap) | 70
+
+L3 | System of Record / Ground Truth | ZODB | Persistent object graph | Slower, object-level access | Full ACID compliance via Two-Phase Commit | 25
+
+Phase | ZODB Transaction Manager Action | FractalMemoryDataManager Action | Consequence of Failure | Source Snippets
+
+tpc_begin | Initiates the 2PC process for a transaction. | Prepares for the commit by defining a path for a temporary FAISS index file. | Transaction proceeds. | 89
+
+commit | (During transaction) An object is modified; the DM is joined to the transaction. | The in-memory FAISS index is updated by the MemoryManager. The DM is now aware the on-disk state is dirty. | Transaction proceeds. | 89
+
+tpc_vote | Asks all participating data managers for a "vote". | (High-Risk) Votes "Yes": Atomically writes the in-memory FAISS index to the temporary file and returns. Votes "No": Fails to write the temp file and raises an exception. | If "No" vote, ZODB aborts the entire transaction. | 89
+
+tpc_finish | (If all vote "yes") Finalizes the commit to mydata.fs. | (Low-Risk) Atomically renames the temporary FAISS index file to its final destination, making the change permanent. | Commit is guaranteed. | 89
+
+tpc_abort | (If any vote "no") Rolls back all changes in the transaction. | Deletes any temporary FAISS index file it may have created, leaving the filesystem untouched. | System state remains consistent. | 89

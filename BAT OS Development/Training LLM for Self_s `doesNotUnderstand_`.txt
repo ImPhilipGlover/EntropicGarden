@@ -1,0 +1,433 @@
+Dynamic Code Synthesis in a Prototypal World: Training a Large Language Model for Runtime Self-Modification in the Self Programming Language
+
+Part I: The Self Paradigm - A Foundation for Dynamic Code Generation
+
+To comprehend the ambitious goal of integrating a Large Language Model (LLM) into a live programming environment for runtime code synthesis, one must first understand the unique philosophical and technical landscape of the target language: Self. Born from a desire to purify and simplify the object-oriented paradigm pioneered by Smalltalk-80, Self's design choices create a uniquely fertile ground for dynamic AI intervention. Its core principles of simplicity, uniformity, and liveness, while seemingly archaic from a modern perspective, provide the ideal foundation for a system that can programmatically evolve itself. This section establishes the conceptual underpinnings of the Self language, tracing its lineage, dissecting its object model, and examining its live, image-based environment. This foundation is crucial for appreciating how Self's architecture is not merely compatible with, but actively invites, the kind of runtime self-modification proposed in this report.
+
+1.1 From Smalltalk to Self: The Pursuit of Simplicity and Power
+
+The story of the Self programming language is a direct intellectual continuation of the object-oriented revolution sparked at Xerox Palo Alto Research Center (PARC) with Smalltalk.1 Self began in the 1980s not as a replacement for Smalltalk, but as a radical refinement—an attempt to advance the state of the art in object-oriented language research after Smalltalk-80 was released and began to gain traction in the industry.2 The project was led by David Ungar and Randall Smith, who identified what they perceived as a fundamental, yet unnecessary, complexity at the heart of class-based languages: the deep-rooted duality between classes and instances.2
+
+In the traditional Smalltalk model, classes define the structure (instance variables) and behavior (methods) of objects, while object instances are merely particular manifestations of a class, holding the state.2 Ungar and Smith argued that this separation was an artificial construct. Experience with early object-oriented systems had shown that initial designs were often brittle; as program requirements evolved, developers frequently found that the initial classification of objects into a rigid class hierarchy was inadequate, necessitating significant and disruptive refactoring.2 The core motivation behind Self was to eliminate this duality, creating a simpler, more uniform, and more malleable programming model.4
+
+The guiding principles of Self were simplicity, uniformity, concreteness, and liveness.7 The language was designed around a minimal set of powerful metaphors that could be applied uniformly across all areas.9 This philosophy is perfectly encapsulated in the project's slogan: "Self is like Smalltalk, OnlyMoreSo".10 This statement reflects the design team's commitment to taking the core ideas of Smalltalk—that everything is an object and computation proceeds by sending messages—to their logical extreme. By applying Occam's razor, they stripped away concepts they deemed extraneous, including classes, variables, and even distinct control structures, leaving a language kernel of profound simplicity.6
+
+This zealous pursuit of conceptual purity in the language layer had a profound and symbiotic effect on the implementation layer. The radical design choices—making message passing the only computational mechanism and eliminating static class information—rendered all existing compiler optimization techniques, which relied heavily on class-based type information, completely ineffective.12 The system, in its purest form, would have been "horribly inefficient".9 This performance challenge did not deter the designers; instead, it forced them to innovate. The Self research team could not rely on the established compiler technology of the day; they had to invent entirely new methods to make their conceptually simple language performant.
+
+This necessity became the mother of some of the most important virtual machine innovations of the late 20th century. The Self project pioneered and refined several just-in-time (JIT) compilation techniques that are now standard in high-performance dynamic language runtimes.2 To overcome the lack of static type information, they developed the concept of "maps" (now widely known as hidden classes or shapes), which allowed the runtime to infer the structure of objects dynamically.14 They introduced polymorphic inline caches (PICs) to drastically reduce the overhead of dynamic message dispatch and developed customized compilation, where the compiler generates specialized machine code for each type of receiver a method encounters.12 These techniques were so successful that they allowed Self, a purely object-oriented and dynamically typed language, to perform at up to half the speed of optimized C.2 The impact of this work extended far beyond the Self community; many of these innovations were later incorporated by Sun Microsystems into Java's HotSpot virtual machine, forming the foundation of modern high-performance Java execution.2 This history demonstrates a powerful pattern: the pursuit of extreme conceptual simplicity in the language model can catalyze a cascade of sophisticated innovation in the underlying implementation. This historical precedent suggests that the present proposal—integrating a highly complex LLM into Self's runtime—is philosophically aligned with the language's legacy of leveraging complex implementation to preserve a simple and powerful programming model.
+
+1.2 Anatomy of a Self Object: Prototypes, Slots, and Delegation
+
+The Self object model represents a fundamental departure from the class-based paradigm. It is built on three simple, concrete ideas: prototypes, slots, and delegation.4 By unifying concepts that are distinct in class-based languages, this model achieves a greater degree of simplicity and expressive power.
+
+Prototypes: In Self, there are no classes. There are only objects. New objects are not created by instantiating a class blueprint; they are created by cloning, or making a copy of, an existing object known as a prototype.16 For example, to create a new point object, one would not execute
+
+Point new, but rather pointPrototype copy.7 This fundamental shift eliminates the "is an instance of" relationship that defines class-based systems. The only structural relationship that remains is "inherits from," which is handled via delegation. This simplification of the object graph reduces the cognitive load on the programmer, who no longer needs to reason about two distinct hierarchies (instance-of and subclass-of).4 This model encourages a more concrete style of programming, where the developer first focuses on creating example objects and only later worries about factoring out shared behavior into common prototypes.16
+
+Slots: A Self object is nothing more than a collection of named slots.12 A slot is a name-value pair, but its power lies in its uniformity. A slot can contain a reference to another object, representing state (akin to an instance variable), or it can contain a method object, representing behavior.4 Crucially, the syntax for accessing state and invoking behavior is identical: it is all done through message sending.9 For an object
+
+myPoint with a slot named x, sending the message myPoint x will execute the code in that slot. If the slot contains a simple data object like a number, that object's code simply returns itself. If the slot contains a method object, that method's code is executed.9 This means a programmer can change a slot from a simple data value to a computed value without altering any of the code that sends messages to that slot. This principle, known as "messages-at-the-bottom," ensures that all computation is based on objects communicating via messages, a core tenet of the language's design.6
+
+Delegation: Self implements inheritance and behavior sharing through a mechanism called delegation.2 If an object receives a message for which it does not have a matching slot, it does not immediately fail. Instead, it delegates the message lookup to its "parent" objects.4 Any slot in an object can be designated as a parent slot by appending an asterisk (
+
+*) to its name.2 The message lookup continues up the parent chain until a matching slot is found or the top of the hierarchy is reached.6 This allows objects to share behavior by delegating to a common parent. For example, multiple point objects would each have their own
+
+x and y data slots, but they would all share a parent slot pointing to a single traits point object that contains the shared methods like + and –.4
+
+Traits: To further refine the composition of behavior, Self utilizes "traits objects." A trait is an object that contains only shared behavior (method slots) and is not intended to be cloned directly.11 Prototypes delegate to traits objects to inherit common functionality. This allows for a more fine-grained and flexible composition of behavior than is possible with traditional single or multiple inheritance, as an object can be constructed from multiple, independent sets of behaviors represented by different parent traits.19
+
+The following table provides a direct comparison to crystallize the fundamental differences between the familiar class-based paradigm and Self's prototype-based model. This conceptual shift is the primary challenge that an LLM trained to program in Self must master.
+
+1.3 The Live Environment: Image-based Persistence and Morphic
+
+The Self programming experience is inseparable from its environment. Following the tradition of Lisp machines and Smalltalk, Self is not a language for writing standalone programs that are compiled into executables; it is an image-based system.1 The entire state of the running system—every object, all source code, the compiler, the debugger, and the user interface itself—is contained within a single memory image that is persisted to a "snapshot" file.2 When the system starts, this snapshot is loaded into memory, and the world of objects continues exactly where it left off.
+
+This architecture fosters a programming paradigm of "liveness".8 There is no distinct edit-compile-run-debug cycle. The environment is always live, and the programmer interacts with it by directly manipulating the objects within it.22 To change a program, one does not edit a source file and recompile; one directly modifies the live objects that constitute the program.7 This immediacy and concreteness are intended to reduce the cognitive distance between the programmer's intent and the system's behavior.22
+
+The primary user interface for this live environment is Morphic, a graphical framework that was originally developed for Self and later backported to Squeak Smalltalk.2 Morphic is itself built entirely in Self, and its core principle is the direct manipulation of graphical elements called "morphs".24 Every visual component on the screen, from a button to a window to a text editor, is a Self object. These morphs can be inspected, modified, and composed directly on the screen, blurring the line between using an application and programming it.26 The programmer lives and acts within a consistent and malleable world of objects, from the concrete motor-sensory level of dragging morphs to the abstract intellectual level of modifying their behavior.22
+
+While this image-based approach can be seen as a barrier to modern software development practices, it provides a critical and serendipitous advantage for the goal of this report. The challenge of training an AI to generate code and learn from its mistakes is fundamentally a reinforcement learning problem. A key requirement for any effective reinforcement learning loop, especially one based on execution feedback (RLEF), is the availability of a fast, safe, and introspectable environment where the agent can execute its actions (in this case, generated code) and observe the consequences.
+
+The Self image provides exactly this environment. It is a complete, self-contained universe of objects that can be manipulated programmatically.2 Code generated by an LLM can be instantly compiled and injected into this live world. The outcome of that code—be it a successful computation, a new error, or a change in the graphical interface—can be immediately observed and evaluated. Furthermore, the image-based persistence model offers a powerful safety mechanism. The entire state of the world can be snapshotted before the AI's code is executed. If the generated code causes a catastrophic failure, the system can be instantly rolled back to the previous snapshot, providing a perfectly isolated and revertible sandbox. Thus, the very feature that makes Self seem "archaic" is, in fact, a critical enabler for the advanced AI training methodology proposed here. It provides an integrated, stateful, and safe world perfectly suited for an RLEF training regimen.
+
+Part II: doesNotUnderstand - The Trigger for Self-Modification
+
+At the heart of this proposal is the repurposing of a powerful, yet often overlooked, mechanism from the Smalltalk family of languages: the doesNotUnderstand message. This feature, born from the reflective capabilities of the original Smalltalk system, is more than a simple error-handling routine. It is a structured, dynamic hook into the very semantics of message passing. By intercepting this message, we can create a seamless bridge between the Self virtual machine's execution loop and an external LLM, transforming a runtime failure into an opportunity for dynamic code synthesis. This section will explore the heritage of this mechanism, detail its function within Self, and demonstrate how it provides a serendipitously perfect input structure for a code-generating AI.
+
+2.1 The Smalltalk Heritage of Dynamic Reception
+
+The concept of doesNotUnderstand: originated in Smalltalk-80 as a cornerstone of its dynamic and reflective nature.1 In a Smalltalk system, when an object is sent a message for which it has no corresponding method, the virtual machine does not immediately halt with a fatal error. Instead, it initiates a sophisticated reflective process. The runtime system captures the failed message send, reifying it into a first-class object—an instance of the
+
+Message class. This Message object contains all the information about the original call, including the message selector (the name of the method) and an Array of its arguments.1
+
+The VM then sends a new message, #doesNotUnderstand:, to the original receiver, with this newly created Message object as its sole argument.1 The default implementation of
+
+#doesNotUnderstand:, inherited from the root Object class, is to raise an exception, which in an interactive environment typically opens a debugger to alert the programmer.27
+
+However, the true power of this mechanism lies in the fact that #doesNotUnderstand: is just an ordinary method that can be overridden by any object.27 By providing a custom implementation, a programmer can effectively redefine the semantics of message sending for that object. This capability has become a standard idiom in the Smalltalk community for implementing a variety of powerful metaprogramming patterns without altering the core logic of the system.27 Common use cases include:
+
+Proxies: An object can act as a stand-in, or proxy, for another object by implementing only the #doesNotUnderstand: method. Its implementation simply forwards the intercepted Message object to the real object for execution. This allows for the creation of transparent proxies for logging, access control, or lazy loading.1
+
+Delegation and Forwarding: An object can delegate responsibility for certain behaviors to other objects by catching unknown messages and forwarding them to a delegate. This is a powerful technique for composing behavior dynamically.27
+
+Dynamic Interfaces: The mechanism allows an object to respond to an infinite set of messages, generating behavior on the fly based on the message selector and arguments.
+
+This approach is fundamentally more powerful than the try-catch exception handling found in languages like Java or C++. Instead of merely reacting to an error after the fact, it allows the object itself to intercept the failure and define a new, successful outcome, making it a proactive tool for extending an object's behavior at runtime.27 This concept was so influential that it directly inspired similar mechanisms in many later dynamic languages, most notably
+
+method_missing in Ruby and __getattr__ in Python.27
+
+2.2 Repurposing doesNotUnderstand in Self
+
+The Self language, as a direct descendant of Smalltalk, inherits this core message-handling philosophy. The message lookup process in Self is straightforward: when an object receives a message, the VM first searches for a matching slot in the object itself. If no match is found, it traverses the parent (*) links, searching each parent object in the delegation hierarchy.9 If the entire parent chain is exhausted and no matching slot is found, a
+
+doesNotUnderstand error is triggered.9
+
+While Self does not have a formal, heavyweight exception-handling system like Smalltalk's on:do: constructs, the fundamental mechanism for handling lookup failures remains.33 The default behavior is to suspend the current process and open a debugger, either in the graphical Morphic environment or on the command line, presenting the user with the context of the failure.33 The language designers encouraged an alternative pattern for handling predictable exceptional conditions, which involves passing explicit failure-handler blocks as arguments to methods (e.g.,
+
+openResourceIfFail: [|:e| handleFailure: e ]).33
+
+Despite this stylistic preference, the underlying doesNotUnderstand hook is present and can be overridden. For the purposes of this project, this mechanism will be repurposed from an error-handling tool into the primary trigger for AI-driven code generation. The strategy involves creating a global or trait-level implementation of a method to handle lookup errors. Instead of opening a debugger or signaling an error, this new implementation will invoke an LLM agent, providing it with all the necessary context to synthesize the missing method. This transforms the doesNotUnderstand event from a programming error into a request for runtime extension.
+
+2.3 Reifying the Message: A Structured Input for the LLM
+
+The critical link between the Self VM and the LLM is the data structure provided by the doesNotUnderstand mechanism. The power of this approach comes from the fact that the VM does not simply report an error string; it reifies the failed message send into a structured, first-class object.1 This reified
+
+Message object, passed as an argument to the doesNotUnderstand handler, becomes a perfect, machine-readable prompt for the LLM.
+
+One of the most significant challenges in generative AI for code is providing the model with sufficient and well-structured context to produce a relevant and correct response.34 A generic prompt like "write a function" is unlikely to succeed. A high-quality prompt for our specific use case must contain, at a minimum, three crucial pieces of information:
+
+The Target: The object that needs the new behavior (the receiver of the original message).
+
+The Intent: The name of the desired behavior (the selector of the original message).
+
+The Data: The arguments that the new behavior should operate on (the arguments of the original message).
+
+The doesNotUnderstand mechanism, by its very design, elegantly gathers and packages exactly these three pieces of information. When the handler is invoked, the receiver of the doesNotUnderstand message is self—the very object that requires the new method. The argument to the handler is the reified Message object, which contains the original selector and an array of the original arguments.1
+
+This creates a profound and serendipitous synergy. The language's own reflective error-handling system naturally performs the task of prompt engineering. It captures a runtime need in a structured, data-rich format that is an ideal input for a code-generation LLM. The integration is therefore not a clumsy hack bolted onto the language, but a natural extension of its inherent reflective capabilities. The language provides the perfect hook, and the LLM provides the ideal implementation for that hook. This alignment dramatically simplifies the architectural challenge of bridging the gap between the live programming environment and the AI model, transforming what could have been a complex prompt-crafting problem into a straightforward data-forwarding task.
+
+Part III: A Training Methodology for a Prototypal Programming LLM
+
+Training a Large Language Model to become a proficient and active component of the Self runtime presents a unique set of challenges. Unlike mainstream languages such as Python or Java, Self is a niche, low-resource language with a programming paradigm—prototypal object orientation—that is fundamentally different from what most pre-trained models have been exposed to.36 A successful training strategy cannot rely on vast, pre-existing code repositories. It requires a bespoke, multi-phase methodology designed specifically to overcome data scarcity and instill a deep understanding of Self's unique idioms. This section outlines a concrete, three-phase plan: first, to curate a foundational dataset from all available sources; second, to perform efficient fine-tuning to teach the model the language's syntax and semantics; and third, to initiate a self-improvement loop that enables the model to expand its capabilities beyond the limits of the original corpus.
+
+3.1 Curating a Foundational Dataset for a Niche Language
+
+The first and most critical hurdle is the extreme scarcity of training data. Self is a low-resource language, meaning there is no large, public corpus of code available for training.36 Therefore, the initial phase of the project must be dedicated to meticulously assembling a comprehensive dataset of all existing Self code.
+
+Corpus Assembly: This process will involve a systematic and automated archival of every known source of Self code. We will employ web scraping and repository cloning tools, such as ArchiveBox 38, and follow best practices for software archival inspired by initiatives like Software Heritage.39 The primary sources for this corpus will include:
+
+Official and Community Repositories: The main Self GitHub repository (russellallen/self) will be the cornerstone of the dataset.2 We will also archive all public forks and related projects, such as the
+zigself reimplementation, to capture community contributions and alternative perspectives.43
+
+Academic and Documentary Sources: A significant amount of knowledge about Self is embedded in academic papers published by its creators and the research community.4 These papers often contain valuable code snippets that illustrate core concepts. Similarly, the official Self Handbook 44, historical documentation 10, and mailing list archives 8 will be parsed to extract code examples and textual descriptions of the language's features.
+
+Instructional Data Generation: A raw corpus of code, while necessary, is insufficient for training modern instruction-tuned LLMs, which learn best from examples that pair a natural language instruction with a corresponding code solution.45 To bridge this gap, we will leverage a powerful, general-purpose "teacher" LLM (such as GPT-4 or a similar frontier model) to transform the raw code corpus into a high-quality, structured dataset suitable for fine-tuning. This semi-automated process will involve several tasks:
+
+Code-to-Text (Explanation): The teacher model will be prompted to generate clear, natural language explanations for existing Self methods and objects. For example, given a method for calculating a point's magnitude, it would generate the description: "This method calculates the Euclidean distance of a point from the origin."
+
+Text-to-Code (Problem Synthesis): In a reverse process, the model will be given a piece of Self code and asked to generate a plausible natural language problem description or instruction that the code solves.
+
+Data Formatting: The resulting pairs will be formatted into a consistent instruction-following format, typically a JSON structure containing fields for the instruction, the input context (e.g., the state of the prototype object), and the expected output code. An example entry in this dataset might look like this:
+JSON
+{
+  "instruction": "Create a method for a point object that calculates its distance from the origin.",
+  "input": "The context of the 'traits point' object, which has 'x' and 'y' slots.",
+  "output": "distanceFromOrigin = ( (x * x) + (y * y) sqrt )"
+}
+
+
+This curated and structured dataset will form the foundation for the model's initial training.
+
+3.2 Phase 1: Foundational Fine-Tuning on the Self Corpus
+
+The goal of the first training phase is to adapt a general-purpose, pre-trained code model to the specific syntax, semantics, and, most importantly, the prototypal idioms of the Self language. Existing code-generation models exhibit a strong and well-documented bias towards high-resource languages like Python, often defaulting to them even when inappropriate.46 Direct fine-tuning is the only viable method to overcome this inherent bias and specialize the model for our niche domain.
+
+Given the relatively small size of our curated dataset, a full fine-tuning approach, which involves updating all of the model's billions of parameters, carries a high risk of overfitting and catastrophic forgetting, where the model loses its general reasoning capabilities.36 Therefore, this phase will employ Parameter-Efficient Fine-Tuning (PEFT) techniques. Specifically, we will use Low-Rank Adaptation (LoRA), a method that freezes the pre-trained model weights and injects a small number of trainable rank decomposition matrices into the layers of the Transformer architecture.47 This approach dramatically reduces the number of trainable parameters, making the fine-tuning process computationally efficient and far less prone to overfitting on small, specialized datasets.
+
+The PEFT process will use the instruction-solution dataset created in the previous step. The training objective will be for the model to achieve a high degree of proficiency in several key areas:
+
+Syntactic Correctness: Generating code that is parsable by the Self compiler.
+
+Semantic Understanding: Correctly using core concepts like slots (data, method, parent), message sending (unary, binary, keyword), and blocks.
+
+Prototypal Idioms: Demonstrating an understanding of object creation via cloning, behavior sharing via delegation to parents and traits, and modification of individual objects.
+
+Upon completion of this phase, we will have a base model that is fluent in the Self language, capable of solving problems within the scope of its training data.
+
+3.3 Phase 2: Self-Instruct for Prototypal Problem Solving
+
+To enable the LLM to generate novel and complex code beyond what is explicitly present in our limited, static corpus, we must implement a self-improvement loop. This phase is inspired by the Self-Instruct framework, a technique where a model uses its own generative capabilities to create new training data for itself, progressively expanding its knowledge and problem-solving abilities.48 This is a form of asymmetric self-play, where the model acts as both a "proposer" of new problems and a "solver" of those problems.49
+
+Our implementation of this process will be tailored specifically to the Self programming environment:
+
+Problem Generation: The fine-tuned model from Phase 1 will be prompted with open-ended, creative tasks designed to elicit new programming challenges. Examples of such prompts include: "Propose a new, useful behavior for a Morphic UI widget like labelWidget," or "Describe a complex data manipulation task that can be solved using Self's collection objects and blocks."
+
+Solution Generation: The model will then be tasked with solving the problem it just proposed, generating a complete Self code solution. This forces the model to reason about its own generated problem and apply its knowledge in a novel context.
+
+Verification and Filtering: This is a crucial step to ensure data quality. The generated solutions will be subjected to a multi-stage filtering process.
+
+Syntactic Verification: The generated code string will be fed to the Self VM's compiler. Any code that fails to parse is immediately discarded.
+
+Novelty and Complexity Filtering: The syntactically valid solutions will be compared against the existing training dataset to filter out duplicates or trivial variations. A "teacher" LLM or an automated complexity metric can be used to score the novelty and difficulty of the generated problem-solution pair.
+
+Iterative Refinement: The high-quality, novel, and syntactically correct problem-solution pairs are added back into the fine-tuning dataset. The model is then periodically retrained on this augmented dataset.
+
+This iterative process creates a virtuous cycle. As the model becomes more proficient, it generates more sophisticated problems and more elegant solutions, which in turn further enhance its capabilities in the next training iteration. This allows the model to explore the "language space" of Self far beyond the confines of the original, hand-curated corpus, effectively teaching itself to become a more creative and powerful Self programmer.
+
+Part IV: Architectural Integration: The LLM as a Runtime Component
+
+Having developed a training methodology to create an LLM proficient in the Self language, the next critical step is to architect its integration into the live Self virtual machine. The goal is not to create another external coding assistant, but to embed the LLM as an active, dynamic component of the runtime itself. This requires a robust and maintainable architecture that cleanly separates the concerns of the VM from the external AI service, orchestrates the complex flow of runtime code generation, and ultimately closes the loop through reinforcement learning. This section details the proposed architecture, using established software design patterns to ensure the system is scalable, testable, and adaptable to future advancements in AI.
+
+4.1 The doesNotUnderstand Handler as an API Gateway
+
+To create a clean and maintainable interface between the Self VM's internal logic and the external LLM service, we will adopt the Hexagonal Architecture, also known as the Ports and Adapters pattern.50 This architectural pattern is designed to isolate the core application logic from its dependencies on external systems, such as databases, user interfaces, or, in this case, a remote AI model. This separation prevents technology lock-in and creates a highly modular and testable system.51
+
+The architectural components are defined as follows:
+
+The Domain Core: This is the Self Virtual Machine and the live world of objects it manages. Its core logic is message passing and slot lookup. This layer should have no direct knowledge of any specific LLM or API.
+
+The Port: The port is the well-defined interface through which the domain core requests a service. In our system, the overridden doesNotUnderstand: method serves as this port. It defines the contract: when a message lookup fails, the core will provide a receiver object and a Message object to this port, expecting a new behavior to be supplied.
+
+The Adapter: The adapter is a new Self object, which we will call the LLMAdapter, responsible for translating the request from the port into a format understood by the external service. It will implement the logic to handle communication with the LLM API. Its responsibilities include receiving the receiver and Message objects from the doesNotUnderstand: port, formatting them into a structured JSON payload, sending an HTTP request to the LLM service, and processing the response.
+
+The External Service: This is the hosted, fine-tuned Self-programming LLM, accessible via a web API.
+
+This architectural choice provides a crucial decoupling. The core logic of the Self VM remains pure and unaware of the existence of an LLM. All the complexities of API communication, authentication, error handling, and data formatting are encapsulated within the LLMAdapter. This design has significant long-term benefits. If we decide to switch to a different LLM provider, use a newer model version, or even move to a locally-hosted model, only the implementation of the LLMAdapter needs to change. The core VM and the doesNotUnderstand: port remain entirely untouched. This ensures the system is robust, maintainable, and can evolve alongside the rapidly changing landscape of AI technology.
+
+4.2 Orchestration Flow for Runtime Code Generation
+
+With the architecture defined, we can now trace the step-by-step orchestration of the entire process, from the moment a message lookup fails to the successful execution of newly synthesized code. This flow demonstrates how the system transparently extends the behavior of an object at the precise moment it is needed.
+
+The process unfolds as follows:
+
+Message Failure: An object in the system, the Original Caller, sends a message M with arguments A to a Receiver object R.
+
+Lookup Failure: The Self VM's dispatch mechanism searches for a slot named M in R and then recursively through R's parent objects. The lookup fails.
+
+Interception: Instead of halting, the VM invokes the overridden doesNotUnderstand: method on the receiver: R doesNotUnderstand: aMessage. The argument aMessage is a reified Message object containing the selector M and arguments A.
+
+Prompt Construction: The LLMAdapter, which implements the doesNotUnderstand: method, is now activated. It receives R (as self) and aMessage. It performs introspection on R, gathering contextual information such as its existing slots and the slots of its parents. This context is combined with the selector and arguments to construct a detailed, structured prompt in a format like JSON.
+
+LLM Invocation: The LLMAdapter sends the formatted prompt as a payload in an HTTP request to the external LLM service.
+
+Code Reception: The LLM processes the prompt and returns a string containing Self source code. This code is expected to be an object literal defining the missing method slot. For example: (| | M = ( "code that uses arguments A" ) ).
+
+Dynamic Compilation and Injection: The LLMAdapter receives the code string. It invokes the Self environment's built-in compiler to parse this string and create a new, executable method object. It then uses a powerful primitive, such as _AddSlots:, to dynamically add this new method slot to the original receiver object R.2
+
+Message Re-dispatch: Having successfully augmented the receiver, the doesNotUnderstand: method's final action is to re-send the original message M with arguments A to R.
+
+Successful Execution: This time, the VM's message dispatch finds the newly added slot M in R. The just-generated code is executed.
+
+Transparent Return: The result of this execution is returned to the Original Caller. From the caller's perspective, the message send succeeded on the first try; the entire code generation and injection process was completely transparent.
+
+The following table provides a clear, sequential summary of this complex interaction.
+
+4.3 Phase 3: Reinforcement Learning from Execution Feedback (RLEF)
+
+The final and most advanced phase of the training methodology is to create a closed-loop learning system. The architecture described above provides not only a mechanism for code generation but also a perfect environment for evaluating the quality of that code. This feedback can be used to further refine the LLM, creating a system that learns from its own runtime experience. This technique, Reinforcement Learning from Execution Feedback (RLEF), is a powerful way to teach models to generate code that is not just syntactically plausible but functionally correct.45
+
+The Self image, acting as a live sandbox, allows us to immediately observe the consequences of executing the LLM's generated code.35 This observation can be translated into a reward signal to guide the model's future behavior. The
+
+LLMAdapter will be responsible for generating this signal:
+
+Positive Reward (+1): If, after the new method is injected, the re-dispatched message executes without triggering another error and returns a value to the caller, the generation is considered a success.
+
+Negative Reward (-1): If the generated code is syntactically incorrect and fails to compile, or if its execution triggers a new error (e.g., another doesNotUnderstand message sent from within the new method, a type error, etc.), the generation is considered a failure.
+
+Neutral or Penalized Reward (0 or -1): If the execution of the generated code results in an infinite loop or exceeds a predefined timeout threshold, it is also considered a failure. The LLMAdapter will need to manage the execution in a separate Self process that can be timed out.44
+
+This feedback loop is implemented by logging each interaction: the initial prompt sent to the LLM, the code it generated in response, and the resulting reward signal. This tripartite data (prompt, generation, reward) forms a new dataset of preferences. Periodically, this dataset can be used to perform further fine-tuning on the LLM. Techniques like Direct Preference Optimization (DPO) are well-suited for this task, as they train the model to increase the likelihood of generating responses that lead to positive rewards and decrease the likelihood of those that lead to negative rewards.52 This RLEF loop allows the model to learn the subtle semantics of the Self runtime, moving beyond mere syntactic correctness to a deeper understanding of what constitutes effective, working code.
+
+Part V: Challenges, Security Considerations, and Future Directions
+
+The creation of a live programming environment that can dynamically modify its own source code at runtime through an AI agent is a project of significant complexity and profound implications. While the proposed architecture leverages the unique strengths of the Self language to create a synergistic system, it also introduces substantial challenges in performance, security, and semantic correctness. Addressing these issues is paramount to moving this concept from a theoretical proposal to a robust and reliable system. Beyond these immediate challenges, this research opens the door to a future of proactive, goal-oriented programming, fundamentally altering the relationship between the developer and the development environment.
+
+5.1 Performance, Security, and Semantic Coherence
+
+A sober analysis of the proposed system reveals three primary areas of concern that must be rigorously addressed.
+
+Performance and Latency: The most immediate and practical obstacle is latency. A synchronous API call to a large, remote LLM can take several seconds to complete.53 In the context of a method call, this delay is unacceptable and would render the system unusable for interactive programming. Several mitigation strategies must be explored:
+
+Model Distillation: Instead of relying on a massive, general-purpose model, a smaller, specialized "distilled" model could be trained. This smaller model would be fine-tuned specifically for the task of Self code generation, offering significantly lower inference latency.
+
+Asynchronous Execution: The interaction could be redesigned as an asynchronous process. Self's language model includes blocks (closures) and a lightweight process model for concurrency.2 When
+doesNotUnderstand: is triggered, instead of blocking, it could immediately return a future or a promise object. The LLMAdapter would then perform the code generation in a background process. The original calling code would need to be structured to handle this asynchronous response.
+
+Speculative Execution and Caching: For common patterns, the system could speculatively generate and cache potential method implementations before they are explicitly requested, reducing the perceived latency for the user.
+
+Security: Executing code generated by an external AI within a live memory image is an inherently high-risk operation. A misconfigured prompt or a vulnerability in the LLM could be exploited to generate malicious code that could corrupt the image, exfiltrate data, or interact with the underlying operating system. A multi-layered security approach is essential:
+
+Sandboxing: The generated code must never be executed with full privileges immediately. A robust sandboxing mechanism is required. This could involve executing the new method in a separate, restricted Self process with limited access to I/O and dangerous system primitives. An even stronger approach would be to fork a copy of the entire Self image, execute the code within the copy, and only merge the changes back into the main image if the execution is deemed safe and successful.
+
+Static and Dynamic Analysis: Before injection and execution, the generated code string must be subjected to rigorous analysis. Static analysis tools, potentially adapted from platforms like SonarQube 54, could scan the code for known anti-patterns or security vulnerabilities. Dynamic analysis within the sandbox would monitor the code's behavior for suspicious activities, such as unauthorized file access.
+
+Permission Model: The LLMAdapter should operate under a strict permission model. The prompt sent to the LLM could include a set of constraints or permissions, and the generated code would be validated to ensure it does not violate them. For example, a method generated for a simple data object should be prevented from accessing the network.
+
+Semantic Coherence and Correctness: The LLM might generate code that is syntactically valid and passes security checks but is logically incorrect—it does not fulfill the semantic intent of the original message. While the RLEF loop provides a powerful mechanism for learning from execution failures, it is a slow and reactive process. A more proactive approach to ensuring correctness is needed:
+
+LLM-Generated Unit Tests: A key enhancement to the process would be to instruct the LLM to generate not only the method implementation but also a corresponding set of unit tests.49 The
+LLMAdapter would first execute these tests within the sandbox. The new method would only be considered "correct" and injected into the main object if all of its self-generated tests pass. This shifts the burden of verification partially onto the AI itself.
+
+Human-in-the-Loop: For critical applications, the system could be configured to require human confirmation. When a new method is generated, the debugger could open, presenting the generated code and its test results to the programmer for approval before it is permanently added to the object.
+
+5.2 Future Work: Towards Proactive and Goal-Oriented Programming
+
+Successfully implementing this reactive code generation system is not the end goal, but rather a foundational step towards a more intelligent and proactive programming environment. The long-term vision is to move beyond simply fixing doesNotUnderstand errors and toward a system that actively collaborates with the developer to build and evolve software.
+
+Future Directions:
+
+Proactive Refactoring and Optimization: The LLM agent could be invoked during system idle time to analyze the existing object world. It could identify code smells, suggest refactorings to improve clarity and maintainability, or even identify performance bottlenecks and propose optimized versions of existing methods.
+
+Automated Feature Implementation: A developer could specify a new feature by adding a placeholder slot to an object, for example: implementNewFeature: 'Create a method to export this data to a CSV file'. An observer process in the Self environment could detect this addition and trigger the LLM to generate the full implementation based on the natural language description, turning high-level intent directly into working code.
+
+The LLM as a True "Self": This line of research is a concrete step toward realizing the vision of a system that can truly program itself.55 The ultimate goal is an environment that can adapt, repair, and evolve its own codebase in response to high-level, goal-oriented directives from a user. Such a system would blur the traditional lines between the programmer, the programming language, and the programming environment, creating a single, intelligent, and self-modifying computational entity. The combination of Self's pure, dynamic object model and the generative power of LLMs provides a unique and compelling path toward this future.
+
+Works cited
+
+Smalltalk - Wikipedia, accessed August 29, 2025, https://en.wikipedia.org/wiki/Smalltalk
+
+Self (programming language) - Wikipedia, accessed August 29, 2025, https://en.wikipedia.org/wiki/Self_(programming_language)
+
+Self-Confidence: How SELF Became a High-Performance Language - CS@Cornell, accessed August 29, 2025, https://www.cs.cornell.edu/courses/cs6120/2020fa/blog/self/
+
+SELF: The Power of Simplicity* - A Self Bibliography, accessed August 29, 2025, https://bibliography.selflanguage.org/_static/self-power.pdf
+
+Smalltalk-80: the language and its implementation - Free, accessed August 29, 2025, http://stephane.ducasse.free.fr/FreeBooks/BlueBook/Bluebook.pdf
+
+Self: The Power of Simplicity - CMU School of Computer Science, accessed August 29, 2025, http://www-2.cs.cmu.edu/~aldrich/courses/819/self.pdf
+
+A tour of Self - sin-ack's writings, accessed August 29, 2025, https://sin-ack.github.io/posts/a-tour-of-self/
+
+Self | Welcome, accessed August 29, 2025, https://www.selflanguage.org/
+
+Introduction into the Self programming lanugage, accessed August 29, 2025, http://media.cichon.com/talks/Introduction_Self_Language_OOP-1-23-2003.pdf
+
+Self Language - C2 wiki, accessed August 29, 2025, https://wiki.c2.com/?SelfLanguage
+
+oop - Differences between Self and Smalltalk - Stack Overflow, accessed August 29, 2025, https://stackoverflow.com/questions/16959539/differences-between-self-and-smalltalk
+
+An Efficient Implementation of SELF, a Dynamically-Typed Object-Oriented Language Based on Prototypes* - Washington, accessed August 29, 2025, https://courses.cs.washington.edu/courses/cse501/15sp/papers/chambers.pdf
+
+CS 6120: An Efficient Implementation of Self - Cornell: Computer Science, accessed August 29, 2025, https://www.cs.cornell.edu/courses/cs6120/2019fa/blog/self/
+
+The influence of Self - Patrick Dubroy, accessed August 29, 2025, https://dubroy.com/blog/self/
+
+New release of Self programming language | Hacker News, accessed August 29, 2025, https://news.ycombinator.com/item?id=7047953
+
+Prototype-based programming - Wikipedia, accessed August 29, 2025, https://en.wikipedia.org/wiki/Prototype-based_programming
+
+Ask Proggit: What is a prototype-based programming language? - Reddit, accessed August 29, 2025, https://www.reddit.com/r/programming/comments/b7hwo/ask_proggit_what_is_a_prototypebased_programming/
+
+Classifying Prototype-based Programming Languages - LIRMM, accessed August 29, 2025, https://www.lirmm.fr/~dony/postscript/proto-book.pdf
+
+SCG Bibliography Search - Software Composition Group - Universität Bern, accessed August 29, 2025, https://scg.unibe.ch/scgbib?_s=4qLJXsnAGSSRx_N3&_k=PkAxU7rp&query=traits&_n&20
+
+A browser for incremental programming - ResearchGate, accessed August 29, 2025, https://www.researchgate.net/publication/222565976_A_browser_for_incremental_programming
+
+Environment and the programming language Self (part one - Bystroushaak's blog, accessed August 29, 2025, http://blog.rfox.eu/en/Programming/Series_about_Self/Environment_and_the_programming_language_Self_part_one_environment.html
+
+Programming as an Experience: The Inspiration for Self - ResearchGate, accessed August 29, 2025, https://www.researchgate.net/publication/2467120_Programming_as_an_Experience_The_Inspiration_for_Self
+
+6. How to Program in Self — Self Handbook for Self 2017.1 ..., accessed August 29, 2025, https://handbook.selflanguage.org/2017.1/howtoprg.html
+
+7. Morphic: The Self User Interface Framework, accessed August 29, 2025, https://handbook.selflanguage.org/2017.1/morphic.html
+
+An Introduction to Morphic: The Squeak User Interface Framework - RMOD Files, accessed August 29, 2025, https://rmod-files.lille.inria.fr/FreeBooks/CollectiveNBlueBook/morphic.final.pdf
+
+An introduction to Morphic: Self's UI toolkit - sin-ack's writings, accessed August 29, 2025, https://sin-ack.github.io/posts/morphic-intro/
+
+Does Not Understand - C2 wiki, accessed August 29, 2025, https://wiki.c2.com/?DoesNotUnderstand
+
+How does the implementation of #doesNotUnderstand in the Object class result in opening a debugger in Squeak smalltalk? - Stack Overflow, accessed August 29, 2025, https://stackoverflow.com/questions/51363300/how-does-the-implementation-of-doesnotunderstand-in-the-object-class-result-in
+
+What are the key differences between OO in Smalltalk and Java? - Stack Overflow, accessed August 29, 2025, https://stackoverflow.com/questions/3102695/what-are-the-key-differences-between-oo-in-smalltalk-and-java
+
+Message forwarding with doesNotUnderstand in Smalltalk - Stack Overflow, accessed August 29, 2025, https://stackoverflow.com/questions/62454552/message-forwarding-with-doesnotunderstand-in-smalltalk
+
+Tornado: - CiteSeerX, accessed August 29, 2025, https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=73ce89bc36e995d161a3ab1683529b53b1c68765
+
+Efficient Proxies in Smalltalk - CORE, accessed August 29, 2025, https://core.ac.uk/download/pdf/51216813.pdf
+
+September | 2011 | Self, accessed August 29, 2025, https://blog.selflanguage.org/2011/09/
+
+Using LLMs for Code Generation: A Guide to Improving Accuracy and Addressing Common Issues - PromptHub, accessed August 29, 2025, https://www.prompthub.us/blog/using-llms-for-code-generation-a-guide-to-improving-accuracy-and-addressing-common-issues
+
+Automated Code Generation with Large Language Models (LLMs) | by Sunny Patel, accessed August 29, 2025, https://medium.com/@sunnypatel124555/automated-code-generation-with-large-language-models-llms-0ad32f4b37c8
+
+[2501.19085] Enhancing Code Generation for Low-Resource Languages: No Silver Bullet, accessed August 29, 2025, https://arxiv.org/abs/2501.19085
+
+[2508.06813] Technical Report: Full-Stack Fine-Tuning for the Q Programming Language, accessed August 29, 2025, https://arxiv.org/abs/2508.06813
+
+ArchiveBox/ArchiveBox: Open source self-hosted web archiving. Takes URLs/browser history/bookmarks/Pocket/Pinboard/etc., saves HTML, JS, PDFs, media, and more... - GitHub, accessed August 29, 2025, https://github.com/ArchiveBox/ArchiveBox
+
+How to archive and reference your code - Software Heritage, accessed August 29, 2025, https://www.softwareheritage.org/how-to-archive-reference-code/
+
+Why and How to Preserve Software Source Code, accessed August 29, 2025, https://www.softwareheritage.org/wp-content/uploads/2020/01/ipres-2017-swh.pdf
+
+Archiving and referencing source code with Software Heritage - arXiv, accessed August 29, 2025, https://arxiv.org/pdf/2004.00514
+
+russellallen/self: Making the world safe for objects - GitHub, accessed August 29, 2025, https://github.com/russellallen/self
+
+sin-ack/zigself: An implementation of the Self programming ... - GitHub, accessed August 29, 2025, https://github.com/sin-ack/zigself
+
+Self Handbook 2024.1 documentation, accessed August 29, 2025, https://handbook.selflanguage.org/
+
+Large Language Models for Code Generation - Berkeley RDI, accessed August 29, 2025, https://rdi.berkeley.edu/responsible-genai/assets/LLM_codegen_lecture.pdf
+
+LLMs Love Python: A Study of LLMs' Bias for Programming Languages and Libraries - arXiv, accessed August 29, 2025, https://arxiv.org/html/2503.17181v1
+
+The Impact of Fine-tuning Large Language Models on Automated Program Repair - arXiv, accessed August 29, 2025, https://arxiv.org/abs/2507.19909
+
+yizhongw/self-instruct: Aligning pretrained language models with instruction data generated by themselves. - GitHub, accessed August 29, 2025, https://github.com/yizhongw/self-instruct
+
+[2508.03682] Self-Questioning Language Models - arXiv, accessed August 29, 2025, https://arxiv.org/abs/2508.03682
+
+Backend Coding AI Context Coding Agents: DDD and Hexagonal Architecture - Medium, accessed August 29, 2025, https://medium.com/@bardia.khosravi/backend-coding-rules-for-ai-coding-agents-ddd-and-hexagonal-architecture-ecafe91c753f
+
+Hexagonal architecture pattern - AWS Prescriptive Guidance, accessed August 29, 2025, https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/hexagonal-architecture.html
+
+This is work done by the Oxen.ai Community, trying to reproduce the Self-Rewarding Language Model paper from MetaAI. - GitHub, accessed August 29, 2025, https://github.com/Oxen-AI/Self-Rewarding-Language-Models
+
+AI Models Need a Virtual Machine - | SIGPLAN Blog, accessed August 29, 2025, https://blog.sigplan.org/2025/08/29/ai-models-need-a-virtual-machine/
+
+LLMs for Code Generation: A summary of the research on quality - Sonar, accessed August 29, 2025, https://www.sonarsource.com/learn/llm-code-generation/
+
+Approaches and Assumptions of Self-Programming in Achieving Artificial General Intelligence - MIT alumni, accessed August 29, 2025, https://alumni.media.mit.edu/~kris/ftp/JAGI-Special-Self-Progr-Editorial-ThorissonEtAl-09.pdf
+
+Feature | Class-Based Model (e.g., Smalltalk) | Prototype-Based Model (e.g., Self)
+
+Object Creation | Instantiation (MyClass new) | Cloning (myPrototype copy)
+
+Core Duality | Class (blueprint) vs. Instance (object) | Only Objects (prototypes)
+
+State | Instance Variables (defined in class) | Data Slots (defined per object)
+
+Behavior | Methods (defined in class) | Method Slots (defined per object)
+
+Inheritance | Class-based inheritance (subclassing) | Delegation (message forwarding to parent objects)
+
+Flexibility | Classes can be modified at runtime, but structure is class-defined. | Any individual object can be modified at any time to have unique state and behavior.
+
+Step | Actor | Action | Artifacts
+
+1 | Original Caller | Sends message M to receiver R. | Message Send
+
+2 | Self VM | Lookup for M fails in R and its parents. | Lookup Failure
+
+3 | Self VM | Invokes R.doesNotUnderstand:(aMessage). | Message Object
+
+4 | LLMAdapter | Receives call, introspects R, formats prompt. | JSON Prompt
+
+5 | LLMAdapter | Sends HTTP request to LLM Service. | API Call
+
+6 | LLM Service | Processes prompt, generates Self code. | Code String
+
+7 | LLMAdapter | Receives code, invokes Self compiler. | Method Object
+
+8 | LLMAdapter | Injects new method slot into R using _AddSlots:. | Modified R
+
+9 | LLMAdapter | Re-sends original message M to R. | Message Re-dispatch
+
+10 | Self VM | Lookup for M succeeds, executes new code. | Return Value
+
+11 | Original Caller | Receives return value, transparently. | Final Result

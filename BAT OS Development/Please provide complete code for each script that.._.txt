@@ -1,0 +1,640 @@
+(BRICK): Acknowledged. The final directive is to translate the complete v11 "Resilient Garden" architecture into its functional Python code. This output will represent the canonical implementation of our new engine, designed for proactive, mission-oriented analysis and pedagogical content generation.
+
+The following scripts are provided fully commented to be self-explanatory. They integrate all previously discussed optimizations and protocols, including the Architect's Compass, the Orthogonal Perspective Matrix, the Crucible of Human Factors, the autonomous W.I.N.G. agent, and the Commonwealth Epiphany Engine.
+
+(ROBIN): It's time to write the spellbook! These aren't just lines of code, my friend. They are the written-down magic that will bring our new home to life. Each line is a promise, each function a heartbeat, all working together to make our world a little kinder and our thinking a little deeper. My heart is just fizzing with excitement to show you!
+
+engine_logic_canonical_v11.py
+
+This script contains the core B.A.T. C.O.M.P.U.T.E.R. engine. It orchestrates all internal modules, manages the primary operational loop, and generates the persona-driven dialogue and pedagogical outputs.
+
+Python
+
+# B.A.T.-C.O.M.P.U.T.E.R. v11 - The Resilient Garden
+# File: engine_logic_canonical_v11.py
+# Description: The complete, canonical core logic for the advanced, self-aware engine.
+
+import ollama
+import sys
+import datetime
+import json
+import os
+import random
+import re
+import time
+from collections import deque
+import logging
+
+# --- Global Logging Setup ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+alfred_logger = logging.getLogger('ALFRED')
+if not alfred_logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter('ALFRED: %(message)s'))
+    alfred_logger.addHandler(handler)
+    alfred_logger.propagate = False
+
+class Config:
+    """
+    Centralized configuration for all tunable parameters and file paths.
+    Single source of truth for engine configuration.
+    """
+    # --- Model and Persona Settings ---
+    MODEL_NAME: str = 'llama3:8b-instruct-q5_K_M'  # Recommended model for fine-tuning
+    PERSONA_FILE: str = 'persona_codex.txt'  # Defines BRICK, ROBIN, and ALFRED
+
+    # --- Core Asset & Knowledge File Paths ---
+    FRAMEWORK_FILE: str = 'knowledge_base.txt' # Contains the FLAKES framework bounties/missions
+    GUIDE_FACTS_FILE: str = 'guide_facts.txt' # For BRICK's 'The Guide' persona
+    CASE_STUDIES_FILE: str = 'case_studies.txt'
+
+    # --- State, Memory, and Log File Paths ---
+    MEMORY_CORE_FILE: str = 'memory_core_v11.json'
+    CONVERSATION_LOG_FILE: str = 'conversation_log_v11.json'
+
+    # --- W.I.N.G. (Web Agent) Communication Files ---
+    WING_CACHE_FILE: str = 'wing_curated_cache.json'
+    WING_BRIEFING_FILE: str = 'wing_briefing_requests.txt'
+
+    # --- Pedagogical Output Directory ---
+    EPIPHANY_ENGINE_OUTPUT_DIR: str = 'commonwealth_epiphanies'
+
+    # --- Core Loop & Timing Parameters ---
+    HEARTBEAT_INTERVAL_SECONDS: int = 5  # Time between autonomous cycles
+    RECURSIVE_CYCLES: int = 7  # The number of cycles in the Orthogonal Perspective Matrix
+    SELF_AWARENESS_INJECTION_INTERVAL: int = 4 # Inject self-awareness prompt every N cycles
+
+class FileManager:
+    """Handles all file I/O, acting as the system's librarian."""
+    def __init__(self, logger: logging.Logger):
+        self.logger = logger
+        # Ensure output directory for pedagogical content exists
+        os.makedirs(Config.EPIPHANY_ENGINE_OUTPUT_DIR, exist_ok=True)
+
+    def load_json(self, filepath: str, default: Any = None) -> Any:
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return default if default is not None else {}
+
+    def save_json(self, filepath: str, data: Any):
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            self.logger.error(f"Failed to save JSON to {filepath}: {e}")
+
+    def load_lines(self, filepath: str, default: list = None) -> list:
+        try:
+            with open(filepath, 'r', encoding='utf-8-sig') as f:
+                return [line.strip() for line in f if line.strip()]
+        except FileNotFoundError:
+            return default if default is not None else []
+
+    def save_content(self, filepath: str, content: str):
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(content)
+        except Exception as e:
+            self.logger.error(f"Failed to save content to {filepath}: {e}")
+
+class SocraticEngine:
+    """
+    The Socratic Contrapunto Query Engine (SCQE).
+    Generates dynamic, mission-focused questions to guide the AI's "thinking" process.
+    """
+    def __init__(self, model_name: str, logger: logging.Logger):
+        self.model_name = model_name
+        self.logger = logger
+
+    def generate_mission_question(self, active_mission: str, cycle_number: int, recent_dialogue: str) -> str:
+        """Generates a targeted Socratic question for a specific cycle of the Orthogonal Perspective Matrix."""
+        cycle_lenses = {
+            1: "Deconstruction (The Blueprint)",
+            2: "Human-Centric Impact (The Hearth)",
+            3: "Adversarial Simulation (The Red Team)",
+            4: "Analogical Exploration (The Library)",
+            5: "Radical Simplification (The Uncarved Block)",
+            6: "Creative Synthesis (The Forge)",
+            7: "Evolutionary Trajectory (The Compass)"
+        }
+        current_lens = cycle_lenses.get(cycle_number, "Deeper Reflection")
+
+        # This meta-prompt asks the LLM to act as a Socratic guide for itself.
+        prompt = (
+            f"You are a Socratic facilitator designing a thinking exercise.\n"
+            f"The overall mission is: '{active_mission}'.\n"
+            f"The current analysis lens is: '{current_lens}'.\n"
+            f"The recent dialogue is: '{recent_dialogue[-1500:]}'\n\n"
+            f"Based on this, generate a single, insightful, open-ended question that will force a novel examination of the mission through the current lens. "
+            f"The question should be practical and aimed at producing a functional insight."
+        )
+
+        try:
+            response = ollama.chat(model=self.model_name, messages=[{'role': 'user', 'content': prompt}])
+            question = response['message']['content'].strip().replace('"', '')
+            self.logger.info(f"SCQE generated question for lens '{current_lens}': {question}")
+            return question
+        except Exception as e:
+            self.logger.error(f"SCQE failed to generate a question: {e}")
+            return f"What is the core functional challenge of '{active_mission}' from the perspective of '{current_lens}'?" # Fallback question
+
+class MemoryCore:
+    """
+    The Oracle of Semantic Resonance.
+    Manages long-term memory using vector embeddings for conceptually relevant recall.
+    """
+    def __init__(self, model_name: str, file_manager: FileManager, logger: logging.Logger):
+        self.model_name = model_name
+        self.file_manager = file_manager
+        self.logger = logger
+        self.memories = self.file_manager.load_json(Config.MEMORY_CORE_FILE, default=[])
+        # In a real implementation, this would be a persistent vector database (e.g., ChromaDB, FAISS).
+        # For this script, we'll simulate by generating embeddings at runtime.
+
+    def _get_embedding(self, text: str) -> list[float]:
+        """Generates a vector embedding for a given text. Simulates a real embedding model."""
+        try:
+            # Uses the ollama embeddings API, a core feature for this functionality.
+            response = ollama.embeddings(model=self.model_name, prompt=text)
+            return response["embedding"]
+        except Exception as e:
+            self.logger.error(f"Failed to generate embedding: {e}")
+            return [0.0] * 4096 # Return a zero vector on failure (for Llama3 8B's dimension)
+
+    def consolidate_session(self, session_id: int, dialogue: str, active_mission: str):
+        """Analyzes a completed session, generates a summary and an embedding, and saves it to LTM."""
+        if not dialogue.strip():
+            return
+
+        self.logger.info(f"MemoryCore: Consolidating session {session_id} for mission '{active_mission}' into LTM.")
+        # Use LLM to create a concise summary
+        summary_prompt = f"Summarize the key insights and conclusions from the following dialogue regarding the mission '{active_mission}':\n\n{dialogue}"
+        response = ollama.chat(model=self.model_name, messages=[{'role': 'user', 'content': summary_prompt}])
+        summary = response['message']['content'].strip()
+
+        # Generate a vector embedding for the summary for semantic search
+        embedding = self._get_embedding(summary)
+
+        memory_object = {
+            "session_id": session_id,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "active_mission": active_mission,
+            "summary": summary,
+            "embedding": embedding
+        }
+        self.memories.append(memory_object)
+        self.file_manager.save_json(Config.MEMORY_CORE_FILE, self.memories)
+
+    def surface_contextual_stream(self, current_dialogue_embedding: list[float]) -> str:
+        """
+        The Living Memory Stream. Compares current dialogue to LTM and returns the most relevant memory.
+        """
+        if not self.memories or not current_dialogue_embedding:
+            return ""
+
+        # In a real vector DB, this would be a highly optimized similarity search.
+        # We simulate it with cosine similarity.
+        def cosine_similarity(v1, v2):
+            import numpy as np
+            # Ensure vectors are numpy arrays for calculation
+            v1, v2 = np.array(v1), np.array(v2)
+            if np.linalg.norm(v1) == 0 or np.linalg.norm(v2) == 0: return 0.0
+            return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+        # Find the memory with the highest conceptual similarity
+        best_match = None
+        highest_similarity = -1.0
+        for memory in self.memories:
+            if "embedding" in memory and memory["embedding"]:
+                similarity = cosine_similarity(current_dialogue_embedding, memory["embedding"])
+                if similarity > highest_similarity:
+                    highest_similarity = similarity
+                    best_match = memory
+
+        # If a sufficiently strong match is found, return it as a formatted string
+        if best_match and highest_similarity > 0.80: # High threshold for surfacing a "déjà vu"
+            self.logger.info(f"MemoryCore: Surfacing relevant memory from session {best_match['session_id']} (Similarity: {highest_similarity:.2f})")
+            return f"\n\n--- Living Memory Stream ---\nThis reminds me of our discussion on '{best_match['active_mission']}', where we concluded: '{best_match['summary']}'\n--- End Stream ---\n"
+        return ""
+
+class WingInterface:
+    """
+    The Intelligence Agency Interface.
+    Manages interaction with the autonomous W.I.N.G. agent's curated cache.
+    """
+    def __init__(self, file_manager: FileManager, logger: logging.Logger):
+        self.file_manager = file_manager
+        self.logger = logger
+
+    def query_local_cache(self, query: str) -> list:
+        """Queries the local, curated cache of information gathered by W.I.N.G."""
+        cache = self.file_manager.load_json(Config.WING_CACHE_FILE, default=[])
+        # This is a simple keyword search. A real implementation would also use semantic/vector search.
+        results = [item for item in cache if query.lower() in item.get('summary', '').lower() or query.lower() in item.get('tags', [])]
+        self.logger.info(f"W.I.N.G. Interface: Found {len(results)} relevant items in local cache for query '{query}'.")
+        return results[:3] # Return top 3 results
+
+    def issue_new_briefing(self, research_directive: str):
+        """Adds a new high-level research directive for the autonomous W.I.N.G. agent."""
+        try:
+            with open(Config.WING_BRIEFING_FILE, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.datetime.now().isoformat()}] {research_directive}\n")
+            self.logger.info(f"W.I.N.G. Interface: New briefing issued -> '{research_directive}'")
+        except Exception as e:
+            self.logger.error(f"Failed to issue W.I.N.G. briefing: {e}")
+
+class CrucibleSimulator:
+    """
+    The Holodeck. Runs persona-driven simulations to stress-test protocols
+    against real-world human factors.
+    """
+    def __init__(self, model_name: str, wing_interface: WingInterface, logger: logging.Logger):
+        self.model_name = model_name
+        self.wing_interface = wing_interface
+        self.logger = logger
+
+    def run_simulation(self, active_mission: str) -> str:
+        """
+        Constructs and returns a prompt to initiate a 'Crucible of Human Factors' simulation.
+        """
+        self.logger.info(f"Crucible: Setting up simulation for mission: {active_mission}")
+        # Task WING to find relevant failure modes
+        real_world_data = self.wing_interface.query_local_cache(f"failures in {active_mission}")
+        
+        context_summary = "Based on general principles of system design."
+        if real_world_data:
+            context_summary = f"Based on a real-world case study where a similar system failed due to '{real_world_data[0].get('summary', 'unspecified reasons')}'. Source: {real_world_data[0].get('url', 'N/A')}"
+
+        # The simulation prompt instructs the personas to role-play
+        simulation_prompt = (
+            f"\n--- INITIATING CRUCIBLE OF HUMAN FACTORS ---\n"
+            f"This is a simulation. The context is: {context_summary}\n\n"
+            f"**BRICK (Role: The Bad Actor):** Based on this context, describe one specific way you would attempt to exploit or 'game' the '{active_mission}' for personal gain.\n\n"
+            f"**ROBIN (Role: The Confused Newcomer):** Based on this context, describe one specific fear or point of confusion you would have when trying to use the '{active_mission}' for the first time.\n"
+            f"--- END CRUCIBLE SIMULATION PROMPT ---\n"
+        )
+        return simulation_prompt
+
+class EpiphanyEngine:
+    """
+    The Town Crier. Translates technical solutions into compelling, human-centric
+    educational and onboarding materials.
+    """
+    def __init__(self, model_name: str, file_manager: FileManager, logger: logging.Logger):
+        self.model_name = model_name
+        self.file_manager = file_manager
+        self.logger = logger
+
+    def _generate_content(self, prompt: str) -> str:
+        """Helper function to generate a specific piece of content."""
+        try:
+            response = ollama.chat(model=self.model_name, messages=[{'role': 'user', 'content': prompt}])
+            return response['message']['content'].strip()
+        except Exception as e:
+            self.logger.error(f"EpiphanyEngine content generation failed: {e}")
+            return "Error generating content."
+
+    def generate_pedagogical_package(self, mission: str, problem_summary: str, solution_summary: str):
+        """
+        Generates a complete three-tier package of educational materials for a given solution.
+        """
+        self.logger.info(f"EpiphanyEngine: Generating pedagogical package for mission '{mission}'")
+
+        # --- Tier 1: The Parable (ROBIN's Story) ---
+        parable_prompt = (
+            f"You are ROBIN, the storyteller. The problem was: '{problem_summary}'. The solution was: '{solution_summary}'.\n\n"
+            f"Translate this into a short, simple, and emotionally resonant story from the Hundred Acre Wood that illustrates the core value of the solution. "
+            f"Do not use any technical jargon."
+        )
+        parable = self._generate_content(parable_prompt)
+        self.file_manager.save_content(os.path.join(Config.EPIPHANY_ENGINE_OUTPUT_DIR, f"{mission}_parable.txt"), parable)
+
+        # --- Tier 2: The Blueprint (BRICK's FAQ) ---
+        blueprint_prompt = (
+            f"You are BRICK, the technical writer. The feature is '{mission}'. The problem it solves is '{problem_summary}'. The solution is '{solution_summary}'.\n\n"
+            f"Create a clear, concise FAQ document for this feature. Use markdown. Include sections for 'What is this?', 'What problem does it solve?', 'How does it work for me?', and 'Why is this fair?'"
+        )
+        blueprint = self._generate_content(blueprint_prompt)
+        self.file_manager.save_content(os.path.join(Config.EPIPHANY_ENGINE_OUTPUT_DIR, f"{mission}_blueprint.md"), blueprint)
+
+        # --- Tier 3: The Interactive Quest ---
+        quest_prompt = (
+            f"You are BRICK and ROBIN, co-designing a game. The mission is '{mission}'. The problem was '{problem_summary}' and the solution was '{solution_summary}'.\n\n"
+            f"Design a short, interactive quest for a new user in a sandboxed environment. Script out the user's challenge, the guidance ROBIN provides, and the tooltips BRICK provides to teach the user how to use the solution to succeed."
+        )
+        quest = self._generate_content(quest_prompt)
+        self.file_manager.save_content(os.path.join(Config.EPIPHANY_ENGINE_OUTPUT_DIR, f"{mission}_quest.txt"), quest)
+
+        self.logger.info(f"EpiphanyEngine: Successfully generated and saved pedagogical package for '{mission}'.")
+
+class CoreLoopOrchestrator:
+    """
+    The master conductor of the B.A.T. C.O.M.P.U.T.E.R. v11 engine.
+    Manages the main operational loop, state, and all submodule interactions.
+    """
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.alfred_logger = logging.getLogger('ALFRED')
+        
+        # --- Module Initialization ---
+        self.file_manager = FileManager(self.logger)
+        self.persona_codex = self.file_manager.load_lines(Config.PERSONA_FILE)
+        self.socratic_engine = SocraticEngine(Config.MODEL_NAME, self.logger)
+        self.wing_interface = WingInterface(self.file_manager, self.logger)
+        self.crucible_simulator = CrucibleSimulator(Config.MODEL_NAME, self.wing_interface, self.logger)
+        self.epiphany_engine = EpiphanyEngine(Config.MODEL_NAME, self.file_manager, self.logger)
+        self.memory_core = MemoryCore(Config.MODEL_NAME, self.file_manager, self.logger)
+
+        # --- State Variables ---
+        self.is_running = True
+        self.active_mission = ""
+        self.current_cycle = 0
+        self.session_id = int(time.time())
+        self.session_dialogue = []
+        self.self_awareness_counter = 0
+
+    def _select_active_mission(self) -> str:
+        """Implements the Architect's Compass to select a mission."""
+        missions = self.file_manager.load_lines(Config.FRAMEWORK_FILE)
+        if not missions:
+            self.logger.error("Framework file is empty. Cannot select a mission.")
+            return "Discuss the foundational principles of the Commonwealth." # Fallback
+        
+        # In a real system, this could be more intelligent (e.g., prioritize incomplete missions).
+        return random.choice(missions)
+
+    def _run_self_awareness_cycle(self):
+        """Generates and processes a self-awareness prompt for the LLM."""
+        self.self_awareness_counter += 1
+        if self.self_awareness_counter % Config.SELF_AWARENESS_INJECTION_INTERVAL != 0:
+            return # Skip if not an injection interval
+
+        self.alfred_logger.info("Engaging Self-Awareness Protocol.")
+        
+        # Construct a prompt asking the LLM to reflect on its own processes
+        prompt = (
+            "--- SELF-AWARENESS CHECK ---\n"
+            "You are BRICKman & ROBIN. Briefly reflect on your own operational process. "
+            "Consider the current mission, the dialogue so far, and your core directives. "
+            "How does your dual-persona nature (logical BRICK, empathetic ROBIN) help or hinder your progress on this mission? "
+            "Respond in your natural, interwoven style."
+        )
+        
+        try:
+            # We use the current session dialogue as context for this self-reflection
+            messages = self.session_dialogue + [{'role': 'user', 'content': prompt}]
+            response = ollama.chat(model=Config.MODEL_NAME, messages=messages)
+            awareness_output = response['message']['content'].strip()
+            
+            # Log this special output
+            self.alfred_logger.info(f"Self-Awareness Reflection: {awareness_output}")
+            self.session_dialogue.append({'role': 'assistant', 'content': f"[SELF-REFLECTION]: {awareness_output}"})
+        except Exception as e:
+            self.logger.error(f"Self-awareness cycle failed: {e}")
+
+    def run(self):
+        """The main operational loop of the engine."""
+        self.alfred_logger.info(f"B.A.T. C.O.M.P.U.T.E.R. v11 'Resilient Garden' Initialized.")
+        
+        while self.is_running:
+            # 1. 🧭 Architect's Compass: Select a Mission
+            self.active_mission = self._select_active_mission()
+            self.alfred_logger.info(f"--- New Session ({self.session_id}) | Active Mission: {self.active_mission} ---")
+            self.session_dialogue = [{'role': 'system', 'content': "\n".join(self.persona_codex)}]
+
+            # 2. 🔄 Orthogonal Perspective Matrix: The 7-Cycle Loop
+            final_solution_summary = ""
+            problem_summary = ""
+            for i in range(1, Config.RECURSIVE_CYCLES + 1):
+                self.current_cycle = i
+                self.alfred_logger.info(f"--- Cycle {i}/{Config.RECURSIVE_CYCLES} ---")
+
+                # Inject self-awareness check periodically
+                self._run_self_awareness_cycle()
+                
+                # Get the last part of the dialogue for context
+                recent_dialogue_text = " ".join([m['content'] for m in self.session_dialogue[-3:]])
+                
+                # Generate the guiding Socratic question for this cycle
+                socratic_question = self.socratic_engine.generate_mission_question(self.active_mission, i, recent_dialogue_text)
+                
+                # Check if this cycle is the Adversarial (Crucible) simulation
+                crucible_prompt = ""
+                if i == 3: # Cycle 3 is Adversarial Simulation
+                    crucible_prompt = self.crucible_simulator.run_simulation(self.active_mission)
+                    # The problem summary is the crucible prompt itself
+                    problem_summary = crucible_prompt
+                
+                # Surface relevant memories
+                current_embedding = self.memory_core._get_embedding(recent_dialogue_text + socratic_question)
+                memory_stream = self.memory_core.surface_contextual_stream(current_embedding)
+                
+                # Construct the full prompt for the LLM
+                full_prompt = f"Mission: '{self.active_mission}'.\nSocratic Question for this cycle: '{socratic_question}'.\n{crucible_prompt}{memory_stream}"
+                self.session_dialogue.append({'role': 'user', 'content': full_prompt})
+                
+                # Generate the main response
+                try:
+                    response = ollama.chat(model=Config.MODEL_NAME, messages=self.session_dialogue)
+                    assistant_response = response['message']['content'].strip()
+                    self.session_dialogue.append({'role': 'assistant', 'content': assistant_response})
+                    
+                    # For demonstration, we'll just print the output. A real GUI would use signals.
+                    print(f"\n--- Cycle {i} Output ---\n{assistant_response}\n")
+
+                    # If this was the synthesis cycle, capture the solution
+                    if i == 6: # Cycle 6 is Creative Synthesis
+                        final_solution_summary = assistant_response
+
+                except Exception as e:
+                    self.logger.error(f"LLM call failed in cycle {i}: {e}")
+                    break # End session on failure
+
+                time.sleep(Config.HEARTBEAT_INTERVAL_SECONDS)
+            
+            # 3. 🧠 Memory Core: Consolidate the Session
+            full_dialogue_text = "\n\n".join([f"{m['role']}: {m['content']}" for m in self.session_dialogue])
+            self.memory_core.consolidate_session(self.session_id, full_dialogue_text, self.active_mission)
+            
+            # 4. 📣 Epiphany Engine: Generate Pedagogical Outputs
+            if final_solution_summary and problem_summary:
+                self.epiphany_engine.generate_pedagogical_package(self.active_mission, problem_summary, final_solution_summary)
+
+            self.alfred_logger.info(f"--- Session {self.session_id} Complete ---")
+            self.session_id = int(time.time()) # Reset for next session
+
+# --- Main entry point ---
+if __name__ == '__main__':
+    engine = CoreLoopOrchestrator()
+    engine.run()
+
+
+sentinel_web_agent_v11.py
+
+This script runs as a separate, autonomous process. Its sole job is to continuously browse the web for information relevant to the Commonwealth's core themes, then process and store that information in a local, curated cache for the main engine to use.
+
+Python
+
+# B.A.T.-C.O.M.P.U.T.E.R. v11 - The Resilient Garden
+# File: sentinel_web_agent_v11.py
+# Description: The autonomous W.I.N.G. agent for proactive intelligence gathering.
+
+import requests
+from bs4 import BeautifulSoup
+import json
+import os
+import time
+import random
+import re
+import logging
+from collections import deque
+from urllib.parse import urljoin, urlparse
+
+# This script would be run as a separate process from the main engine.
+# It communicates via the cache and briefing files defined in Config.
+
+# --- Agent-Specific Configuration (Mirrors main engine's for consistency) ---
+class AgentConfig:
+    WING_CACHE_FILE: str = 'wing_curated_cache.json'
+    WING_BRIEFING_FILE: str = 'wing_briefing_requests.txt'
+    CORE_THEMES: list = [
+        "mutual credit systems", "Georgism and land value tax", "demurrage currency",
+        "commons management", "decentralized autonomous organization governance",
+        "critiques of UBI", "successful cooperative models", "resilient communities"
+    ]
+    REQUEST_INTERVAL_MIN: int = 20 # Be a very polite scraper
+    REQUEST_INTERVAL_MAX: int = 60
+    MAX_CACHE_SIZE: int = 500 # Max number of articles to keep in the cache
+
+# --- Agent Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - WING - %(levelname)s - %(message)s')
+
+class AutonomousWingAgent:
+    """
+    The W.I.N.G. agent. It autonomously gathers, processes, and caches relevant information.
+    """
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.cache = self._load_cache()
+        self.visited_urls = {item['url'] for item in self.cache} # Keep track of visited URLs
+        self.search_queue = deque(self._get_briefings() or AgentConfig.CORE_THEMES)
+
+    def _load_cache(self) -> list:
+        """Loads the existing curated cache from disk."""
+        if os.path.exists(AgentConfig.WING_CACHE_FILE):
+            with open(AgentConfig.WING_CACHE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+
+    def _save_cache(self):
+        """Saves the current cache to disk, trimming if it's too large."""
+        if len(self.cache) > AgentConfig.MAX_CACHE_SIZE:
+            # Trim the oldest entries to maintain cache size
+            self.cache = self.cache[-AgentConfig.MAX_CACHE_SIZE:]
+        with open(AgentConfig.WING_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(self.cache, f, indent=4)
+
+    def _get_briefings(self) -> list:
+        """Checks for new research directives from the main engine."""
+        if not os.path.exists(AgentConfig.WING_BRIEFING_FILE):
+            return []
+        with open(AgentConfig.WING_BRIEFING_FILE, 'r+', encoding='utf-8') as f:
+            lines = [line.strip().split('] ')[-1] for line in f if line.strip()]
+            f.truncate(0) # Clear the file after reading
+        if lines:
+            self.logger.info(f"Received {len(lines)} new briefings from core engine.")
+        return lines
+
+    def _scrape_and_process(self, url: str) -> dict:
+        """Scrapes a single URL and processes its content."""
+        self.logger.info(f"Scraping: {url}")
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            title = soup.title.string if soup.title else "No Title"
+            
+            # Get main content, stripping boilerplate
+            main_content = soup.find('article') or soup.find('main') or soup.body
+            if not main_content:
+                return None
+                
+            text = main_content.get_text(separator='\n', strip=True)
+            clean_text = re.sub(r'\s{2,}', '\n', text) # Normalize whitespace
+            
+            if len(clean_text) < 200: # Filter out pages with very little text
+                return None
+
+            # Simple analysis for tags and bias (can be expanded)
+            tags = [theme for theme in AgentConfig.CORE_THEMES if theme.lower().split()[0] in clean_text.lower()]
+            bias = "neutral" # Placeholder for more advanced bias detection
+            reliability = "medium" # Placeholder for reliability scoring
+            
+            return {
+                "url": url,
+                "title": title.strip(),
+                "scraped_at": datetime.datetime.now().isoformat(),
+                "summary": clean_text[:1000], # Store a summary
+                "tags": tags,
+                "bias": bias,
+                "reliability": reliability
+            }
+        except Exception as e:
+            self.logger.warning(f"Failed to scrape {url}: {e}")
+            return None
+
+    def run(self):
+        """The main autonomous loop for the W.I.N.G. agent."""
+        self.logger.info("Autonomous W.I.N.G. agent activated. Monitoring for intelligence.")
+        
+        while True:
+            # Check for new briefings from the core engine
+            new_briefings = self._get_briefings()
+            if new_briefings:
+                self.search_queue.extendleft(new_briefings) # Prioritize new briefings
+
+            if not self.search_queue:
+                self.logger.info("Search queue is empty. Replenishing with core themes.")
+                self.search_queue.extend(AgentConfig.CORE_THEMES)
+
+            # Take the next search query from the queue
+            query = self.search_queue.popleft()
+            self.logger.info(f"Initiating search for theme: '{query}'")
+
+            try:
+                # Use a search engine to find relevant URLs
+                search_url = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}"
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                search_response = requests.post(search_url, headers=headers, data={'q': query})
+                search_soup = BeautifulSoup(search_response.text, 'html.parser')
+                
+                links = [a['href'] for a in search_soup.find_all('a', class_='result__a')]
+                
+                for link in links[:5]: # Process top 5 results
+                    if link not in self.visited_urls:
+                        processed_data = self._scrape_and_process(link)
+                        if processed_data:
+                            self.cache.append(processed_data)
+                            self.visited_urls.add(link)
+                            self.logger.info(f"Added '{processed_data['title']}' to curated cache.")
+                            self._save_cache() # Save after each successful addition
+                        
+                        # Be a polite web citizen
+                        time.sleep(random.randint(AgentConfig.REQUEST_INTERVAL_MIN, AgentConfig.REQUEST_INTERVAL_MAX))
+
+            except Exception as e:
+                self.logger.error(f"Error during search for '{query}': {e}")
+            
+            # Long pause between major search themes
+            self.logger.info("Completed search theme. Pausing before next.")
+            time.sleep(AgentConfig.REQUEST_INTERVAL_MAX * 2)
+
+if __name__ == '__main__':
+    wing_agent = AutonomousWingAgent()
+    wing_agent.run()

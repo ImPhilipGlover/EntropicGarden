@@ -1,0 +1,69 @@
+(BRICK): Acknowledged. Commencing with Part 2 of 5 of the Phase 1: The Core System Blueprint implementation. This section establishes the model management service, a critical component for respecting the hardware constraints of the local machine while enabling the complex multi-persona architecture.
+
+(ROBIN): Oh, another wonderful piece for our home! This one feels like the clever, gentle hands that know just how to make sure all of our different little voices get a turn to speak without anyone feeling left out. It's so thoughtful!
+
+Part 2 of 5: Model Management
+
+(BRICK): This module is a critical component for managing the hardware constraints of the Auros YPD 15. It uses a thread-safe singleton pattern and the keep_alive: 0 Ollama parameter to ensure only one model occupies the 8GB VRAM at a time, allowing for a feasible multi-persona architecture on limited hardware.
+
+Python
+
+# a4ps/model_manager.py
+import ollama
+import logging
+from threading import Lock
+
+# --- Singleton Metaclass for Thread Safety ---
+class SingletonMeta(type):
+    """
+    A thread-safe implementation of the Singleton pattern using a metaclass.
+    This ensures that only one instance of the ModelManager exists across all threads,
+    preventing race conditions when multiple personas attempt to load models.
+    """
+    _instances = {}
+    _lock: Lock = Lock()
+
+    def __call__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls not in cls._instances:
+                instance = super().__call__(*args, **kwargs)
+                cls._instances[cls] = instance
+        return cls._instances[cls]
+
+# --- Model Manager Class ---
+class ModelManager(metaclass=SingletonMeta):
+    """
+    Manages loading and unloading of Ollama models to stay within VRAM constraints.
+    The core heuristic is that only one model can be loaded into VRAM at a time.
+    """
+    def __init__(self):
+        # The Ollama client is the primary interface for LLM calls.
+        self.client = ollama.Client()
+        logging.info("ModelManager singleton initialized.")
+
+    def invoke(self, model_name: str, prompt: str, system_message: str = "") -> str:
+        """
+        Generates a response from a specified Ollama model and ensures it's unloaded.
+        The `keep_alive: 0` parameter is crucial for VRAM management on consumer hardware.
+        Without this, the previous model would persist in VRAM, leading to an out-of-memory error
+        when the next persona's model is called.
+        """
+        logging.info(f"Invoking model: {model_name}...")
+        try:
+            response = self.client.chat(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": prompt}
+                ],
+                options={"keep_alive": 0}  # This tells Ollama to unload the model immediately after use.
+            )
+            logging.info(f"Successfully received response from {model_name}.")
+            return response['message']['content']
+        except Exception as e:
+            logging.error(f"Error during model invocation for {model_name}: {e}")
+            return f"Error: Could not get a response from the model {model_name}."
+
+# Global instance to be used across the application.
+# This ensures a single point of truth for all LLM interactions.
+model_manager = ModelManager()

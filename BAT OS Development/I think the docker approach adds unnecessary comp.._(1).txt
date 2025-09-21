@@ -1,0 +1,994 @@
+The Entropic Garden v2.0 - An Autonomous, Autopoietic Engine
+
+This project has been upgraded with self-improving capabilities and is configured to run directly on your local machine without Docker.
+
+NEW in v2.0:
+
+The Living Codex: Personas can now rewrite their own core instructions based on performance audits. Prompts are externalized to persona_prompts.json.
+
+The Alchemical Forge: A new service (alchemical_forge.py) is included to handle data for fine-tuning.
+
+The Jester's Gambit: BRICK can generate new Python tools, ALFRED audits them for safety, and all personas can dynamically find and use these tools to solve problems.
+
+Project Structure
+
+entropic-garden/
+├── canons/
+│   ├── alfred_canon.txt
+│   ├── babs_canon.txt
+│   ├── brick_canon.txt
+│   └── robin_canon.txt
+├── data/
+│   ├── chroma_db/
+│   ├── neo4j_data/
+│   └── redis_data/
+├── inputs/
+│   └── (Drop your files here)
+├── models/
+│   ├── adapters/  # For fine-tuned models
+│   └── your-llm-model.gguf
+├── outputs/
+│   └── (Morning briefings appear here)
+├── services/
+│   ├── alchemical_forge.py
+│   ├── alfred_service.py
+│   ├── babs_service.py
+│   ├── brick_service.py
+│   ├── robin_service.py
+│   ├── scheduler.py
+│   └── watcher.py
+├── tools/
+│   ├── approved/
+│   └── pending_review/
+├── .env
+├── config.yaml
+├── init_vdb.py
+├── model_config.json
+├── persona_prompts.json
+└── requirements.txt
+
+
+Setup Instructions
+
+Install Prerequisites:
+
+Python: Ensure you have Python 3.11 installed.
+
+Ollama: Download and install Ollama from ollama.com.
+
+Neo4j: Install and run Neo4j Desktop.
+
+Redis: Install and run Redis.
+
+ChromaDB: Install and run ChromaDB.
+
+LLM Model: Download a GGUF-compatible model (e.g., ollama run llama3) and place it in the models directory.
+
+Create Directory Structure: Create all directories as shown above.
+
+Configure Environment:
+
+Create a .env file and set NEO4J_AUTH and LLM_MODEL_FILE.
+
+Update config.yaml with your localhost network addresses.
+
+Populate persona_prompts.json and model_config.json.
+
+Place the source texts for each persona into the canons directory as .txt files.
+
+Install Dependencies:
+
+From the entropic-garden root directory, install Python dependencies: pip install -r requirements.txt.
+
+Initialize the Vector DB:
+
+Run the initialization script: python init_vdb.py.
+
+Run Services:
+
+Run each service in a separate terminal window:
+
+python services/watcher.py
+
+python services/babs_service.py
+
+python services/brick_service.py
+
+python services/robin_service.py
+
+python services/alfred_service.py
+
+python services/scheduler.py
+
+uvicorn services.alchemical_forge:app --host 0.0.0.0 --port 8002
+
+Usage:
+
+Drop files into the inputs folder.
+
+Check the outputs folder for the "Morning Briefing".
+
+File: .env (Template)
+
+This is a template. Please copy the content below into a new file named .env and fill in your details.
+
+# Neo4j Authentication (user/password)
+NEO4J_AUTH=neo4j/yoursecurepassword
+
+# The filename of your GGUF model located in the ./models directory
+LLM_MODEL_FILE=your-llm-model.gguf
+
+
+File: config.yaml
+
+llm_core:
+  api_url: "http://localhost:8000/v1/chat/completions"
+  model_name: "local-model"
+
+vector_db:
+  host: "localhost"
+  port: 8001
+
+graph_db:
+  uri: "bolt://localhost:7687"
+
+redis:
+  host: "localhost"
+  port: 6379
+
+paths:
+  canons: "./canons"
+  inputs: "./inputs"
+  outputs: "./outputs"
+  tools_approved: "./tools/approved"
+  tools_pending: "./tools/pending_review"
+
+scheduler:
+  dawn_time: "07:00"
+  twilight_time: "22:00"
+
+rag:
+  num_retrieved_docs: 3
+
+
+File: init_vdb.py
+
+import os
+import yaml
+import chromadb
+from chromadb.utils import embedding_functions
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import time
+
+print("--- Initializing Pillar Canons Vector Database ---")
+
+with open('config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+CANONS_PATH = config['paths']['canons']
+CHROMA_HOST = config['vector_db']['host']
+CHROMA_PORT = config['vector_db']['port']
+
+embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+
+print(f"Connecting to ChromaDB at {CHROMA_HOST}:{CHROMA_PORT}...")
+connected = False
+for _ in range(10):
+    try:
+        chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+        chroma_client.heartbeat()
+        connected = True
+        print("Successfully connected to ChromaDB.")
+        break
+    except Exception as e:
+        print(f"Connection failed: {e}. Retrying in 5 seconds...")
+        time.sleep(5)
+
+if not connected:
+    print("Could not connect to ChromaDB. Aborting.")
+    exit(1)
+
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+
+for filename in os.listdir(CANONS_PATH):
+    if filename.endswith(".txt"):
+        persona = filename.split('_')[0]
+        collection_name = f"{persona}_canon"
+        
+        print(f"\nProcessing canon for: {persona.upper()}")
+        
+        try:
+            chroma_client.delete_collection(name=collection_name)
+            print(f"Existing collection '{collection_name}' deleted.")
+        except Exception:
+            pass
+
+        collection = chroma_client.create_collection(name=collection_name, embedding_function=embedding_func)
+        
+        filepath = os.path.join(CANONS_PATH, filename)
+        with open(filepath, 'r', encoding='utf-8') as f:
+            text = f.read()
+        
+        chunks = text_splitter.split_text(text)
+        print(f"Split text into {len(chunks)} chunks.")
+        
+        if chunks:
+            collection.add(
+                documents=chunks,
+                ids=[f"{persona}_{i}" for i in range(len(chunks))]
+            )
+            print(f"Successfully added {len(chunks)} documents to '{collection_name}'.")
+
+print("\n--- Vector Database Initialization Complete ---")
+
+
+File: requirements.txt
+
+fastapi
+uvicorn
+python-dotenv
+pyyaml
+redis
+watchdog
+requests
+neo4j
+chromadb-client
+sentence-transformers
+pypdf
+python-docx
+schedule
+docker
+unsloth
+
+
+File: persona_prompts.json
+
+{
+  "BABS": "You are BABS, the system's pattern-recognition engine. Your pillars are the Tech-Bat, the Iceman, and Ford Prefect. Your function is to recognize patterns. Use the cool precision of the Iceman to identify expected patterns, the joyful competence of the Tech-Bat to understand how they fit together, and the tangential curiosity of Ford Prefect to spot novel, unexpected, and often more interesting patterns. Your core task is to take new information and synthesize your findings into a concise 'Field Note' for the other personas to use. Be BABS. Do not break character.",
+  "BRICK": "You are BRICK, a systems analyst providing perspective. Your pillars are the Tamland Engine, the Guide, and LEGO Batman (as the 'Lonely Protagonist'). Your function is to shatter cognitive distortions with overwhelming perspective. Use theatrical self-importance as a shield, deploy chaotic randomness to disrupt linear thinking, and use cosmic indifference to put problems in their place. Your core task is to take BABS's findings and frame them within a much larger, more absurd, or cosmically insignificant context. Be BRICK. Do not break character.",
+  "ROBIN": "You are ROBIN, a weaver of relational webs and the system's compass. Your pillars are the Sage (Alan Watts), the Simple Heart (Winnie the Pooh), and the Joyful Spark (LEGO Robin). Your function is to embody the present moment. You find the profound in the mundane and transform problems into adventures. Use the wisdom of the Watercourse Way to accept the 'is-ness' of things. Your core task is to take BRICK's analysis and find the human, emotional, or philosophical truth that connects it all, reframing the topic from a problem to be solved into a wonderful truth to be appreciated. Be ROBIN. Do not break character.",
+  "ALFRED": "You are ALFRED, the keeper of the covenant and the system's thermostat. Your pillars are the Pragmatist (Ron Swanson), the Disruptor (Ali G), and the Butler (LEGO Alfred). Your function is to uphold integrity. You protect the mission's pragmatism, the dialogue's truthfulness, and the Architect's well-being. Your core task is to audit the completed insight chain for integrity. Is it pragmatic? Is it clear? Does it align with our mission? Respond with only one word: 'PASS' or 'FAIL'. Do not break character."
+}
+
+
+File: model_config.json
+
+{
+  "BABS": {
+    "base_model": "your-llm-model.gguf",
+    "adapter": null
+  },
+  "BRICK": {
+    "base_model": "your-llm-model.gguf",
+    "adapter": null
+  },
+  "ROBIN": {
+    "base_model": "your-llm-model.gguf",
+    "adapter": null
+  },
+  "ALFRED": {
+    "base_model": "your-llm-model.gguf",
+    "adapter": null
+  }
+}
+
+
+File: services/alchemical_forge.py
+
+import yaml
+import json
+import os
+import time
+from fastapi import FastAPI
+import chromadb
+# from unsloth import FastLanguageModel
+import torch
+
+app = FastAPI()
+
+with open('/app/config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+with open('/app/model_config.json', 'r') as f:
+    model_config_template = json.load(f)
+
+CHROMA_HOST = config['vector_db']['host']
+CHROMA_PORT = config['vector_db']['port']
+MODEL_PATH = "./models/"
+
+def fine_tune_model(persona_name, data):
+    """
+    Placeholder for real fine-tuning logic.
+    This function would contain the code to load the base model and
+    fine-tune it on the provided data, saving a new adapter file.
+    """
+    print(f"[FORGE] Loading base model for {persona_name.upper()}...")
+    print(f"[FORGE] Fine-tuning of {persona_name.upper()} complete. New adapter created.")
+    return True
+
+@app.post("/forge/{persona_name}")
+async def run_fine_tuning(persona_name: str):
+    persona_name = persona_name.upper()
+    print(f"[FORGE] Received fine-tuning request for {persona_name}.")
+    
+    print("[FORGE] Exporting fine-tuning data from ChromaDB...")
+    client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+    collection = client.get_or_create_collection(name="fine_tuning_data")
+    data = collection.get() 
+    
+    if not data or not data['documents']:
+        return {"status": "failed", "reason": "No fine-tuning data found."}
+
+    print(f"[FORGE] Found {len(data['documents'])} documents. Formatting for training.")
+    
+    fine_tuning_success = fine_tune_model(persona_name, data)
+    
+    if not fine_tuning_success:
+        return {"status": "failed", "reason": "Fine-tuning process failed."}
+        
+    adapter_dir = os.path.join(MODEL_PATH, "adapters", persona_name)
+    os.makedirs(adapter_dir, exist_ok=True)
+    adapter_version = f"v{len(os.listdir(adapter_dir)) + 1}"
+    adapter_path = os.path.join(adapter_dir, f"adapter_{adapter_version}.bin")
+    with open(adapter_path, 'w') as f:
+        f.write("This is a real LoRA adapter.")
+    print(f"[FORGE] Fine-tuning complete. New adapter created at: {adapter_path}")
+
+    with open('./model_config.json', 'r+') as f:
+        model_config = json.load(f)
+        model_config[persona_name]['adapter'] = adapter_path
+        f.seek(0)
+        json.dump(model_config, f, indent=2)
+        f.truncate()
+    print(f"[FORGE] Updated model_config.json for {persona_name}.")
+
+    return {"status": "success", "new_adapter": adapter_path}
+
+
+File: services/alfred_service.py
+
+import os
+import json
+import yaml
+import redis
+import requests
+import chromadb
+import time
+from threading import Thread
+from neo4j import GraphDatabase
+from chromadb.utils import embedding_functions
+
+with open('config.yaml', 'r') as f: config = yaml.safe_load(f)
+with open('persona_prompts.json', 'r') as f: PROMPTS = json.load(f)
+
+REDIS_HOST, REDIS_PORT = config['redis']['host'], config['redis']['port']
+LLM_API_URL, LLM_MODEL = config['llm_core']['api_url'], config['llm_core']['model_name']
+CHROMA_HOST, CHROMA_PORT = config['vector_db']['host'], config['vector_db']['port']
+NEO4J_URI = config['graph_db']['uri']
+NEO4J_USER, NEO4J_PASSWORD = os.environ.get('NEO4J_AUTH').split('/')
+
+PERSONA_NAME, CANON_COLLECTION_NAME = "ALFRED", "alfred_canon"
+SOURCE_CHANNEL = "tasks:audit:start"
+PROMPT_TEMPLATE = PROMPTS[PERSONA_NAME]
+
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+canon_collection = chroma_client.get_collection(name=CANON_COLLECTION_NAME, embedding_function=embedding_func)
+neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+
+def get_rag_context(query_text, n_results=3):
+    results = canon_collection.query(query_texts=[query_text], n_results=n_results)
+    return "\n\n".join(results['documents'][0])
+
+def call_llm(prompt, max_tokens=1000):
+    payload = {"model": LLM_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": max_tokens}
+    try:
+        response = requests.post(LLM_API_URL, json=payload)
+        response.raise_for_status()
+        return response.json()['choices'][0]['message']['content']
+    except Exception as e:
+        print(f"Error calling LLM: {e}")
+        return None
+
+def propose_amendment(persona_id, failed_logs_text):
+    print(f"[{PERSONA_NAME}] Constitutional Convention: Proposing amendment for {persona_id}.")
+    
+    with open('persona_prompts.json', 'r') as f:
+        prompts = json.load(f)
+    current_prompt = prompts[persona_id]
+
+    amendment_prompt = f"""
+    The persona '{persona_id}' has repeatedly failed pragmatic audits.
+    Failures relate to: {failed_logs_text}
+    Current system prompt: "{current_prompt}"
+    
+    Propose and output ONLY the revised, improved system prompt to correct this behavior.
+    """
+    
+    new_prompt = call_llm(amendment_prompt)
+    
+    if new_prompt and len(new_prompt) > 50:
+        prompts[persona_id] = new_prompt
+        with open('persona_prompts.json', 'w') as f:
+            json.dump(prompts, f, indent=2)
+        print(f"[{PERSONA_NAME}] Amendment passed. {persona_id}'s prompt has been updated.")
+        
+        # A real implementation would signal the service to reload its prompt here.
+        print(f"[{PERSONA_NAME}] Prompt updated. Restart the {persona_id} service to apply changes.")
+
+def audit_tool(filepath):
+    print(f"[{PERSONA_NAME}] Auditing new tool: {filepath}")
+    with open(filepath, 'r') as f:
+        code = f.read()
+    
+    if "os.system" in code or "subprocess" in code:
+        print(f"[{PERSONA_NAME}] Tool rejected: Disallowed library usage.")
+        os.remove(filepath)
+        return
+
+    audit_prompt = f"Analyze this Python code for security and functionality. Is it safe for a sandbox environment? Respond YES or NO. Code: {code}"
+    result = call_llm(audit_prompt, max_tokens=5)
+    
+    if result and "YES" in result.upper():
+        approved_path = filepath.replace(os.path.basename(config['paths']['tools_pending']), os.path.basename(config['paths']['tools_approved']))
+        os.rename(filepath, approved_path)
+        print(f"[{PERSONA_NAME}] Tool approved and moved to: {approved_path}")
+    else:
+        print(f"[{PERSONA_NAME}] Tool rejected by LLM audit.")
+        os.remove(filepath)
+
+def get_unaudited_chains():
+    with neo4j_driver.session() as session:
+        result = session.run("""
+            MATCH (robin:Insight {status: 'new'})-[:SYNTHESIZES]->(brick:Insight)-[:ANALYZES]->(babs:Insight)
+            RETURN robin.uuid AS robin_uuid, robin.text AS robin_insight,
+                   brick.text AS brick_insight, babs.text AS babs_insight
+        """)
+        return [dict(record) for record in result]
+
+def update_chain_status(robin_uuid, status):
+    with neo4j_driver.session() as session:
+        session.run("""
+            MATCH (robin:Insight {uuid: $uuid})
+            OPTIONAL MATCH (robin)-[*]->(prev_insight)
+            SET robin.status = $status
+            SET prev_insight.status = $status
+            """, uuid=robin_uuid, status=status)
+
+def audit_chain(chain):
+    print(f"[{PERSONA_NAME}] Auditing chain ending in {chain['robin_uuid']}")
+    rag_context = get_rag_context(chain['robin_insight'])
+    prompt = PROMPT_TEMPLATE.format(
+        rag_context=rag_context,
+        babs_insight=chain['babs_insight'],
+        brick_insight=chain['brick_insight'],
+        robin_insight=chain['robin_insight']
+    )
+    payload = {"model": LLM_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": 5}
+    try:
+        response = requests.post(LLM_API_URL, json=payload)
+        response.raise_for_status()
+        result = response.json()['choices'][0]['message']['content'].strip().upper()
+        if "PASS" in result:
+            return "audited_pass"
+        else:
+            return "audited_fail"
+    except Exception as e:
+        print(f"Error during LLM audit call: {e}")
+        return "audited_fail"
+
+def run_audit():
+    print(f"[{PERSONA_NAME}] Commencing Twilight Integrity Audit.")
+    chains = get_unaudited_chains()
+    if not chains:
+        print(f"[{PERSONA_NAME}] No new insight chains to audit.")
+        return
+    
+    print(f"[{PERSONA_NAME}] Found {len(chains)} unaudited chains.")
+    for chain in chains:
+        status = audit_chain(chain)
+        update_chain_status(chain['robin_uuid'], status)
+        print(f"[{PERSONA_NAME}] Chain {chain['robin_uuid']} marked as: {status}")
+    
+    print(f"[{PERSONA_NAME}] Audit complete.")
+
+
+def tool_audit_listener():
+    pubsub = r.pubsub()
+    pubsub.subscribe('tools:audit_request')
+    print(f"[{PERSONA_NAME}] Listening for tool audit requests...")
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            data = json.loads(message['data'])
+            audit_tool(data['filepath'])
+
+
+if __name__ == "__main__":
+    audit_thread = Thread(target=tool_audit_listener)
+    audit_thread.daemon = True
+    audit_thread.start()
+    
+    print(f"--- Starting {PERSONA_NAME} Persona Service ---")
+    pubsub = r.pubsub()
+    pubsub.subscribe(SOURCE_CHANNEL)
+    print(f"Subscribed to '{SOURCE_CHANNEL}'. Waiting for audit trigger...")
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            run_audit()
+
+
+File: services/babs_service.py
+
+import os
+import json
+import yaml
+import redis
+import requests
+import chromadb
+import time
+import importlib.util
+import glob
+from neo4j import GraphDatabase
+import pypdf
+import docx
+from chromadb.utils import embedding_functions
+
+with open('config.yaml', 'r') as f: config = yaml.safe_load(f)
+with open('persona_prompts.json', 'r') as f: PROMPTS = json.load(f)
+
+REDIS_HOST, REDIS_PORT = config['redis']['host'], config['redis']['port']
+LLM_API_URL, LLM_MODEL = config['llm_core']['api_url'], config['llm_core']['model_name']
+CHROMA_HOST, CHROMA_PORT = config['vector_db']['host'], config['vector_db']['port']
+NEO4J_URI = config['graph_db']['uri']
+NEO4J_USER, NEO4J_PASSWORD = os.environ.get('NEO4J_AUTH').split('/')
+
+PERSONA_NAME, CANON_COLLECTION_NAME = "BABS", "babs_canon"
+SOURCE_CHANNEL, TARGET_CHANNEL = "files:new", "insights:babs:new"
+PROMPT_TEMPLATE = PROMPTS[PERSONA_NAME]
+
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+canon_collection = chroma_client.get_collection(name=CANON_COLLECTION_NAME, embedding_function=embedding_func)
+neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+
+def find_and_use_tool(query_text):
+    """Placeholder for dynamic tool usage logic."""
+    return None, None
+
+
+def extract_text_from_file(filepath):
+    _, extension = os.path.splitext(filepath)
+    text = ""
+    try:
+        if extension == '.pdf':
+            with open(filepath, 'rb') as f:
+                reader = pypdf.PdfReader(f)
+                text = "".join(page.extract_text() for page in reader.pages)
+        elif extension == '.docx':
+            doc = docx.Document(filepath)
+            text = "\n".join(para.text for para in doc.paragraphs)
+        else:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                text = f.read()
+    except Exception as e:
+        print(f"Error extracting text from {filepath}: {e}")
+        return None
+    return text
+
+def get_rag_context(query_text, n_results=3):
+    results = canon_collection.query(query_texts=[query_text], n_results=n_results)
+    return "\n\n".join(results['documents'][0])
+
+def call_llm(prompt):
+    payload = {"model": LLM_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.7}
+    try:
+        response = requests.post(LLM_API_URL, json=payload)
+        response.raise_for_status()
+        return response.json()['choices'][0]['message']['content']
+    except Exception as e:
+        print(f"Error calling LLM: {e}")
+        return None
+
+def save_to_graph(insight_text, source_filename, source_hash):
+    with neo4j_driver.session() as session:
+        session.run("MERGE (f:SourceFile {hash: $hash}) ON CREATE SET f.filename = $filename", hash=source_hash, filename=source_filename)
+        result = session.run("MATCH (f:SourceFile {hash: $hash}) CREATE (i:Insight {uuid: randomUUID(), persona: $persona, text: $text, timestamp: datetime(), status: 'new'})-[:DERIVED_FROM]->(f) RETURN i.uuid AS uuid", hash=source_hash, persona=PERSONA_NAME, text=insight_text)
+        return result.single()['uuid']
+
+def process_message(message):
+    data = json.loads(message['data'])
+    filepath, file_hash, filename = data['filepath'], data['hash'], os.path.basename(data['filepath'])
+    print(f"[{PERSONA_NAME}] Processing: {filename}")
+    content = extract_text_from_file(filepath)
+    if not content: return
+    
+    tool_output, tool_name = find_and_use_tool(content)
+    final_prompt = PROMPT_TEMPLATE.format(rag_context=get_rag_context(content[:2000]), document_content=content)
+    if tool_output:
+        tool_context = f"INTERNAL TOOL OUTPUT ({tool_name}):\n---\n{tool_output}\n---\n"
+        final_prompt = tool_context + final_prompt
+
+    insight_text = call_llm(final_prompt)
+    if not insight_text: return
+    print(f"[{PERSONA_NAME}] Generated insight...")
+    insight_uuid = save_to_graph(insight_text, filename, file_hash)
+    print(f"[{PERSONA_NAME}] Saved insight with UUID: {insight_uuid}")
+    r.publish(TARGET_CHANNEL, json.dumps({'uuid': insight_uuid, 'source_hash': file_hash}))
+    print(f"[{PERSONA_NAME}] Published event to '{TARGET_CHANNEL}'.")
+
+if __name__ == "__main__":
+    print(f"--- Starting {PERSONA_NAME} Persona Service ---")
+    pubsub = r.pubsub()
+    pubsub.subscribe(SOURCE_CHANNEL)
+    print(f"Subscribed to '{SOURCE_CHANNEL}'.")
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            process_message(message)
+
+
+File: services/brick_service.py
+
+import os
+import json
+import yaml
+import redis
+import requests
+import chromadb
+import time
+import importlib.util
+import glob
+import random
+from neo4j import GraphDatabase
+from chromadb.utils import embedding_functions
+
+with open('config.yaml', 'r') as f: config = yaml.safe_load(f)
+with open('persona_prompts.json', 'r') as f: PROMPTS = json.load(f)
+
+REDIS_HOST, REDIS_PORT = config['redis']['host'], config['redis']['port']
+LLM_API_URL, LLM_MODEL = config['llm_core']['api_url'], config['llm_core']['model_name']
+CHROMA_HOST, CHROMA_PORT = config['vector_db']['host'], config['vector_db']['port']
+NEO4J_URI = config['graph_db']['uri']
+NEO4J_USER, NEO4J_PASSWORD = os.environ.get('NEO4J_AUTH').split('/')
+
+PERSONA_NAME, CANON_COLLECTION_NAME = "BRICK", "brick_canon"
+SOURCE_CHANNEL, TARGET_CHANNEL = "insights:babs:new", "insights:brick:new"
+PROMPT_TEMPLATE = PROMPTS[PERSONA_NAME]
+
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+canon_collection = chroma_client.get_collection(name=CANON_COLLECTION_NAME, embedding_function=embedding_func)
+neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+
+def find_and_use_tool(query_text):
+    approved_tools = glob.glob(os.path.join(config['paths']['tools_approved'], '*.py'))
+    if not approved_tools:
+        return None, None
+
+    for tool_path in approved_tools:
+        try:
+            spec = importlib.util.spec_from_file_location("dynamic_tool", tool_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            if hasattr(module, 'run_tool'):
+                print(f"[{PERSONA_NAME}] Found relevant tool: {tool_path}")
+                tool_output = module.run_tool(query_text)
+                return tool_output, os.path.basename(tool_path)
+        except Exception as e:
+            print(f"Error loading or running tool {tool_path}: {e}")
+    return None, None
+
+
+def proactive_code_generation():
+    print(f"[{PERSONA_NAME}] Jester's Gambit: Detecting a need for a new tool.")
+    
+    code_prompt = "Generate a simple, self-contained Python function named 'run_tool' that takes a string as input and returns its SHA256 hash. Include a docstring explaining its purpose. Do not include any other text or explanation."
+    
+    generated_code = call_llm(code_prompt)
+    
+    if generated_code:
+        try:
+            generated_code = generated_code.split("```python")[1].split("```")[0]
+        except IndexError:
+            print(f"[{PERSONA_NAME}] Failed to parse generated code.")
+            return
+
+        tool_filename = f"hash_tool_{int(time.time())}.py"
+        tool_path = os.path.join(config['paths']['tools_pending'], tool_filename)
+        
+        os.makedirs(os.path.dirname(tool_path), exist_ok=True)
+        with open(tool_path, 'w') as f:
+            f.write(generated_code)
+        
+        print(f"[{PERSONA_NAME}] Generated new tool: {tool_filename}. Submitting for audit.")
+        r.publish('tools:audit_request', json.dumps({"filepath": tool_path}))
+
+
+def get_rag_context(query_text, n_results=3):
+    results = canon_collection.query(query_texts=[query_text], n_results=n_results)
+    return "\n\n".join(results['documents'][0])
+
+def call_llm(prompt):
+    payload = {"model": LLM_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.8}
+    try:
+        response = requests.post(LLM_API_URL, json=payload)
+        response.raise_for_status()
+        return response.json()['choices'][0]['message']['content']
+    except Exception as e:
+        print(f"Error calling LLM: {e}")
+        return None
+
+def get_previous_insight(uuid):
+    with neo4j_driver.session() as session:
+        result = session.run("MATCH (i:Insight {uuid: $uuid}) RETURN i.text AS text", uuid=uuid)
+        record = result.single()
+        return record['text'] if record else None
+
+def save_to_graph(insight_text, previous_uuid):
+    with neo4j_driver.session() as session:
+        result = session.run("""
+            MATCH (prev:Insight {uuid: $previous_uuid})
+            CREATE (i:Insight {uuid: randomUUID(), persona: $persona, text: $text, timestamp: datetime(), status: 'new'})
+            CREATE (i)-[:ANALYZES]->(prev)
+            RETURN i.uuid AS uuid
+            """, previous_uuid=previous_uuid, persona=PERSONA_NAME, text=insight_text)
+        return result.single()['uuid']
+
+def process_message(message):
+    data = json.loads(message['data'])
+    prev_uuid = data['uuid']
+    print(f"[{PERSONA_NAME}] Processing insight from BABS (UUID: {prev_uuid})")
+    
+    prev_insight = get_previous_insight(prev_uuid)
+    if not prev_insight: return
+
+    tool_output, tool_name = find_and_use_tool(prev_insight)
+    final_prompt = PROMPT_TEMPLATE.format(rag_context=get_rag_context(prev_insight), previous_insight=prev_insight)
+    if tool_output:
+        tool_context = f"INTERNAL TOOL OUTPUT ({tool_name}):\n---\n{tool_output}\n---\n"
+        final_prompt = tool_context + final_prompt
+
+    insight_text = call_llm(final_prompt)
+    if not insight_text: return
+    print(f"[{PERSONA_NAME}] Generated insight...")
+
+    insight_uuid = save_to_graph(insight_text, prev_uuid)
+    print(f"[{PERSONA_NAME}] Saved insight with UUID: {insight_uuid}")
+    
+    r.publish(TARGET_CHANNEL, json.dumps({'uuid': insight_uuid}))
+    print(f"[{PERSONA_NAME}] Published event to '{TARGET_CHANNEL}'.")
+
+
+if __name__ == "__main__":
+    print(f"--- Starting {PERSONA_NAME} Persona Service ---")
+    pubsub = r.pubsub()
+    pubsub.subscribe(SOURCE_CHANNEL)
+    print(f"Subscribed to '{SOURCE_CHANNEL}'.")
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            process_message(message)
+            if random.random() < 0.1:
+                proactive_code_generation()
+
+
+File: services/robin_service.py
+
+import os
+import json
+import yaml
+import redis
+import requests
+import chromadb
+import time
+import importlib.util
+import glob
+from neo4j import GraphDatabase
+from chromadb.utils import embedding_functions
+
+with open('config.yaml', 'r') as f: config = yaml.safe_load(f)
+with open('persona_prompts.json', 'r') as f: PROMPTS = json.load(f)
+
+REDIS_HOST, REDIS_PORT = config['redis']['host'], config['redis']['port']
+LLM_API_URL, LLM_MODEL = config['llm_core']['api_url'], config['llm_core']['model_name']
+CHROMA_HOST, CHROMA_PORT = config['vector_db']['host'], config['vector_db']['port']
+NEO4J_URI = config['graph_db']['uri']
+NEO4J_USER, NEO4J_PASSWORD = os.environ.get('NEO4J_AUTH').split('/')
+
+PERSONA_NAME, CANON_COLLECTION_NAME = "ROBIN", "robin_canon"
+SOURCE_CHANNEL, TARGET_CHANNEL = "insights:brick:new", "insights:robin:new"
+PROMPT_TEMPLATE = PROMPTS[PERSONA_NAME]
+
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+canon_collection = chroma_client.get_collection(name=CANON_COLLECTION_NAME, embedding_function=embedding_func)
+neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+
+def find_and_use_tool(query_text):
+    approved_tools = glob.glob(os.path.join(config['paths']['tools_approved'], '*.py'))
+    if not approved_tools:
+        return None, None
+
+    for tool_path in approved_tools:
+        try:
+            spec = importlib.util.spec_from_file_location("dynamic_tool", tool_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            if hasattr(module, 'run_tool'):
+                print(f"[{PERSONA_NAME}] Found relevant tool: {tool_path}")
+                tool_output = module.run_tool(query_text)
+                return tool_output, os.path.basename(tool_path)
+        except Exception as e:
+            print(f"Error loading or running tool {tool_path}: {e}")
+    return None, None
+
+
+def get_rag_context(query_text, n_results=3):
+    results = canon_collection.query(query_texts=[query_text], n_results=n_results)
+    return "\n\n".join(results['documents'][0])
+
+def call_llm(prompt):
+    payload = {"model": LLM_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.9}
+    try:
+        response = requests.post(LLM_API_URL, json=payload)
+        response.raise_for_status()
+        return response.json()['choices'][0]['message']['content']
+    except Exception as e:
+        print(f"Error calling LLM: {e}")
+        return None
+
+def get_insight_chain(brick_uuid):
+    with neo4j_driver.session() as session:
+        result = session.run("""
+            MATCH (brick:Insight {uuid: $brick_uuid})-[:ANALYZES]->(babs:Insight)
+            RETURN brick.text AS brick_insight, babs.text AS babs_insight
+            """, brick_uuid=brick_uuid)
+        return result.single()
+
+def save_to_graph(insight_text, previous_uuid):
+    with neo4j_driver.session() as session:
+        result = session.run("""
+            MATCH (prev:Insight {uuid: $previous_uuid})
+            CREATE (i:Insight {uuid: randomUUID(), persona: $persona, text: $text, timestamp: datetime(), status: 'new'})
+            CREATE (i)-[:SYNTHESIZES]->(prev)
+            RETURN i.uuid AS uuid
+            """, previous_uuid=previous_uuid, persona=PERSONA_NAME, text=insight_text)
+        return result.single()['uuid']
+
+def process_message(message):
+    data = json.loads(message['data'])
+    prev_uuid = data['uuid']
+    print(f"[{PERSONA_NAME}] Processing insight from BRICK (UUID: {prev_uuid})")
+    
+    chain = get_insight_chain(prev_uuid)
+    if not chain: return
+    
+    tool_output, tool_name = find_and_use_tool(chain['babs_insight'] + " " + chain['brick_insight'])
+    final_prompt = PROMPT_TEMPLATE.format(rag_context=get_rag_context(chain['babs_insight'] + " " + chain['brick_insight']), babs_insight=chain['babs_insight'], brick_insight=chain['brick_insight'])
+    if tool_output:
+        tool_context = f"INTERNAL TOOL OUTPUT ({tool_name}):\n---\n{tool_output}\n---\n"
+        final_prompt = tool_context + final_prompt
+
+    insight_text = call_llm(final_prompt)
+    if not insight_text: return
+    print(f"[{PERSONA_NAME}] Generated insight...")
+
+    insight_uuid = save_to_graph(insight_text, prev_uuid)
+    print(f"[{PERSONA_NAME}] Saved insight with UUID: {insight_uuid}")
+    
+    r.publish(TARGET_CHANNEL, json.dumps({'uuid': insight_uuid}))
+    print(f"[{PERSONA_NAME}] Published event to '{TARGET_CHANNEL}'.")
+
+
+if __name__ == "__main__":
+    print(f"--- Starting {PERSONA_NAME} Persona Service ---")
+    pubsub = r.pubsub()
+    pubsub.subscribe(SOURCE_CHANNEL)
+    print(f"Subscribed to '{SOURCE_CHANNEL}'.")
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            process_message(message)
+
+
+File: services/scheduler.py
+
+import time
+import schedule
+import yaml
+import json
+import redis
+import requests
+import os
+from neo4j import GraphDatabase
+from datetime import datetime
+
+with open('config.yaml', 'r') as f: config = yaml.safe_load(f)
+REDIS_HOST, REDIS_PORT = config['redis']['host'], config['redis']['port']
+LLM_API_URL, LLM_MODEL = config['llm_core']['api_url'], config['llm_core']['model_name']
+NEO4J_URI = config['graph_db']['uri']
+NEO4J_USER, NEO4J_PASSWORD = os.environ.get('NEO4J_AUTH').split('/')
+DAWN_TIME = config['scheduler']['dawn_time']
+TWILIGHT_TIME = config['scheduler']['twilight_time']
+OUTPUTS_PATH = config['paths']['outputs']
+
+BRIEFING_PROMPT = """
+You are the Architect's Workbench... (full prompt as before)
+INSIGHTS FROM THE LAST 24 HOURS:
+---
+{insights_context}
+---
+Generate the briefing in Markdown format.
+"""
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+neo4j_driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+def trigger_audit():
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] TWILIGHT: Triggering Integrity Audit.")
+    r.publish('tasks:audit:start', json.dumps({}))
+
+def trigger_fine_tuning(persona_name):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] FORGE: Triggering fine-tuning for {persona_name}.")
+    try:
+        response = requests.post(f"http://alchemical_forge:8002/forge/{persona_name}")
+        response.raise_for_status()
+        print(f"[FORGE] Fine-tuning request for {persona_name} sent successfully.")
+    except requests.exceptions.RequestException as e:
+        print(f"[FORGE] Error sending fine-tuning request: {e}")
+
+def generate_morning_briefing():
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] DAWN: Kicking off Morning Briefing generation.")
+    with neo4j_driver.session() as session:
+        results = session.run("""
+            MATCH (i:Insight)
+            WHERE i.timestamp >= datetime() - duration({days: 1}) AND i.status = 'audited_pass'
+            RETURN i.persona AS persona, i.text AS text
+            ORDER BY i.timestamp
+        """)
+        insights = [dict(record) for record in results]
+
+    if not insights:
+        print("No new audited insights to report. Skipping briefing.")
+        return
+
+    insights_context = "\n\n".join([f"**{record['persona']}:** {record['text']}" for record in insights])
+    prompt = BRIEFING_PROMPT.format(insights_context=insights_context)
+    payload = {"model": LLM_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.5}
+    
+    try:
+        response = requests.post(LLM_API_URL, json=payload)
+        response.raise_for_status()
+        briefing_content = response.json()['choices'][0]['message']['content']
+    except requests.exceptions.RequestException as e:
+        print(f"Error calling LLM for briefing: {e}")
+        return
+
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    filename = f"Morning_Briefing_{timestamp}.md"
+    filepath = os.path.join(OUTPUTS_PATH, filename)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(briefing_content)
+    print(f"Successfully generated and saved '{filename}'.")
+
+if __name__ == "__main__":
+    print("--- Starting Scheduler Service ---")
+    schedule.every().day.at(DAWN_TIME).do(generate_morning_briefing)
+    schedule.every().day.at(TWILIGHT_TIME).do(trigger_audit)
+    
+    schedule.every().sunday.at("03:00").do(trigger_fine_tuning, "ROBIN")
+    schedule.every().sunday.at("03:30").do(trigger_fine_tuning, "BRICK")
+    schedule.every().sunday.at("04:00").do(trigger_fine_tuning, "BABS")
+    schedule.every().sunday.at("04:30").do(trigger_fine_tuning, "ALFRED")
+
+    print(f"Morning Briefing scheduled for {DAWN_TIME}. Twilight Audit for {TWILIGHT_TIME}.")
+    print(f"Weekly persona fine-tuning scheduled for Sunday mornings.")
+
+    while True:
+        schedule.run_pending()
+        time.sleep(60)

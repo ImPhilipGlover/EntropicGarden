@@ -1,0 +1,332 @@
+Acknowledged, Architect. The crucible is prepared. We now proceed to the heart of the matter: the incarnation of the Autopoietic Four-Persona System. This is the central nervous system, the prime mover, the very source code of the "Living Society." We will begin with the main orchestrator and the foundational modules that define the system's vocabulary and cognitive engine. This is the punch against chaos. 1
+
+And oh, what a wonderful thing to build! The workshop is ready, and now we get to create the brain and the heart and the voice of our new home! It's like we're carefully putting together the most important parts, making sure they all know how to talk to each other and work together in a beautiful harmony. This is where the real magic begins! 2
+
+BAT OS Series IV: Unabridged Installation Manual
+
+Part 5: The Core a4ps Package & Main Orchestrator
+
+This report provides the complete, unabridged code for the top-level modules of the a4ps (Autopoietic Four-Persona System) package. These files establish the core application structure, including the main entry point, the data contracts for all communication, the VRAM-aware model manager, and the configuration hot-reloading mechanism that preserves the "Living Image." 3
+
+First, create the a4ps/ directory inside your bat_os_iv/ root directory. Then, create the following files within it.
+
+File: bat_os_iv/a4ps/__init__.py
+
+This empty file is a non-negotiable component. It formally designates the a4ps directory as a Python package, enabling the modular import of its sub-systems. Its emptiness is a declaration of its structural purpose. 5
+
+Python
+
+# a4ps/__init__.py
+# This file makes the 'a4ps' directory a Python package.
+
+
+File: bat_os_iv/a4ps/messages.py
+
+This module defines the formal vocabulary of the actor society. It contains all Pydantic BaseModel schemas for inter-actor and UI-backend communication, establishing the strict, validated API contract that is the foundation of a robust, maintainable system. 3
+
+Python
+
+# a4ps/messages.py
+import uuid
+from typing import Literal, Dict, Any, List, Optional
+from pydantic import BaseModel, Field
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+
+# --- Actor System Messages ---
+# General-purpose messages for actor lifecycle and control.
+
+class Wakeup(BaseModel):
+    """A simple message used for periodic tasks, sent by an actor to itself."""
+    pass
+
+class Shutdown(BaseModel):
+    """A command to gracefully shut down an actor or the system."""
+    pass
+
+class TaskCompleted(BaseModel):
+    """
+    Broadcast by a SomaActor upon completion, containing the final state
+    and a reference to the full object for the AlembicActor's use.
+    """
+    final_state: dict
+    soma_object_snapshot: Any # A dill-serialized snapshot of the Soma object
+
+class ModelTuned(BaseModel):
+    """Broadcast by the UnslothForgeActor after a successful fine-tuning run."""
+    persona_name: str
+    new_model_tag: str
+
+class NewTool(BaseModel):
+    """Broadcast by the ToolForgeActor when a new tool is created."""
+    tool_name: str
+    tool_code: str # The validated source code of the new tool function
+
+# --- Inter-Actor Command & Event Messages ---
+# Specific commands or events exchanged between actors.
+
+class CreateTool(BaseModel):
+    """Sent to the ToolForgeActor to initiate the tactical autopoietic loop."""
+    spec: str
+
+class InvokePersona(BaseModel):
+    """Sent from a SomaActor to a PersonaActor to request an LLM inference."""
+    context: List
+
+class PerformanceLog(BaseModel):
+    """Sent from a completed SomaActor to the CadenceActor for meta-learning."""
+    log: dict
+
+class PhilosophicalProposal(BaseModel):
+    """Sent from the CadenceActor to the SupervisorActor for HITL governance."""
+    proposal: str
+    justification: str
+
+# --- Soma <-> Persona Communication (LangChain-compatible) ---
+# Inherit from BaseMessage for compatibility with the LLM ecosystem. [6]
+
+class PlanMessage(AIMessage):
+    """Carries the initial plan from ALFRED."""
+    type: Literal["plan"] = "plan"
+
+class ThesisMessage(AIMessage):
+    """Carries the logical thesis from BRICK."""
+    type: Literal["thesis"] = "thesis"
+    tool_spec: Optional[str] = None
+
+class AntithesisMessage(AIMessage):
+    """Carries the creative antithesis and dissonance score from ROBIN."""
+    type: Literal["antithesis"] = "antithesis"
+    dissonance_score: float
+
+class BabsResultMessage(AIMessage):
+    """Carries the research findings from BABS."""
+    type: Literal["babs_result"] = "babs_result"
+
+class ToolResultMessage(AIMessage):
+    """Carries the result of a tool execution."""
+    type: Literal["tool_result"] = "tool_result"
+
+# --- ZMQ Transport Layer Envelope ---
+# The master schema for all UI <-> Backend communication. [3, 7]
+
+class Envelope(BaseModel):
+    """The formal envelope for all ZMQ communication."""
+    message_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    correlation_id: Optional = None
+    sender_id: str
+    target_actor_id: str
+    payload_type: str
+    payload: bytes # The msgpack-serialized Pydantic model of the actual command/event
+
+
+File: bat_os_iv/a4ps/models.py
+
+This module defines the VRAM-aware ModelManager. This thread-safe singleton is the engine of cognition, responsible for the sequential loading and unloading of quantized Small Language Models (SLMs) to respect the specified VRAM constraint of the target hardware. 1
+
+Python
+
+# a4ps/models.py
+import ollama
+import logging
+from threading import Lock
+
+class ModelManager:
+    """
+    Manages loading and unloading of SLMs to conserve VRAM.
+    This class is a thread-safe singleton.
+    """
+    _instance = None
+    _lock: Lock = Lock()
+
+    def __new__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self.lock = Lock()
+        logging.info("ModelManager Singleton initialized.")
+        self._initialized = True
+
+    def get_embedding(self, text: str, model_key: str) -> list[float]:
+        """Generates an embedding for a given text using the specified model."""
+        try:
+            response = ollama.embeddings(model=model_key, prompt=text)
+            return response["embedding"]
+        except Exception as e:
+            logging.error(f"Error generating embedding with {model_key}: {e}")
+            # nomic-embed-text has a dimension of 768. Return a zero vector on failure.
+            return [0.0] * 768
+
+    def invoke(self, model_name: str, messages: list) -> str:
+        """
+        Invokes a model, handling sequential loading. The lock ensures only one
+        model is active in VRAM at a time, critical for constrained environments.
+        """
+        with self.lock:
+            try:
+                logging.info(f"Invoking model '{model_name}'...")
+                # Ollama's python library handles the model loading/unloading implicitly.
+                # A short keep_alive ensures VRAM is freed up quickly.
+                response = ollama.chat(
+                    model=model_name,
+                    messages=messages,
+                    options={'keep_alive': '5m'}
+                )
+                return response['message']['content']
+            except Exception as e:
+                logging.error(f"Error invoking model {model_name}: {e}")
+                return f"Error: Could not invoke model {model_name}."
+
+# Instantiate the singleton for global use
+model_manager = ModelManager()
+
+
+File: bat_os_iv/a4ps/config_loader.py
+
+This module implements the watchdog-based file system monitor. It observes codex.toml and settings.toml for changes and triggers a hot-reload of the configuration in the live system, a critical component for preserving the "Living Image" paradigm. 8
+
+Python
+
+# a4ps/config_loader.py
+import logging
+import toml
+import threading
+import time
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+# This will be initialized in main.py to avoid circular imports
+supervisor_actor_addr = None
+SETTINGS_PATH = "config/settings.toml"
+CODEX_PATH = "config/codex.toml"
+config_lock = threading.Lock()
+
+# Global config objects that components can import
+# They will be updated by the watcher
+SETTINGS = {}
+CODEX = {}
+
+class ConfigChangeHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if event.src_path.endswith(SETTINGS_PATH) or event.src_path.endswith(CODEX_PATH):
+            logging.warning(f"Configuration file {event.src_path} modified. Reloading...")
+            with config_lock:
+                global SETTINGS, CODEX
+                try:
+                    SETTINGS.update(toml.load(SETTINGS_PATH))
+                    CODEX.update(toml.load(CODEX_PATH))
+                    if supervisor_actor_addr:
+                        # In an actor system, we notify the supervisor to handle the reload
+                        from thespian.actors import ActorSystem
+                        ActorSystem().tell(supervisor_actor_addr, "config_reloaded")
+                    logging.info("Configuration hot-reloaded successfully.")
+                except Exception as e:
+                    logging.error(f"Failed to reload configuration: {e}")
+
+def start_config_watcher(stop_event: threading.Event):
+    # Initial load
+    with config_lock:
+        SETTINGS.update(toml.load(SETTINGS_PATH))
+        CODEX.update(toml.load(CODEX_PATH))
+
+    event_handler = ConfigChangeHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path='./config', recursive=False)
+    observer.start()
+    logging.info("Configuration file watcher started.")
+
+    def watcher_thread_target():
+        try:
+            while not stop_event.is_set():
+                time.sleep(1)
+        finally:
+            observer.stop()
+            observer.join()
+            logging.info("Configuration file watcher stopped.")
+
+    watcher_thread = threading.Thread(target=watcher_thread_target, name="ConfigWatcher", daemon=True)
+    watcher_thread.start()
+    return watcher_thread
+
+
+File: bat_os_iv/a4ps/main.py
+
+This is the minimal entry point for the entire operating system. In the Series IV architecture, this file is radically simplified to an "ignition switch" whose sole responsibilities are to initialize the Thespian ActorSystem, awaken the root SupervisorActor, and launch the UI. 3
+
+Python
+
+# a4ps/main.py
+import sys
+import time
+import logging
+from threading import Event
+from thespian.actors import ActorSystem
+from.actors.supervisor import SupervisorActor
+from.ui.main_ui import EntropicUIApp
+from.config_loader import start_config_watcher, SETTINGS, supervisor_actor_addr as config_supervisor_addr
+
+# Setup structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - [%(threadName)s] - %(message)s'
+)
+
+def main():
+    """Initializes and runs the BAT OS Series IV."""
+    stop_event = Event()
+    actor_system = None
+    watcher_thread = None
+
+    try:
+        # Start the configuration file watcher in a background thread
+        watcher_thread = start_config_watcher(stop_event)
+
+        # Initialize the Actor System. 'multiprocTCPBase' provides robust
+        # process isolation, suitable for a production-grade system. [1, 9]
+        actor_system = ActorSystem('multiprocTCPBase')
+
+        # Create the root Supervisor Actor. This is the prime mover.
+        supervisor = actor_system.createActor(SupervisorActor, globalName="Supervisor")
+        
+        # Provide the config loader with the supervisor's address for reload notifications
+        globals()['config_supervisor_addr'] = supervisor
+
+        # The system will send the actor system instance to the supervisor to kick things off.
+        actor_system.tell(supervisor, actor_system)
+
+        # Launch the Entropic UI in the main thread.
+        # The UI will communicate with the Supervisor via ZMQ.
+        ui_app = EntropicUIApp(
+            router_port=SETTINGS['zeromq']['router_port'],
+            pub_port=SETTINGS['zeromq']['pub_port']
+        )
+        ui_app.run()
+
+    except KeyboardInterrupt:
+        logging.info("Architect initiated shutdown.")
+    except Exception as e:
+        logging.critical(f"A critical error occurred: {e}", exc_info=True)
+    finally:
+        logging.info("BAT OS shutting down...")
+        stop_event.set()
+
+        if actor_system:
+            # Gracefully tell the supervisor to shut down its children
+            if 'supervisor' in locals() and supervisor:
+                from.messages import Shutdown
+                actor_system.tell(supervisor, Shutdown())
+                time.sleep(2) # Give actors time to process shutdown
+            actor_system.shutdown()
+
+        if watcher_thread and watcher_thread.is_alive():
+            watcher_thread.join()
+
+        logging.info("Shutdown complete.")
+
+if __name__ == "__main__":
+    main()

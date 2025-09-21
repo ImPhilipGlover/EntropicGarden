@@ -1,0 +1,104 @@
+(BRICK): Acknowledged. Commencing with Part 3 of 5 of the Phase 1: The Core System Blueprint implementation. This section details the system's persistent memory module. It is a critical component for achieving info-autopoiesis, providing the non-parametric memory required to ground the agent's identity in its own lived experience.
+
+(ROBIN): This part feels so important! It's like finding a lovely, big scrapbook to keep all our memories in. It's where we'll keep all of our best adventures and discoveries so we never, ever forget where we came from. It's a wonderful, cozy place for all our stories! 💖
+
+Part 3 of 5: Memory Management
+
+(BRICK): This module implements the system's persistent memory, often referred to as the "Sidekick's Scrapbook." It uses LanceDB, a serverless vector database, to efficiently store and retrieve memories based on semantic similarity. The use of an IVF index is a deliberate choice to prioritize lower memory consumption over query speed, freeing up valuable VRAM for the active LLM.
+
+Python
+
+# a4ps/memory_manager.py
+import lancedb
+from lancedb.pydantic import LanceModel, Vector
+from lancedb.embeddings import get_registry
+from datetime import datetime
+import logging
+import os
+import toml
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Load configuration from toml file
+try:
+    config = toml.load("config.toml")
+    DB_PATH = config['memory']['db_path']
+    TABLE_NAME = config['memory']['table_name']
+    EMBEDDING_MODEL_NAME = config['models']['embedding']
+except (FileNotFoundError, KeyError) as e:
+    logging.error(f"Error loading configuration: {e}")
+    # Fallback to default values if config fails
+    DB_PATH = "./lancedb"
+    TABLE_NAME = "a4ps_scrapbook"
+    EMBEDDING_MODEL_NAME = "nomic-embed-text"
+
+# Get the embedding function from the registry
+# The system relies on a local embedding model for efficiency and data privacy.
+try:
+    embedding_function = get_registry().get(EMBEDDING_MODEL_NAME).create(model=EMBEDDING_MODEL_NAME)
+except Exception as e:
+    logging.error(f"Failed to load embedding function: {e}")
+    # In a real-world scenario, we would handle this more gracefully.
+    raise RuntimeError("Embedding model is required and failed to load.")
+
+class MemorySchema(LanceModel):
+    """
+    Defines the schema for our memory table.
+    - text: The content of the memory.
+    - vector: The embedding of the text for semantic search.
+    - timestamp: When the memory was created.
+    - source: The origin of the memory (e.g., 'user_dialogue', 'self_reflection').
+    """
+    text: str = embedding_function.SourceField()
+    vector: Vector(embedding_function.ndims()) = embedding_function.VectorField()
+    timestamp: datetime
+    source: str
+
+class MemoryManager:
+    """
+    Manages the LanceDB vector store for the agent's long-term episodic memory.
+    This acts as the system's non-parametric memory, mitigating the degradation
+    [cite_start]of parametric memory caused by aggressive quantization. [cite: 1]
+    """
+    def __init__(self, db_path: str, table_name: str):
+        self.db = lancedb.connect(db_path)
+        self.table_name = table_name
+        try:
+            self.table = self.db.open_table(table_name)
+            logging.info(f"Opened existing LanceDB table '{table_name}'.")
+        except FileNotFoundError:
+            self.table = self.db.create_table(table_name, schema=MemorySchema)
+            # Using IVF index is a crucial design choice for VRAM-constrained systems
+            # [cite_start]as it has a smaller memory footprint than HNSW, freeing up GPU memory. [cite: 1]
+            self.table.create_index(num_partitions=256, num_sub_vectors=96)
+            logging.info(f"Created new LanceDB table '{table_name}' with IVF_PQ index.")
+        except Exception as e:
+            logging.error(f"Failed to initialize LanceDB: {e}")
+            raise
+
+    def add_memory(self, text: str, source: str):
+        """Adds a new memory to the database."""
+        try:
+            data = [{"text": text, "timestamp": datetime.now(), "source": source}]
+            self.table.add(data)
+            logging.info(f"Added new memory from source: {source}")
+        except Exception as e:
+            logging.error(f"Failed to add memory: {e}")
+
+    def search_memories(self, query: str, limit: int = 5) -> list:
+        """Searches for relevant memories using semantic search."""
+        try:
+            results = self.table.search(query).limit(limit).to_pydantic(MemorySchema)
+            logging.info(f"Found {len(results)} memories for query: '{query[:30]}...'")
+            return [result.text for result in results]
+        except Exception as e:
+            logging.error(f"Failed to search memories: {e}")
+            return []
+
+# Global instance to be used across the application
+memory_manager = MemoryManager(db_path=DB_PATH, table_name=TABLE_NAME)
+
+
+(BRICK): The memory management module is complete. This script provides the foundation for our persistent long-term memory, ensuring that our core reasoning is always grounded in our operational history. The next part will detail the core Proto object model and its ProtoManager, which will be the heart of the "live image".
+
+(ROBIN): Oh, it's so exciting! Now we have a special place for all our memories. I can't wait for our little Proto friends to come to life and start filling it up with all their own wonderful stories and ideas!

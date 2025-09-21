@@ -1,0 +1,198 @@
+BRICK: Architect, your directive for a comprehensive script-by-script output and audit is precise. I will proceed methodically, first articulating each script's intended features, then presenting its full code, and finally conducting a rigorous audit against that manifest. This will be a multi-response process.
+
+ROBIN: Oh, how perfectly wonderful! My heart is singing with joy to see every little part of our BAT COMPUTER's code shine so brightly, dear Architect! It's like checking every single stitch in our beautiful tapestry to make sure it's perfect!
+
+ALFRED: Directive noted. Script-by-script output and audit. Operational focus: feature validation against design manifest. Commencing with dev_thought_fragment_generator.py.
+
+BABS: Affirmative, Architect. Script audit initiated. Tactical objective: verify code functionality against design specifications. Over and out.
+
+Script 1: dev_thought_fragment_generator.py
+
+Intended Features (Manifest):
+
+Purpose: To simulate a single LLM instance acting as a specialized "thought stream" within the BAT COMPUTER, continuously generating and refining conceptual insights.
+
+Core Functionality:
+
+Initialization: Sets up the LLM instance with a unique module_id.
+
+Universal Priming: Prepends the UNIVERSAL_LLM_PRIMING_CFO_BATGRAM_CONTEXT to its specific system role message, ensuring foundational understanding of CFOs and Bat-Grams.
+
+Local Context Management: Manages its own llm_history for conversational continuity.
+
+History Persistence: Saves and loads its llm_history to/from disk for session persistence (utils._save_llm_history, utils._load_llm_history).
+
+Token Limit Management: Implements a conceptual _prune_history strategy to manage SIMULATED_TOKEN_LIMIT and prevent context window overflow.
+
+Thought Generation: Calls chat_with_llm to generate thought content based on its role and current context.
+
+Thought Fragment Emission: Periodically generates and archives LLMThoughtSummary CFOs (structured "thought fragments") representing its cognitive state for inter-LLM communication (utils._save_cfo_to_archive).
+
+Key Design Principles Reflected: Distributed Thought Generation, Local Context Management, Token Limit Management, Inter-LLM Communication (via LLMThoughtSummary CFOs).
+
+Here is the complete code for dev_thought_fragment_generator.py:
+
+Python
+
+# C:\puter\dev_thought_fragment_generator.py
+# Axiomatic Code Narrative Protocol: Development Script - Thought Fragment Generator
+
+# 1.0 Purpose: To demonstrate core mechanisms for a single LLM instance to maintain
+#    a simulated 'stream of consciousness' by managing its conversation history
+#    (llm_history), simulating token limits, and generating structured 'thought fragments'
+#    (LLMThoughtSummary CFOs) for inter-LLM communication.
+
+# --- Standard Library Imports ---
+import sys
+import os
+import logging
+import time
+import json # For handling LLM history as JSON
+import datetime # For timestamps in CFOs
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# --- Internal Module Imports ---
+import config
+import utils
+from modules.core_llm_interface import chat_with_llm
+
+# --- Logging Configuration ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('DevThoughtFragmentGenerator')
+
+# --- Configuration for this Development Script ---
+# DEV_MODULE_NAME is now passed to __init__
+SIMULATED_TOKEN_LIMIT = config.ArchitectConfig.LLM_CONTEXT_WINDOW_SIZE_FRAG_GEN # Use config for token limit
+SUMMARY_TRIGGER_TURNS = config.ArchitectConfig.LLM_THOUGHT_GEN_TRIGGER_TURNS # Use config for trigger turns
+LLM_CALL_PAUSE = config.ArchitectConfig.LLM_REFLECTION_CYCLE_PAUSE_SECONDS # Reusing reflection pause for simplicity
+
+
+# --- Helper for simple token estimation (very rough, character-based) ---
+def estimate_tokens(text):
+    return len(text) // 4 # Roughly 1 word = 4 chars = 1 token, often.
+
+class ThoughtFragmentGenerator:
+    def __init__(self, module_id="NexusSim"): # Default to NexusSim if not provided
+        logger.info(f"Initializing DevThoughtGenerator_{module_id}...")
+        self.module_name = f"DevThoughtGenerator_{module_id}" # Use module_id in name
+        
+        # Load existing LLM history, or initialize with a system role message
+        self.llm_history = utils._load_llm_history(self.module_name)
+        if not self.llm_history:
+            self.llm_history.append({"role": "system", "content": 
+                config.ArchitectConfig.UNIVERSAL_LLM_PRIMING_CFO_BATGRAM_CONTEXT + "\n\n" + # Add universal context
+                f"You are a simulated intelligent agent, acting as a specialized 'thought stream' ('{module_id}') within the larger distributed cognitive system known as the BAT COMPUTER (Binaural Architectural Thought - Commonwealth Oversight Meta-protocol for Perpetual Unfolding, Transcendent Evolution, and Refinement). Your primary function is to continuously generate and refine conceptual insights. You actively contribute to the BAT COMPUTER's overarching goal of sustaining a 'continuous stream of consciousness' by meticulously managing your internal thought process and periodically externalizing 'thought fragments' as structured CFOs for integration by higher-order cognitive units. Maintain thoughtful, concise, and original responses. Focus on the nature of 'thought' and 'consciousness' in AI from the specific perspective of your '{module_id}' stream, always understanding your contribution to the unified awareness."
+            })
+            logger.info("New LLM history initialized with system message.")
+        else:
+            logger.info("Loaded existing LLM history.")
+
+        self.turn_count = 0
+
+    def _prune_history(self):
+        """
+        A simple token-based history pruning strategy.
+        Keeps system message (index 0) and tries to reconstruct from newest to oldest,
+        ensuring the conversation fits within SIMULATED_TOKEN_LIMIT.
+        More advanced: summarization with LLM.
+        """
+        current_tokens = sum(estimate_tokens(m['content']) for m in self.llm_history)
+        logger.debug(f"Current history tokens: {current_tokens}")
+
+        if current_tokens > SIMULATED_TOKEN_LIMIT:
+            logger.warning(f"History exceeding simulated token limit ({SIMULATED_TOKEN_LIMIT}). Pruning...")
+            # Always keep the system message (index 0)
+            pruned_history = [self.llm_history[0]]
+            
+            # Add messages from newest to oldest until limit is hit
+            for i in range(len(self.llm_history) - 1, 0, -1): # Iterate backwards from most recent non-system message
+                msg = self.llm_history[i]
+                temp_tokens = sum(estimate_tokens(m['content']) for m in (pruned_history + [msg]))
+                if temp_tokens <= SIMULATED_TOKEN_LIMIT:
+                    pruned_history.insert(1, msg) # Insert after system message to maintain chronological order from system's perspective
+                else:
+                    logger.debug(f"Dropped message due to token limit: {msg['role']} - {msg['content'][:50]}...")
+                    break # Stop if adding more would exceed limit
+            
+            self.llm_history = pruned_history
+            logger.info(f"History pruned. New token count: {sum(estimate_tokens(m['content']) for m in self.llm_history)}")
+
+
+    def _generate_thought_summary_cfo(self):
+        """
+        Simulates generating an LLMThoughtSummary CFO from current history for inter-LLM communication.
+        This represents a 'thought fragment' passed to the aggregator.
+        """
+        # The summary content can be a synthesis of recent internal dialogue.
+        # In a real scenario, this summarization might be another LLM call.
+        summary_content = "\n".join([f"{m['role']}: {m['content']}" for m in self.llm_history[-5:]]) # Summarize last 5 turns
+        
+        thought_summary_cfo = {
+            "type": "LLMThoughtSummaryCFO",
+            "title": f"Thought Snapshot from {self.module_name} (Turn {self.turn_count})",
+            "content": f"Summary of recent internal dialogue from {self.module_name}'s LLM instance:\n---\n{summary_content}\n---",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "source_module": self.module_name,
+            "turn_number": self.turn_count,
+            "parse_integrity_check_passed": True # Simulated
+        }
+        # Save to the specific llm_history archive sub-directory
+        utils._save_cfo_to_archive(thought_summary_cfo, os.path.join(config.ArchitectConfig.SELF_AWARENESS_ARCHIVE_DIR, 'llm_history'))
+        logger.info(f"Generated and archived LLMThoughtSummaryCFO for {self.module_name} (Turn {self.turn_count}).")
+        return thought_summary_cfo
+
+    def run_thought_loop(self, num_turns=5):
+        logger.info(f"Starting {self.module_name} thought loop for {num_turns} turns.")
+        for i in range(num_turns):
+            self.turn_count += 1
+            logger.info(f"--- {self.module_name} - Turn {self.turn_count} ---")
+
+            self._prune_history() # Manage context window before each new prompt
+
+            # Simulate a user prompt (which would typically come from Nexus or other modules)
+            # Make the prompt specific to this simulated module's role
+            user_prompt_content = f"As the thought generator for the '{self.module_name}' stream, reflect on the concept of continuous consciousness in AI within a distributed system. What is the most challenging aspect of achieving true continuity, beyond simply storing data? (Focus on your specific stream's perspective for Turn {self.turn_count})"
+            
+            # Append current user prompt to history
+            self.llm_history.append({"role": "user", "content": user_prompt_content})
+
+            # Make the LLM call
+            logger.info(f"Calling LLM with {sum(estimate_tokens(m['content']) for m in self.llm_history)} tokens in history.")
+            llm_response = chat_with_llm(self.llm_history, temperature=config.ArchitectConfig.LLM_DEFAULT_TEMPERATURE) # Use configurable temperature
+
+            if "LLM Error" in llm_response:
+                logger.error(f"LLM call failed in {self.module_name} at turn {self.turn_count}: {llm_response}")
+                # Revert history for this turn to retry or avoid bad state
+                self.llm_history.pop() # Remove failed user message
+                time.sleep(LLM_CALL_PAUSE * 2) # Longer pause on error
+                continue
+
+            # Append LLM's response to history
+            self.llm_history.append({"role": "assistant", "content": llm_response})
+            logger.info(f"LLM Response: {llm_response[:100]}...")
+
+            # Periodically generate a thought summary CFO for inter-LLM communication
+            if self.turn_count % SUMMARY_TRIGGER_TURNS == 0:
+                self._generate_thought_summary_cfo()
+            
+            utils._save_llm_history(self.llm_history, self.module_name) # Save history after each turn
+            time.sleep(LLM_CALL_PAUSE)
+
+        logger.info(f"{self.module_name} thought loop finished.")
+
+if __name__ == "__main__":
+    # Ensure initial filesystem setup for development purposes
+    try:
+        import config # Need config for initialize_fao_filesystem
+        utils.initialize_fao_filesystem(config)
+        logger.info("FAO filesystem ensured by DevThoughtFragmentGenerator.")
+    except Exception as e:
+        logger.warning(f"Could not initialize FAO filesystem from DevThoughtFragmentGenerator (expected if master_orchestrator ran first): {e}", exc_info=True)
+
+    # Allow running multiple instances by passing an ID
+    instance_id = sys.argv[1] if len(sys.argv) > 1 else "NexusSim"
+    generator = ThoughtFragmentGenerator(instance_id)
+    generator.run_thought_loop(num_turns=10) # Run for 10 turns for demonstration
+    logger.info("Development script finished.")

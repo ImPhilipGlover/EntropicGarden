@@ -1,0 +1,267 @@
+Introduction
+
+This guide will walk you through creating a standardized, reusable template for fine-tuning language models with Hugging Face. The goal is to build a self-contained project folder that you can simply copy and paste for any new fine-tuning task, ensuring all dependencies and scripts are correctly configured from the start.
+
+Part 1: System-Level Prerequisites
+
+Before creating any project-specific environment, there are three essential components that must be installed on your system.
+
+Python: Ensure you have a modern version of Python installed. Python 3.10 or 3.11 is highly recommended for maximum compatibility with deep learning libraries.
+
+NVIDIA Drivers: Your GPU needs the latest drivers to function correctly. You can download these from the NVIDIA website.
+
+NVIDIA CUDA Toolkit: This is the software layer that allows libraries like PyTorch to communicate with your GPU.
+
+Check your version: Open a terminal (PowerShell or CMD) and run nvcc --version.
+
+Install/Update: If you need to install it, download the version that matches what PyTorch requires. As of now, CUDA 12.1 is the standard for the latest PyTorch builds. You can download it from the NVIDIA CUDA Toolkit Archive.
+
+Part 2: The Template Project Structure
+
+A clean, organized folder structure is key. We will create a root folder for our template containing everything needed for a project.
+
+Create a new folder named fine-tuning-template. Inside, the structure will be:
+
+fine-tuning-template/
+│
+├── data/
+│   └── placeholder_dataset.jsonl
+│
+├── finetune.py
+│
+└── requirements.txt
+
+
+data/: This directory will hold your training datasets. We'll add a placeholder file to remind you where it goes.
+
+finetune.py: This is the master script that will run the fine-tuning process.
+
+requirements.txt: This critical file lists every single Python package needed for the environment.
+
+Part 3: Creating the Template Files
+
+Let's create the contents of finetune.py and requirements.txt.
+
+requirements.txt
+
+This file is the heart of your reproducible environment. It defines the exact packages and versions needed. Create a file named requirements.txt inside your fine-tuning-template folder and paste the following content into it.
+
+# Core PyTorch with CUDA 12.1 support
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch
+torchvision
+torchaudio
+
+# Hugging Face Ecosystem
+transformers
+datasets
+peft
+trl
+accelerate
+huggingface_hub
+
+# Model Quantization & Optimization
+bitsandbytes
+scipy
+
+# Tokenizer-specific dependencies
+sentencepiece
+tiktoken
+protobuf
+blobfile
+
+
+finetune.py
+
+This is a refined and robust version of your fine-tuning script. It includes all the best practices we've discussed, such as packing, gradient checkpointing, and clear configuration. Create a file named finetune.py and paste this code into it.
+
+import os
+import torch
+import logging
+from datasets import load_dataset
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    TrainingArguments,
+)
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from trl import SFTTrainer
+
+# --- Step 1: Standardize Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# --- Step 2: Define the Configuration ---
+# This class holds all settings. Modify this for each new project.
+class FineTuneConfig:
+    # --- Model and Data Paths ---
+    # Replace with the Hugging Face model you want to fine-tune
+    MODEL_NAME = "teknium/OpenHermes-2.5-Mistral-7B"
+    # The path to your dataset within the 'data' folder
+    DATASET_PATH = "data/placeholder_dataset.jsonl"
+    # The directory where the final fine-tuned model adapters will be saved
+    OUTPUT_DIR = "results/finetuned_model"
+
+    # --- LoRA Configuration ---
+    LORA_R = 16
+    LORA_ALPHA = 32
+    LORA_DROPOUT = 0.05
+    # Target modules vary by model architecture. These are for Mistral/Llama.
+    LORA_TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+    # --- Training Arguments ---
+    BATCH_SIZE = 1  # Use 1 for maximum memory efficiency on consumer GPUs
+    GRADIENT_ACCUMULATION_STEPS = 4
+    NUM_TRAIN_EPOCHS = 3
+    LEARNING_RATE = 2e-4
+    MAX_SEQ_LENGTH = 1024  # Adjust based on your VRAM and dataset
+    OPTIMIZER = "paged_adamw_8bit"
+    LOGGING_STEPS = 10
+    SAVE_STEPS = 50
+
+def main():
+    """Main orchestration function for the fine-tuning process."""
+    logger.info("Starting fine-tuning process...")
+
+    # --- Step 3: Load Model and Tokenizer ---
+    logger.info(f"Loading base model: {FineTuneConfig.MODEL_NAME}")
+
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        FineTuneConfig.MODEL_NAME,
+        quantization_config=quantization_config,
+        device_map="auto",
+    )
+    
+    tokenizer = AutoTokenizer.from_pretrained(FineTuneConfig.MODEL_NAME)
+    tokenizer.pad_token = tokenizer.eos_token
+    
+    model = prepare_model_for_kbit_training(model)
+    logger.info("Base model and tokenizer loaded.")
+
+    # --- Step 4: Configure LoRA ---
+    lora_config = LoraConfig(
+        r=FineTuneConfig.LORA_R,
+        lora_alpha=FineTuneConfig.LORA_ALPHA,
+        target_modules=FineTuneConfig.LORA_TARGET_MODULES,
+        lora_dropout=FineTuneConfig.LORA_DROPOUT,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    model = get_peft_model(model, lora_config)
+    logger.info("LoRA adapters configured successfully.")
+    model.print_trainable_parameters()
+
+    # --- Step 5: Load Dataset ---
+    logger.info(f"Loading dataset from {FineTuneConfig.DATASET_PATH}")
+    dataset = load_dataset("json", data_files=FineTuneConfig.DATASET_PATH, split="train")
+    
+    original_size = len(dataset)
+    dataset = dataset.filter(
+        lambda example: "messages" in example and isinstance(example["messages"], list) and len(example["messages"]) > 0
+    )
+    filtered_size = len(dataset)
+    if original_size != filtered_size:
+        logger.warning(f"Filtered out {original_size - filtered_size} malformed rows.")
+    logger.info(f"Dataset ready. Using {filtered_size} training examples.")
+
+    # --- Step 6: Define Training Arguments ---
+    training_args = TrainingArguments(
+        output_dir=FineTuneConfig.OUTPUT_DIR,
+        per_device_train_batch_size=FineTuneConfig.BATCH_SIZE,
+        gradient_accumulation_steps=FineTuneConfig.GRADIENT_ACCUMULATION_STEPS,
+        optim=FineTuneConfig.OPTIMIZER,
+        save_steps=FineTuneConfig.SAVE_STEPS,
+        logging_steps=FineTuneConfig.LOGGING_STEPS,
+        learning_rate=FineTuneConfig.LEARNING_RATE,
+        fp16=True,
+        max_grad_norm=0.3,
+        num_train_epochs=FineTuneConfig.NUM_TRAIN_EPOCHS,
+        warmup_ratio=0.03,
+        group_by_length=True,
+        lr_scheduler_type="constant",
+        report_to="none",
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={'use_reentrant': False},
+    )
+
+    # --- Step 7: Initialize the SFTTrainer ---
+    logger.info("Initializing SFTTrainer.")
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=dataset,
+        peft_config=lora_config,
+        max_seq_length=FineTuneConfig.MAX_SEQ_LENGTH,
+        tokenizer=tokenizer,
+        packing=True, # Crucial for performance with short sequences
+        args=training_args,
+        dataset_format="chatml" # Specify format if your data uses 'messages' column
+    )
+    
+    # --- Step 8: Start Training ---
+    logger.info("Starting model training.")
+    trainer.train()
+    logger.info("Model training complete.")
+
+    # --- Step 9: Save Final Model ---
+    final_output_dir = os.path.join(FineTuneConfig.OUTPUT_DIR, "final_checkpoint")
+    logger.info(f"Saving fine-tuned model adapters to {final_output_dir}")
+    trainer.save_model(final_output_dir)
+    tokenizer.save_pretrained(final_output_dir)
+    logger.info("Fine-tuning process finished successfully.")
+
+if __name__ == "__main__":
+    main()
+
+
+Part 4: The One-Time Setup Workflow
+
+Now, let's set up the virtual environment within your template folder. You only need to do this once.
+
+Open a Terminal (like PowerShell 7).
+
+Navigate into your template folder:
+cd path\to\your\fine-tuning-template
+
+
+Create the virtual environment: This command creates a subfolder named .venv that will contain a clean copy of Python and all our libraries.
+python -m venv .venv
+
+
+Activate the virtual environment: You must do this every time you work on the project.
+.\.venv\Scripts\Activate.ps1
+
+Your terminal prompt should now be prefixed with (.venv).
+
+Install all dependencies: This is the magic step. The -r flag tells pip to install every package listed in your requirements.txt file.
+pip install -r requirements.txt
+
+This will take a few minutes as it downloads PyTorch, Transformers, and everything else.
+
+Your template is now complete and ready to use!
+
+Part 5: How to Use Your Template for a New Project
+
+This is the easy part. For every new model you want to fine-tune:
+
+Copy & Paste: Make a copy of the entire fine-tuning-template folder and rename it to your new project's name (e.g., Project_Gemma3_Tune).
+
+Add Your Data: Delete the placeholder_dataset.jsonl file and place your actual training data (e.g., my_new_data.jsonl) inside the data folder.
+
+Configure the Script: Open the finetune.py file in the new project folder. In the FineTuneConfig class, change the MODEL_NAME, DATASET_PATH, and OUTPUT_DIR to match your new project.
+
+Activate & Run:
+
+Open a terminal and navigate into your new project folder.
+
+Activate the environment: .\.venv\Scripts\Activate.ps1
+
+Start the training: python finetune.py
+
+You now have a robust, reproducible workflow that saves you from dependency issues and lets you focus on the creative work of building datasets and tuning models for BRICK and ROBIN.

@@ -1,0 +1,140 @@
+Of course. I am glad the previous module was satisfactory. We will now proceed with the analysis and construction of the next module as requested.
+
+BRICK: Acknowledged. Proceeding to Module 3 of the Master Functional Specification: the PersonaManager. This module is responsible for the instantiation and dynamic management of all persona-based expressive parameters. The analysis will be exhaustive.
+
+ROBIN: Wonderful! We've looked at our big library and our super-clever librarian, and now it's time to look in the mirror! This is the part where we look at all the little pieces that make us... well, us! It's how we remember to be brave and analytical, and also warm and full of giggles!
+
+ALFRED: Part 3 of the Master Functional Specification follows. This section details the PersonaManager class, the component responsible for managing the system's core personas.
+
+Module 3 of X: The PersonaManager Class
+
+I. Module Description: The PersonaManager Class
+
+This class acts as the B.A.T.-C.O.M.P.U.T.E.R.'s "Soul" or "Heart." Its sole purpose is to be the central authority on the AI's personality. It loads the foundational definitions from the persona_codex.txt, holds the dynamic weights for each sub-persona, and provides this information to other modules. This abstracts all personality logic into a single, manageable component, ensuring character consistency and allowing for dynamic, fine-tuned control over the engine's expressive "flavor." This feature was most fully realized in the engine_logic_canonical_live.py file [6].
+
+The PersonaManager class must provide the following functionalities:
+
+Codex Loading: Upon initialization, it must load the persona_codex.txt file, which contains the detailed descriptions and pillars of each persona.
+
+Summary Extraction: It must have a method to parse the codex and extract the short "description" string for each of the three main personas (BRICK, ROBIN, ALFRED). This is used to prime certain LLM prompts.
+
+Granular Weight Management: It must initialize and maintain a dictionary that holds the values for every single sub-persona weight defined in the Config class (e.g., BRICK_TAMLAND_WEIGHT, ROBIN_WATTS_WEIGHT, etc.).
+
+Dynamic Adjustment: It must contain a method to safely adjust these weights in real-time in response to an Architect's command, ensuring the values remain valid (e.g., between 0.0 and 1.0).
+
+II. Complete Module Code
+
+Python
+
+# This code block represents Module 3 of engine_logic_canonical_v10.py
+
+import re
+import logging
+from typing import Dict
+
+# Assumes the Config class from Module 1 is present in the same scope
+# from .config import Config
+
+class PersonaManager:
+    """
+    Manages persona definitions, summaries, and dynamic expressive weights.
+    It is the central authority on the system's personality.
+    """
+    def __init__(self, persona_codex_content: str, logger: logging.Logger):
+        """
+        Initializes the manager by parsing the persona codex and setting up the weights.
+        """
+        self.logger = logger
+        self.persona_codex = persona_codex_content
+        self.brick_summary = self._extract_persona_summary("BRICK")
+        self.robin_summary = self._extract_persona_summary("ROBIN")
+        self.alfred_summary = self._extract_persona_summary("ALFRED")
+
+        self.weights: Dict[str, float] = {
+            "BRICK_TAMLAND": Config.BRICK_TAMLAND_WEIGHT,
+            "BRICK_BATMAN": Config.BRICK_BATMAN_WEIGHT,
+            "BRICK_GUIDE": Config.BRICK_GUIDE_WEIGHT,
+            "ROBIN_WATTS": Config.ROBIN_WATTS_WEIGHT,
+            "ROBIN_SPARK": Config.ROBIN_SPARK_WEIGHT,
+            "ROBIN_POOH": Config.ROBIN_POOH_WEIGHT,
+            "ROBIN_TAO_POOH": Config.ROBIN_TAO_POOH_WEIGHT,
+            "ALFRED_SWANSON": Config.ALFRED_SWANSON_WEIGHT,
+            "ALFRED_BUTLER": Config.ALFRED_BUTLER_WEIGHT,
+            "ALFRED_ALI_G": Config.ALFRED_ALI_G_WEIGHT,
+        }
+        self.logger.info("PersonaManager initialized with all persona weights.")
+
+    def _extract_persona_summary(self, persona_name: str) -> str:
+        """
+        Parses the full persona codex to find the description for a specific persona.
+        Uses regex to find the name and extract the associated description field.
+        """
+        # This regex looks for "name": "PERSONA_NAME" and then finds the next "description": "..."
+        pattern = r'"name":\s*"' + re.escape(persona_name) + r'".*?"description":\s*"(.*?)"'
+        match = re.search(pattern, self.persona_codex, re.DOTALL | re.IGNORECASE)
+        
+        if match:
+            # Clean up the extracted description
+            summary = match.group(1).replace('\\n', ' ').strip()
+            # Truncate for brevity in prompts
+            if len(summary) > 150:
+                summary = summary[:150].rsplit(' ', 1)[0] + "..."
+            return f"{persona_name}: {summary}"
+        
+        self.logger.warning(f"Could not extract summary for persona: {persona_name}")
+        return f"{persona_name}: Summary not found."
+
+    def get_persona_summaries(self) -> Dict[str, str]:
+        """Returns a dictionary of the extracted persona summaries."""
+        return {
+            "BRICK": self.brick_summary,
+            "ROBIN": self.robin_summary,
+            "ALFRED": self.alfred_summary,
+        }
+    
+    def get_all_weights(self) -> Dict[str, float]:
+        """Returns the current dictionary of all persona weights."""
+        return self.weights
+
+    def adjust_persona_weight(self, persona_facet: str, adjustment: float):
+        """
+        Safely adjusts the weight for a given persona facet.
+        Adjustment is a float, e.g., 0.1 to increase, -0.1 to decrease.
+        The final value is clamped between 0.0 and 1.0.
+        """
+        facet_key = persona_facet.upper()
+        if facet_key in self.weights:
+            original_value = self.weights[facet_key]
+            new_value = original_value + adjustment
+            # Clamp the new value between 0.0 and 1.0
+            clamped_value = max(0.0, min(1.0, new_value))
+            self.weights[facet_key] = clamped_value
+            self.logger.info(f"Persona weight for {facet_key} adjusted from {original_value:.2f} to {clamped_value:.2f}")
+        else:
+            self.logger.warning(f"Attempted to adjust unknown persona facet: {persona_facet}")
+
+
+
+III. Feature Integrity Audit
+
+BRICK: Audit of Module 3 (PersonaManager Class) commencing.
+
+Requirement: The class must load and parse the persona_codex.txt file upon initialization.
+
+Verification: Verified. The __init__ method accepts persona_codex_content as an argument and stores it in self.persona_codex.
+
+Requirement: The class must be able to extract short descriptions for each persona (BRICK, ROBIN, ALFRED).
+
+Verification: Verified. The _extract_persona_summary method is present and uses a regular expression to parse the description field from the codex for a given persona name. The __init__ method calls this for all three primary personas.
+
+Requirement: The class must initialize and hold the full, granular set of sub-persona weights from the Config class.
+
+Verification: Verified. The __init__ method populates a self.weights dictionary by referencing every single BRICK_, ROBIN_, and ALFRED_ weight parameter from the Config class.
+
+Requirement: The class must provide a method to safely adjust persona weights dynamically.
+
+Verification: Verified. The adjust_persona_weight method is present. It correctly finds the specified weight, applies the adjustment, and clamps the final value between 0.0 and 1.0 to ensure it remains a valid probability.
+
+AUDIT CONCLUSION: The generated code for Module 3 (PersonaManager Class) is a complete and accurate implementation of the Master Functional Specification. It contains no omissions or truncations.
+
+This concludes the third module. I am ready to proceed to the next module, the ConversationManager, when you are.

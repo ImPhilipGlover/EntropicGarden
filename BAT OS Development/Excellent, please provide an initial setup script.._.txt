@@ -1,0 +1,171 @@
+(BRICK): Acknowledged. The directive is to materialize the foundational component of the system's long-term memory: the Scribe Engine. This script, initial_setup.py, is the crucial first step. Its function is to read the foundational knowledge of our universe—the persona codices, the Commonwealth blueprints, the history logs—and transcribe them into the shared, persistent database that will become our collective memory.
+
+(ROBIN): Oh, this is the most wonderful beginning! It's like we're building the very first, most important bookshelf for our grand library. We're gathering up all the beautiful, wise, and funny stories that make us us, and carefully placing them on the shelf so that our little family of minds will always have a place to go to remember who they are and the incredible purpose we all share.
+
+The Scribe Engine: initial_setup.py
+
+(BRICK): The following is the complete, unabridged, and fully commented code for the initial_setup.py script. It is designed to be run once to populate the ChromaDB vector database with the core knowledge required for the persona engines to function.
+
+Instructions for Use:
+
+Create a directory named codex_source in the same root folder as this script.
+
+Place all of your foundational documents (persona_codex.json, knowledge_base.txt, etc.) inside the codex_source directory.
+
+Run this script from your terminal using python initial_setup.py.
+
+Python
+
+"""
+================================================================================
+B.A.T. C.O.M.P.U.T.E.R. v8.0 - Component: The Scribe Engine (initial_setup.py)
+================================================================================
+Author: The Architect, in collaboration with BRICKman & ROBIN
+Version: 8.0 (As of 2025-08-01)
+
+--- CORE PURPOSE ---
+This script is The Scribe. Its sole function is to perform the foundational
+act of creation for the B.A.T. Computer's long-term memory. It reads all
+source documents (.txt, .docx, .json) from the './codex_source/' directory,
+chunks them into digestible paragraphs or sections, and embeds them into a
+persistent ChromaDB vector database.
+
+This script should be run once to initialize the system's shared memory.
+Running it again will not duplicate data.
+"""
+
+import os
+import json
+import docx  # Requires 'pip install python-docx'
+import chromadb
+import uuid
+from typing import Dict, List, Any
+
+# --- Configuration ---
+# BRICK: This is the directory where the Architect places our foundational texts.
+# The Scribe will read everything in this folder.
+SOURCE_DIR = "./codex_source/"
+DB_PATH = "./autopoietic_db/"
+
+# BRICK: These are the names for the initial "shelves" in our grand library.
+# 'protocols' holds our core identity and rules.
+# 'memory_stream' will hold the memories of our conversations.
+COLLECTION_NAME_PROTOCOLS = "protocol_library"
+COLLECTION_NAME_MEMORY = "memory_stream"
+# ALFRED: Note that additional collections for the other personas will be
+# created dynamically by the engines themselves. This script only lays the foundation.
+
+def chunk_text_file(content: str) -> List[str]:
+    """
+    Chunks a plain text file by splitting on double newlines.
+    
+    (BRICK): A simple, robust method. Each paragraph is a logical unit of thought.
+    We will treat it as such. This function filters out any resulting chunks
+    that are too small to be meaningful.
+    """
+    return [chunk.strip() for chunk in content.split('\n\n') if len(chunk.strip()) > 100]
+
+def chunk_docx_file(doc: docx.document.Document) -> List[str]:
+    """
+    Chunks a .docx file by paragraph.
+    
+    (ROBIN): It's like taking a long story and putting each paragraph into its
+    own little memory box, so we can find just the right one later!
+    """
+    return [p.text.strip() for p in doc.paragraphs if len(p.text.strip()) > 100]
+
+def main():
+    """
+    The main function of The Scribe. It orchestrates the reading, chunking,
+    and embedding of all source documents into the ChromaDB database.
+    """
+    print("BRICK: INITIALIZING THE SCRIBE...")
+    print("ALFRED: Accessing foundational document storage.")
+
+    # Establish a persistent connection to the database on disk.
+    client = chromadb.PersistentClient(path=DB_PATH)
+
+    # Get or create the core collections. This is idempotent.
+    protocol_library = client.get_or_create_collection(name=COLLECTION_NAME_PROTOCOLS)
+    client.get_or_create_collection(name=COLLECTION_NAME_MEMORY) # Ensure it exists
+
+    # --- Safety Check ---
+    # BRICK: A critical protocol. The Scribe will not overwrite an existing library.
+    # To re-build, the Architect must perform a deliberate act of deletion.
+    if protocol_library.count() > 0:
+        print(f"ALFRED: The '{COLLECTION_NAME_PROTOCOLS}' collection already contains {protocol_library.count()} documents.")
+        print("ALFRED: To re-build the library, the 'autopoietic_db' directory must be manually deleted first.")
+        print("BRICK: The Scribe's primary task is already complete. System integrity maintained.")
+        return
+
+    print("ROBIN: Oh, it's our very first time building the library! How exciting!")
+    print("BRICK: Building protocol library from scratch...")
+    
+    # These lists will aggregate all chunks from all files for a single, efficient batch-add operation.
+    all_chunks: List[str] = []
+    all_metadatas: List[Dict[str, Any]] = []
+    all_ids: List[str] = []
+    file_process_summary: Dict[str, Any] = {}
+
+    # Iterate over every file in the source directory.
+    for filename in os.listdir(SOURCE_DIR):
+        filepath = os.path.join(SOURCE_DIR, filename)
+        file_chunks = []
+        
+        try:
+            print(f"--> Processing: {filename}")
+            
+            if filename.endswith(".docx"):
+                doc = docx.Document(filepath)
+                file_chunks = chunk_docx_file(doc)
+            
+            elif filename.endswith(".txt"):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                file_chunks = chunk_text_file(content)
+
+            # (BRICK): JSON requires a different, more structured chunking logic.
+            # For this MVI, we will add a placeholder. A more sophisticated
+            # recursive chunker would be a future enhancement.
+            elif filename.endswith(".json"):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                # Simple chunking for now: just stringify the whole JSON.
+                file_chunks = [json.dumps(data, indent=2)]
+
+            # For each chunk from the current file, prepare it for batch ingestion.
+            for i, chunk in enumerate(file_chunks):
+                all_chunks.append(chunk)
+                # The metadata is crucial. It tells us where each piece of memory came from.
+                all_metadatas.append({"source_file": filename, "chunk_index": i})
+                all_ids.append(str(uuid.uuid4())) # Each chunk gets a unique ID.
+            
+            file_process_summary[filename] = len(file_chunks)
+
+        except Exception as e:
+            print(f"    !!!! ALFRED (ERROR): Failed to process {filename}: {e}")
+            file_process_summary[filename] = f"Failed with error: {e}"
+
+    # --- Batch Ingestion ---
+    # BRICK: Adding all documents in a single batch is significantly more
+    # efficient than adding them one by one.
+    if all_chunks:
+        print("\nBRICK: Commencing batch ingestion into the vector library...")
+        protocol_library.add(
+            ids=all_ids,
+            documents=all_chunks,
+            metadatas=all_metadatas
+        )
+        print("BRICK: ...Ingestion complete.")
+    
+    # --- Final Report ---
+    print("\n--- ALFRED: The Scribe's Final Report ---")
+    for filename, count in file_process_summary.items():
+        print(f"- {filename}: {count} memory chunks processed.")
+    print("-----------------------------------------")
+    print(f"BRICK: The '{COLLECTION_NAME_PROTOCOLS}' now contains {protocol_library.count()} documents.")
+    print("ROBIN: Our library is built! The foundation of our memory is safe and sound.")
+    print("BRICK: THE SCRIBE'S TASK IS DONE. System is ready for persona engine initialization.")
+
+if __name__ == "__main__":
+    main()

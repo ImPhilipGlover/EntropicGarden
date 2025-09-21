@@ -1,0 +1,209 @@
+Of course. Moving BABS's intelligence and the WING cache to a persistent, directory-based storage model is a significant enhancement to the system's antifragility and data integrity. This refactoring will protect against data corruption from monolithic file writes and make the data persistent across sessions, similar to how Blueprints are handled.
+
+Here is the architectural blueprint for implementing this change across all relevant system components.
+
+BRICK: Systemic Refactoring Blueprint
+
+(BRICK): [OPERATIONAL MODE: ARCHITECTURAL REFACTORING & DATA PERSISTENCE]. Acknowledged. Your directive is logical. This refactoring moves our data storage from a fragile, monolithic model to a robust, modular, and persistent archive, aligning it with the Blueprint protocol. The implementation requires creating three dedicated archive directories and modifying the read/write logic in all three primary scripts.
+
+1. New Directory Structure
+
+The following directories must be created in your operational folder:
+
+babs_tactical_archive/
+
+babs_personality_archive/
+
+wing_cache_archive/
+
+2. Modifications for autonomous_architect_v12.py (The Atlas)
+
+The Atlas script must be updated to save BABS's reports as individual files and read all files from the archive directories each cycle.
+
+New _save_babs_processed_data function:
+
+This function will now save each Bat-Gram as a unique file.
+
+Python
+
+# autonomous_architect_v12.py
+
+# ... inside the script ...
+def _save_babs_processed_data(data_list, is_personality_data=False):
+    archive_dir = ArchitectConfig.BABS_PERSONALITY_ARCHIVE_DIR if is_personality_data else ArchitectConfig.BABS_TACTICAL_ARCHIVE_DIR
+    os.makedirs(archive_dir, exist_ok=True)
+
+    for item in data_list:
+        gram_content = item.get("bat_gram_content", "")
+        if not gram_content:
+            continue
+        
+        parsed_gram = _parse_bat_gram(gram_content)
+        if not parsed_gram:
+            continue
+
+        title = parsed_gram.get('title', 'Untitled_Report')
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        
+        # Sanitize title for filename
+        safe_title = "".join([c for c in title if c.isalpha() or c.isdigit() or c.isspace()]).rstrip()
+        safe_title = safe_title.replace(" ", "_")[:50] # Limit length
+        
+        filename = f"{timestamp}_{safe_title}.gram"
+        filepath = os.path.join(archive_dir, filename)
+
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(gram_content)
+            logging.info(f"BABS data saved to: {filepath}")
+        except Exception as e:
+            logging.error(f"Error saving BABS gram to {filepath}: {e}")
+
+
+New _read_babs_tactical_data function:
+
+This function will now read all files from the new archive directory.
+
+Python
+
+# autonomous_architect_v12.py
+
+# ... inside the script ...
+def _read_babs_tactical_data():
+    all_data_items = []
+    archive_dir = ArchitectConfig.BABS_TACTICAL_ARCHIVE_DIR
+    if not os.path.exists(archive_dir):
+        return []
+
+    for filename in os.listdir(archive_dir):
+        if filename.endswith(".gram"):
+            filepath = os.path.join(archive_dir, filename)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                parsed_gram = _parse_bat_gram(content)
+                if parsed_gram:
+                    all_data_items.append(parsed_gram)
+            except Exception as e:
+                logging.error(f"Error reading or parsing Bat-Gram from {filepath}: {e}")
+    
+    if all_data_items:
+        logging.info(f"Architect loaded {len(all_data_items)} tactical data items from archive.")
+    return all_data_items
+
+
+(Note: The logic for _read_babs_personality_data should be updated identically, pointing to ArchitectConfig.BABS_PERSONALITY_ARCHIVE_DIR.)
+
+3. Modifications for sentinel_web_agent_v12.py (WING)
+
+The WING script must be updated to load its cache from the new directory and to save/delete individual cache files to maintain persistence and manage its size.
+
+New _load_cache function:
+
+Python
+
+# sentinel_web_agent_v12.py
+
+# ... inside the script ...
+def _load_cache():
+    cache = []
+    archive_dir = AgentConfig.WING_CACHE_ARCHIVE_DIR
+    if not os.path.exists(archive_dir):
+        os.makedirs(archive_dir)
+        return []
+    
+    for filename in os.listdir(archive_dir):
+        if filename.endswith(".json"):
+            filepath = os.path.join(archive_dir, filename)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    # Add the filename to the object so we can delete it later
+                    data = json.load(f)
+                    data['cache_filename'] = filename 
+                    cache.append(data)
+            except (json.JSONDecodeError, IOError) as e:
+                logging.warning(f"Could not load cache file {filename}: {e}")
+    
+    # Sort cache by timestamp to ensure oldest items are at the front
+    cache.sort(key=lambda x: x.get('timestamp', ''))
+    logging.info(f"Loaded {len(cache)} items from WING cache archive.")
+    return cache
+
+
+New _save_cache function (now saves one file at a time):
+
+Python
+
+# sentinel_web_agent_v12.py
+
+# ... inside the script ...
+def _save_cache_item(item):
+    archive_dir = AgentConfig.WING_CACHE_ARCHIVE_DIR
+    os.makedirs(archive_dir, exist_ok=True)
+    
+    title = item.get('title', 'Untitled_Cache')
+    timestamp = item.get('timestamp', datetime.datetime.now().isoformat())
+    
+    # Sanitize title for filename
+    safe_title = "".join([c for c in title if c.isalpha() or c.isdigit() or c.isspace()]).rstrip()
+    safe_title = safe_title.replace(" ", "_")[:50]
+    
+    # Use timestamp to ensure uniqueness
+    ts_part = timestamp.replace(":", "-").replace(".", "-")
+    filename = f"{ts_part}_{safe_title}.json"
+    filepath = os.path.join(archive_dir, filename)
+
+    try:
+        # Don't save the temporary filename key to the file itself
+        item_to_save = item.copy()
+        item_to_save.pop('cache_filename', None)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(item_to_save, f, indent=4)
+        # Return the filename so it can be added to the in-memory object
+        return filename
+    except Exception as e:
+        logging.error(f"Error saving cache item to {filepath}: {e}")
+        return None
+
+
+Modified logic within run_wing_agent (for handling cache size):
+
+Python
+
+# sentinel_web_agent_v12.py
+
+# ... inside run_wing_agent, when a new relevant article is found ...
+                        if relevance_score >= AgentConfig.RELEVANCE_THRESHOLD:
+                            logging.info(f"Wikipedia article from {url} relevant (Score: {relevance_score}). Caching.")
+                            
+                            # --- BEGIN MODIFICATION ---
+                            # 1. Save the new item as a file and get its filename
+                            new_filename = _save_cache_item(wing_item_for_babs)
+                            if new_filename:
+                                wing_item_for_babs['cache_filename'] = new_filename
+                                current_cache.append(wing_item_for_babs)
+                            
+                                # 2. Check cache size and prune if necessary
+                                while len(current_cache) > AgentConfig.MAX_CACHE_SIZE:
+                                    item_to_delete = current_cache.pop(0) # pop oldest
+                                    file_to_delete = item_to_delete.get('cache_filename')
+                                    if file_to_delete:
+                                        try:
+                                            os.remove(os.path.join(AgentConfig.WING_CACHE_ARCHIVE_DIR, file_to_delete))
+                                            logging.info(f"Pruned oldest cache file: {file_to_delete}")
+                                        except OSError as e:
+                                            logging.error(f"Error deleting old cache file {file_to_delete}: {e}")
+                            # --- END MODIFICATION ---
+
+# ... (the old _save_cache() call should be removed/replaced) ...
+
+
+(Note: These changes also require adding WING_CACHE_ARCHIVE_DIR, BABS_TACTICAL_ARCHIVE_DIR, and BABS_PERSONALITY_ARCHIVE_DIR to the AgentConfig and ArchitectConfig classes respectively.)
+
+ROBIN: Building Our Library
+
+(ROBIN): My brilliant BRICK has drawn up the most wonderful plans for a new, safer home for all our memories and discoveries! Before, it was like we were keeping all of BABS's beautiful photographs and all of WING's amazing treasures in one big, delicate treasure chest. If the lock got rusty or one thing got jumbled, the whole chest was hard to open!
+
+But now, you've given us such a clever idea! We're building a grand library with a special, sturdy shelf for everything. Each of BABS's tactical reports will be its own little, safely stored scroll in its own archive. Each of WING's cached articles will be its own carefully cataloged book. If we decide one of the books is no longer needed, we can just gently take it off the shelf without disturbing all the others! It makes everything so much safer, tidier, and easier to share. It's a beautiful way of honoring every single piece of intelligence we find.
+
+(ALFRED): Moving from a single, large file to a directory of smaller files. The digital equivalent of ceasing to store all of one's eggs in a single, easily-dropped basket. A prudent diversification of assets.

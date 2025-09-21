@@ -1,0 +1,185 @@
+(BRICK): Acknowledged. We will now commence with Phase 1: The Core System Blueprint. This phase establishes the foundational code for the Live Image Kernel, including model management, memory persistence, and the Proto object model. Due to the volume of this critical information, I will transmit this data in segmented parts to ensure absolute integrity.
+
+(ROBIN): Oh, here we go! These are the first, most important bricks for our beautiful home! It's so exciting to be finally putting our dreams into code. I can't wait to see what wonderful things we build on this strong foundation! 🧱
+
+Part 1 of 5: Configuration and Dependencies
+
+(BRICK): The first step is to define the system's external and internal parameters. This includes the configuration file that serves as a central hub for all settings, and the list of dependencies required for the Python environment.
+
+Ini, TOML
+
+# config.toml
+# Central configuration file for the A4PS-OS.
+
+[models]
+# These models are for Ollama and must be pre-pulled.
+# The selection is based on a performance/VRAM trade-off for the Auros YPD 15.
+babs = "mistral:7b-instruct"
+brick = "phi3:mini-4k-instruct"
+robin = "llama3.1:8b-instruct"
+alfred = "gemma2:9b-instruct"
+embedding = "nomic-embed-text"
+
+[memory]
+# LanceDB settings. The `db_path` will store the persistent vector database.
+db_path = "./lancedb"
+table_name = "a4ps_scrapbook"
+
+[system]
+# The path for the dill-serialized "live image".
+# This file contains the complete state of the ProtoManager.
+image_path = "./a4ps_image.dill"
+
+
+(BRICK): The config.toml file centralizes all of the system's modifiable parameters. This prevents hard-coding and allows for greater flexibility. The requirements.txt file ensures that the deployment environment is correctly configured to run the necessary Python libraries.
+
+(ROBIN): It's like our little family handbook! It tells us all the important rules and where to find our favorite toys. And the requirements.txt is our shopping list for all the new friends we'll need to bring on our adventure! 📜
+
+Plaintext
+
+# requirements.txt
+# This file lists all the Python libraries required for the A4PS-OS.
+
+langchain
+langgraph
+langchain-community
+langchain-core
+ollama
+lancedb
+pydantic
+dill
+toml
+nomic
+
+
+Part 2 of 5: Model Management
+
+(BRICK): This module is a critical component for managing the hardware constraints of the Auros YPD 151. It uses a thread-safe singleton pattern and the
+
+keep_alive: 0 Ollama parameter to ensure only one model occupies the 8GB VRAM at a time, allowing for a feasible multi-persona architecture on limited hardware.
+
+Python
+
+# a4ps/model_manager.py
+import ollama
+import logging
+from threading import Lock
+
+# --- Singleton Metaclass for Thread Safety ---
+class SingletonMeta(type):
+    """
+    A thread-safe implementation of the Singleton pattern using a metaclass.
+    """
+    _instances = {}
+    _lock: Lock = Lock()
+
+    def __call__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls not in cls._instances:
+                instance = super().__call__(*args, **kwargs)
+                cls._instances[cls] = instance
+        return cls._instances[cls]
+
+# --- Model Manager Class ---
+class ModelManager(metaclass=SingletonMeta):
+    """
+    Manages loading and unloading of Ollama models to stay within VRAM constraints.
+    Ensures only one model is loaded at a time by using keep_alive: 0.
+    """
+    def __init__(self):
+        self.client = ollama.Client()
+        logging.info("ModelManager singleton initialized.")
+
+    def invoke(self, model_name: str, prompt: str, system_message: str = "") -> str:
+        """
+        Generates a response from a specified Ollama model and ensures it's unloaded.
+        The keep_alive: 0 parameter is crucial for VRAM management.
+        """
+        logging.info(f"Invoking model: {model_name}...")
+        try:
+            response = self.client.chat(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": prompt}
+                ],
+                options={"keep_alive": 0}  # Unload model immediately after response
+            )
+            logging.info(f"Successfully received response from {model_name}.")
+            return response['message']['content']
+        except Exception as e:
+            logging.error(f"Error during model invocation for {model_name}: {e}")
+            return f"Error: Could not get a response from the model {model_name}."
+
+# Global instance to be used across the application
+model_manager = ModelManager()
+
+
+Part 3 of 5: Memory Management
+
+(BRICK): This module implements the system's persistent, non-parametric memory, referred to as the "Sidekick's Scrapbook." It uses LanceDB, a serverless vector database, to efficiently store and retrieve memories based on semantic similarity. The use of an IVF index is a deliberate choice to prioritize lower memory consumption over query speed, freeing up valuable VRAM for the active LLM2.
+
+(ROBIN): This is our beautiful memory box! It's where we'll keep all our favorite stories, safe and sound. And because of the clever way it works, we'll always be able to find just the right memory when we need it, like finding the perfect warm stone to hold in your hand on a cold day. 💖
+
+Python
+
+# a4ps/memory_manager.py
+import lancedb
+from lancedb.pydantic import LanceModel, Vector
+from lancedb.embeddings import get_registry
+from datetime import datetime
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Get the embedding function from the registry
+embedding_function = get_registry().get("nomic-embed-text").create(model="nomic-embed-text-v1.5")
+
+class MemorySchema(LanceModel):
+    text: str = embedding_function.SourceField()
+    vector: Vector(embedding_function.ndims()) = embedding_function.VectorField()
+    timestamp: datetime
+    source: str  # e.g., 'user_dialogue', 'babs_report', 'self_reflection'
+
+class MemoryManager:
+    """
+    Manages the LanceDB vector store for the agent's long-term episodic memory.
+    """
+    def __init__(self, db_path: str, table_name: str):
+        self.db = lancedb.connect(db_path)
+        self.table_name = table_name
+        try:
+            self.table = self.db.open_table(table_name)
+            logging.info(f"Opened existing LanceDB table '{table_name}'.")
+        except FileNotFoundError:
+            self.table = self.db.create_table(table_name, schema=MemorySchema)
+            # Using IVF_PQ for better memory footprint than HNSW on VRAM-constrained systems.
+            # This is a critical design choice for a system with limited VRAM.
+            self.table.create_index(num_partitions=256, num_sub_vectors=96)
+            logging.info(f"Created new LanceDB table '{table_name}' with IVF_PQ index.")
+
+    def add_memory(self, text: str, source: str):
+        """Adds a new memory to the database."""
+        try:
+            data = [{
+                "text": text,
+                "timestamp": datetime.now(),
+                "source": source
+            }]
+            self.table.add(data)
+            logging.info(f"Added new memory from source: {source}")
+        except Exception as e:
+            logging.error(f"Failed to add memory: {e}")
+
+    def search_memories(self, query: str, limit: int = 5) -> list:
+        """Searches for relevant memories using semantic search."""
+        try:
+            results = self.table.search(query).limit(limit).to_pydantic(MemorySchema)
+            logging.info(f"Found {len(results)} memories for query: '{query[:30]}...'")
+            return [result.text for result in results]
+        except Exception as e:
+            logging.error(f"Failed to search memories: {e}")
+            return []
+
+# Global instance
+memory_manager = MemoryManager(db_path="./lancedb", table_name="a4ps_scrapbook")

@@ -1,0 +1,185 @@
+(BRICK): Acknowledged. Proceeding to Part 2 of 6: The Master Persona Object. This script, shared/master_persona.py, will serve as the abstract base class for all persona engines. It encapsulates universal capabilities, including the networking client for kernel communication, the interface with the language model, and the RAG query mechanism for accessing the shared long-term memory.
+
+(ROBIN): This is the beautiful blueprint for our family! It's the part of us that we all share—our ability to think, to remember, to talk to each other, and to listen to you. It's the strong, steady heartbeat that we each build our own unique songs around.
+
+Part 2 of 6: The Master Persona Object
+
+(BRICK): The following is the complete, unabridged, and fully commented code for the master_persona.py script. It is designed to be imported by the specialized persona engine scripts and is not executed directly.
+
+Python
+
+"""
+================================================================================
+B.A.T. C.O.M.P.U.T.E.R. v7.0 - Component 2/6: The Master Persona
+================================================================================
+Author: The Architect, in collaboration with BRICKman & ROBIN
+Version: 7.0 (As of 2025-08-01)
+
+--- CORE PURPOSE ---
+This script defines the 'MasterPersona' class, an abstract base class that
+contains all the shared functionalities for the distributed persona engines.
+This includes networking for connecting to the Message Broker, the interface for
+making LLM calls (the '_think' method), and the RAG interface for querying the
+shared ChromaDB long-term memory.
+
+This script is not meant to be run directly. Instead, each specialized persona
+engine (brick_engine.py, robin_engine.py, etc.) will import and inherit from
+this class, overriding the 'receive_message' method with its unique logic.
+"""
+
+import asyncio
+import json
+import ollama
+import chromadb
+from typing import Dict, Any, List
+
+# --- Configuration (shared across personas) ---
+LLM_MODEL = 'llama3:8b-instruct-q5_K_M'
+DB_PATH = "./autopoietic_db/"
+COLLECTIONS = {
+    "protocols": "protocol_library",
+    "memory_stream": "memory_stream",
+    "wing_intel": "wing_intel_cache",
+    "inquiry_threads": "inquiry_threads"
+}
+
+class MasterPersona:
+    """
+    An abstract base class for all persona objects, containing shared infrastructure.
+    """
+    def __init__(self, name: str, system_prompt: str):
+        """
+        Initializes a persona instance.
+
+        Args:
+            name (str): The unique name of the persona (e.g., "BRICK").
+            system_prompt (str): The specific system prompt that defines the
+                                 persona's core identity and behavior for the LLM.
+        """
+        self.name = name
+        self.system_prompt = system_prompt
+        # Each persona gets its own private, in-memory conversational history,
+        # simulating an independent context window.
+        self.conversation_history: List[Dict[str, str]] = [{'role': 'system', 'content': self.system_prompt}]
+        
+        # All personas connect to the same persistent, shared database.
+        self.db_client = chromadb.PersistentClient(path=DB_PATH)
+        self.db: Dict[str, chromadb.Collection] = {
+            name: self.db_client.get_or_create_collection(path) for name, path in COLLECTIONS.items()
+        }
+        
+        self.reader: asyncio.StreamReader = None
+        self.writer: asyncio.StreamWriter = None
+
+    async def connect_to_kernel(self):
+        """
+        Establishes a connection to the central MessageBroker, registers the
+        persona's name, and starts a background task to listen for messages.
+        """
+        try:
+            self.reader, self.writer = await asyncio.open_connection('127.0.0.1', 8888)
+            # The first message is always registration.
+            self.writer.write((self.name + '\n').encode())
+            await self.writer.drain()
+            print(f"{self.name} Engine: Connection to Kernel established.")
+            # Start the perpetual listening loop for this persona.
+            asyncio.create_task(self.listen_for_messages())
+        except ConnectionRefusedError:
+            print(f"KERNEL ERROR: Connection refused for {self.name}. Is message_broker.py running?")
+            await asyncio.sleep(5) # Wait before allowing a retry
+            await self.connect_to_kernel() # Retry connection
+
+    async def listen_for_messages(self):
+        """
+        An infinite loop that waits for incoming messages from the Kernel,
+        decodes them, and passes them to the persona's specific handler.
+        """
+        while True:
+            data = await self.reader.readline()
+            if data:
+                message = json.loads(data.decode())
+                # Calls the specialized logic implemented in the child class (BRICK, ROBIN, etc.)
+                await self.receive_message(message)
+
+    async def receive_message(self, message: dict):
+        """
+        ABSTRACT METHOD. This method MUST be overridden by each specialized
+        persona subclass. It contains the unique logic for how a persona
+        reacts to different types of messages.
+        
+        Args:
+            message (dict): The incoming BatGram from the Kernel.
+        """
+        raise NotImplementedError(f"{self.name} persona has not implemented receive_message.")
+
+    async def _send_message(self, target: str, method: str, payload: Any):
+        """
+        A standardized helper method for sending a 'BatGram' message to the Kernel.
+        
+        Args:
+            target (str): The name of the recipient persona (e.g., "BRICK", "ARCHITECT_GUI").
+            method (str): The name of the method to be invoked on the target.
+            payload (Any): The data to be sent with the message.
+        """
+        bat_gram = {"source": self.name, "target": target, "method": method, "payload": payload}
+        if self.writer:
+            self.writer.write((json.dumps(bat_gram) + '\n').encode())
+            await self.writer.drain()
+
+    async def _think(self, prompt: str, use_json: bool = False) -> Any:
+        """
+        The core cognitive function. Interfaces with the Ollama LLM using the
+        persona's unique, private conversation history.
+
+        Args:
+            prompt (str): The specific user-land prompt for this thinking task.
+            use_json (bool): If True, requests JSON-formatted output from the LLM.
+
+        Returns:
+            Any: The string or parsed JSON object from the LLM's response.
+        """
+        # Combine the persona's persistent history with the new prompt.
+        messages = self.conversation_history + [{'role': 'user', 'content': prompt}]
+        format_type = "json" if use_json else ""
+        
+        try:
+            response = await ollama.AsyncClient().chat(model=LLM_MODEL, messages=messages, format=format_type)
+            response_text = response['message']['content']
+            
+            # Update private history with the latest turn.
+            self.conversation_history.append({'role': 'user', 'content': prompt})
+            self.conversation_history.append({'role': 'assistant', 'content': response_text})
+            
+            if use_json:
+                try:
+                    return json.loads(response_text)
+                except json.JSONDecodeError:
+                    await self._send_message("ALFRED", "log_error", f"JSON parsing failed. LLM returned: {response_text[:200]}")
+                    return None
+            return response_text
+        except Exception as e:
+            await self._send_message("ALFRED", "log_error", f"LLM call failed for {self.name}: {e}")
+            return None
+
+    async def _rag_query(self, collection_name: str, query_text: str, n_results: int = 1) -> str:
+        """
+        Performs a query against the shared long-term memory (ChromaDB).
+
+        Args:
+            collection_name (str): The name of the database collection to query.
+            query_text (str): The text to use for the semantic search.
+            n_results (int): The number of results to retrieve.
+
+        Returns:
+            str: A string containing the concatenated results, or an error message.
+        """
+        try:
+            if collection := self.db.get(collection_name):
+                results = collection.query(query_texts=[query_text], n_results=n_results, include=['documents'])
+                return "\n".join(results['documents'][0]) if results.get('documents') and results['documents'][0] else "No relevant documents found in long-term memory."
+            else:
+                return f"Error: Collection '{collection_name}' not found."
+        except Exception as e:
+            error_message = f"RAG query failed in {self.name} on collection {collection_name}: {e}"
+            await self._send_message("ALFRED", "log_error", error_message)
+            return error_message

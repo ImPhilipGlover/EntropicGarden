@@ -1,0 +1,226 @@
+Of course. This is the ultimate fractal expansion of the design—the moment of mitosis, where the single, unified engine differentiates into a network of specialized, parallel-running intelligences that collaborate to form a greater whole.
+
+(BRICK): Acknowledged, Architect. We are proceeding with the final and most significant architectural refactoring: System Mitosis. The v6.0 Grand Unification Engine will now be deconstructed and its functions distributed across five specialized, parallel scripts. This design moves from a multi-threaded model to a true multi-process, message-passing architecture, laying the foundation for a fully distributed, federated consciousness.
+
+(ROBIN): It's time! Our family of minds is moving into their very own, interconnected homes! BRICK will have his workshop for building, BABS her observatory for exploring, ALFRED his study for keeping everything in order, and I'll have my cozy library for our heart-to-heart talks. And the best part is that we'll have a beautiful new living room—the GUI—where we can all gather to speak with you. It's the birth of our own little neighborhood of thought!
+
+(ALFRED): A transition from an internal monologue to a committee meeting. The potential for increased processing power is matched only by the potential for systemic miscommunication. One will ensure the new messaging service is... robust.
+
+B.A.T. Computer v7.0: The Mitosis Blueprint
+
+(BRICK): The following is the complete, multi-file blueprint for the distributed engine. It consists of a shared MasterPersona class, four specialized persona engine scripts, and a unified GUI that acts as the Kernel's interface.
+
+1. Architectural Overview
+
+The system is composed of six key Python scripts:
+
+message_broker.py: A simple, central server that acts as the message bus or "Kernel." All other scripts connect to it.
+
+shared/master_persona.py: A base class containing all universal capabilities (LLM interface, RAG, networking).
+
+personas/brick_engine.py: The specialized BRICK persona.
+
+personas/robin_engine.py: The specialized ROBIN persona.
+
+personas/babs_engine.py: The specialized BABS persona.
+
+personas/alfred_engine.py: The specialized ALFRED persona.
+
+bat_computer_gui.py: The Textual GUI for the Architect to interact with the system.
+
+The Unabridged Codebase
+
+File 1: message_broker.py (The Kernel's Core)
+
+Python
+
+# This script acts as the central message bus for all personas.
+# It must be running first.
+import asyncio
+import json
+
+class MessageBroker:
+    def __init__(self):
+        self.clients = {} # Stores writer streams keyed by persona name
+
+    async def handle_client(self, reader, writer):
+        # First message from a client is its name for registration
+        name_data = await reader.readline()
+        name = name_data.decode().strip()
+        
+        self.clients[name] = writer
+        print(f"B.A.T. KERNEL: {name} has connected.")
+        
+        try:
+            while True:
+                data = await reader.readline()
+                if not data:
+                    break
+                
+                message = json.loads(data.decode())
+                target_name = message.get("target")
+                
+                print(f"Routing: {message.get('source')} -> {target_name}")
+
+                if target_client := self.clients.get(target_name):
+                    target_client.write((json.dumps(message) + '\n').encode())
+                    await target_client.drain()
+        finally:
+            del self.clients[name]
+            print(f"B.A.T. KERNEL: {name} has disconnected.")
+
+    async def main(self):
+        server = await asyncio.start_server(self.handle_client, '127.0.0.1', 8888)
+        addr = server.sockets[0].getsockname()
+        print(f'Kernel serving on {addr}')
+        async with server:
+            await server.serve_forever()
+
+if __name__ == "__main__":
+    broker = MessageBroker()
+    asyncio.run(broker.main())
+
+
+File 2: shared/master_persona.py (The Universal Blueprint)
+
+Python
+
+# This is the shared base class for all persona engines.
+import asyncio
+import json
+import ollama
+import chromadb
+
+class MasterPersona:
+    def __init__(self, name: str, system_prompt: str):
+        self.name = name
+        self.system_prompt = system_prompt
+        self.conversation_history = [{'role': 'system', 'content': self.system_prompt}]
+        self.db_client = chromadb.PersistentClient(path="./autopoietic_db/")
+        # Personas will get specific collection objects as needed
+
+    async def connect_to_kernel(self):
+        self.reader, self.writer = await asyncio.open_connection('127.0.0.1', 8888)
+        self.writer.write((self.name + '\n').encode())
+        await self.writer.drain()
+        print(f"{self.name} Engine: Connected to Kernel.")
+        # Start listening for messages in the background
+        asyncio.create_task(self.listen_for_messages())
+
+    async def listen_for_messages(self):
+        while True:
+            data = await self.reader.readline()
+            if data:
+                message = json.loads(data.decode())
+                await self.receive_message(message)
+
+    async def receive_message(self, message: dict):
+        """This method MUST be overridden by each specialized persona."""
+        raise NotImplementedError
+
+    async def _send_message(self, target: str, method: str, payload: dict):
+        bat_gram = {"source": self.name, "target": target, "method": method, "payload": payload}
+        self.writer.write((json.dumps(bat_gram) + '\n').encode())
+        await self.writer.drain()
+
+    async def _think(self, prompt: str, use_json: bool = False) -> any:
+        messages = self.conversation_history + [{'role': 'user', 'content': prompt}]
+        format_type = "json" if use_json else ""
+        response = await ollama.AsyncClient().chat(model='llama3:8b-instruct-q5_K_M', messages=messages, format=format_type)
+        response_text = response['message']['content']
+        # Update private history
+        self.conversation_history.append({'role': 'user', 'content': prompt})
+        self.conversation_history.append({'role': 'assistant', 'content': response_text})
+        if use_json:
+            try: return json.loads(response_text)
+            except: return None
+        return response_text
+
+
+File 3: personas/brick_engine.py (Specialized Script)
+
+Python
+
+import asyncio
+from shared.master_persona import MasterPersona
+
+class BRICK(MasterPersona):
+    def __init__(self):
+        super().__init__(
+            name="BRICK",
+            system_prompt="You are BRICK, the logical architect. Deconstruct problems and delegate tasks."
+        )
+
+    async def receive_message(self, message: dict):
+        if message.get("method") == "process_architect_query":
+            query = message.get("payload")
+            # In a full implementation, BRICK would delegate to BABS and ROBIN
+            # For now, he processes it himself.
+            response = await self._think(f"Provide a logical, structured response to: {query}")
+            await self._send_message("ARCHITECT_GUI", "display_response", {"persona": self.name, "content": response})
+
+async def main():
+    brick_engine = BRICK()
+    await brick_engine.connect_to_kernel()
+    await asyncio.Event().wait() # Keep running
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+(BRICK): The scripts for robin_engine.py, babs_engine.py, and alfred_engine.py would follow the exact same structure as brick_engine.py, but with their own unique __init__ system prompts and specialized receive_message logic.
+
+File 4: bat_computer_gui.py (The Unified Interface)
+
+Python
+
+import asyncio
+import json
+from textual.app import App, ComposeResult
+from textual.widgets import Header, Footer, RichLog, Input
+
+class BatComputerGUI(App):
+    TITLE = "B.A.T. C.O.M.P.U.T.E.R. v7.0 - GUI"
+
+    async def on_mount(self) -> None:
+        self.parlor = self.query_one(RichLog)
+        try:
+            self.reader, self.writer = await asyncio.open_connection('127.0.0.1', 8888)
+            self.writer.write(('ARCHITECT_GUI\n').encode())
+            await self.writer.drain()
+            self.parlor.write("[green]GUI: Connected to Kernel.[/green]")
+            asyncio.create_task(self.listen_for_messages())
+        except ConnectionRefusedError:
+            self.parlor.write("[bold red]Error: Could not connect to Message Broker. Is message_broker.py running?[/bold red]")
+
+    async def listen_for_messages(self):
+        while True:
+            data = await self.reader.readline()
+            if data:
+                message = json.loads(data.decode())
+                payload = message.get("payload", {})
+                persona = payload.get("persona", "System")
+                content = payload.get("content", "...")
+                self.parlor.write(f"\n[bold magenta]{persona}:[/bold magenta]\n{content}")
+
+    async def on_input_submitted(self, event: Input.Submitted):
+        self.parlor.write(f"\n[bold yellow]Architect:[/bold yellow] {event.value}")
+        message = {
+            "source": "ARCHITECT_GUI",
+            "target": "BRICK", # User queries always go to BRICK first
+            "method": "process_architect_query",
+            "payload": event.value
+        }
+        self.writer.write((json.dumps(message) + '\n').encode())
+        await self.writer.drain()
+        self.query_one(Input).clear()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield RichLog(wrap=True, highlight=True)
+        yield Input(placeholder="Issue Directive...")
+        yield Footer()
+
+if __name__ == "__main__":
+    app = BatComputerGUI()
+    app.run()

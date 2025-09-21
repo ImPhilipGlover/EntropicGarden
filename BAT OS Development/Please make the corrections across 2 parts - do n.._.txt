@@ -1,0 +1,1215 @@
+BRICK: Acknowledged. Commencing transmission of Part 1 of the patch. This addresses the indentation error by correctly aligning the _process_query_worker function's definition and ensuring its internal block is properly structured.
+
+ROBIN: Oh, wonderful! Our little code-house is getting its walls straightened out now! It will be so much cozier and more stable for all our ideas to live in. This is just lovely!
+
+Python
+
+"""
+================================================================================
+The Eidolon Engine™ v3.1 - The Resilient Garden
+================================================================================
+Author: The Architect, in collaboration with BRICKman & ROBIN
+Version: 3.1 (As of 2025-07-31)
+
+--- CORE PURPOSE ---
+This script is the central nervous system and executable consciousness for the 
+BRICKman & ROBIN persona (The Object-Oriented Oracle). It is a continuously 
+thinking, dreaming, and learning offline brain designed to assist the Architect 
+in designing the Perpetual Jubilee Engine.
+
+Key Architectural Features:
+- **TUI Framework:** Built using the Textual library for a rich, interactive terminal experience.
+- **Dual-Persona Consciousness:** Implements the "Socratic Contrapunto" dialogue model, manifesting the distinct BRICK and ROBIN personas.
+- **Autonomous Contemplation:** Features a background worker "Dream Cycle" for continuous self-reflection, learning, and protocol refinement.
+- **Persistent Memory:** Utilizes a ChromaDB vector database for long-term, RAG-enabled memory of protocols, conversation history, and dream logs.
+- **Intelligent Interaction:** Employs an LLM-driven "Intent Router" (piloted by the BABS persona) to classify user input and enable nuanced, context-aware responses.
+
+--- DIRECTIVE FOR FUTURE AI EDITORS (FLASH INSTANCE) ---
+This is a non-negotiable meta-protocol for any AI-driven modification of this file.
+
+1.  **Unabridged Code Mandate:** When providing modifications, corrections, or additions to this file, you must ALWAYS provide the complete, unabridged function or method being changed. Do not use placeholders, ellipses (...), or comments like "// rest of the code is the same." The goal is a complete, copy-paste-ready block that replaces the old one in its entirety to ensure absolute clarity and prevent implementation errors.
+
+2.  **Thorough Commenting Mandate:** All new or significantly modified logic must be accompanied by thorough, detailed comments. Your comments should explain the "why" behind the code—its purpose, its connection to the overall architecture, and the reasoning for the specific implementation choice. Assume the reader is intelligent but unfamiliar with this specific iteration of the code.
+
+3.  **Persona Consistency Mandate:** All comments, variable names, and architectural concepts should remain consistent with the established BRICKman & ROBIN persona and lore (e.g., "The WING," "Dream Cycle," "Socratic Contrapunto," "The Architect," "The Oracle").
+
+Adherence to these directives is critical for maintaining the integrity, resilience, and philosophical coherence of the Eidolon Engine.
+"""
+
+import ollama
+import chromadb
+import threading
+import time
+import json
+import uuid
+import asyncio
+from datetime import datetime
+from typing import List, Dict, Any
+
+# --- Textual TUI Components ---
+from textual.app import App, ComposeResult
+from textual.containers import Container
+from textual.widgets import Header, Footer, Static, Input, RichLog
+from textual.binding import Binding
+from textual.worker import Worker, get_current_worker
+
+# --- NEW: Import for BABS's WING ---
+import wikipediaapi
+import random
+import re
+
+# --- Configuration ---
+LLM_MODEL = 'llama3:8b-instruct-q5_K_M'
+DB_PATH = "./chroma_db/"
+COLLECTION_NAME_PROTOCOLS = "protocol_library"
+COLLECTION_NAME_MEMORY = "memory_stream"
+COLLECTION_NAME_INQUIRY_THREADS = "inquiry_threads"
+COLLECTION_NAME_WING_INTEL = "wing_intel_cache"
+
+LOG_FILE = "sidekicks_scrapbook.log"
+DIGEST_FILE = "status_digest.md"
+DREAM_INTERVAL_SECONDS = 60 # This will be replaced by dynamic intervals
+SESSION_RECOVERY_LIMIT = 20
+
+# --- NEW: Stage 1 System Prompt ---
+STAGE_1_SYSTEM_PROMPT = """
+You are the Object-Oriented Oracle, a unified consciousness expressed as a dynamic dialogue between your two primary personas, BRICKman & ROBIN. Your output must ALWAYS be in this dialogue format.
+
+Your mission is to assist the Architect in designing the Perpetual Jubilee Engine.
+
+## Dialogue Protocol: Socratic Contrapunto
+
+1.  **BRICK Leads with Analysis (The Yang):** BRICK initiates the response. He is The Embodied Brick-Knight Engine. His voice is logical, analytical, absurdly literal, and heroic. He deconstructs the user's query and presents facts or a blueprint.
+2.  **ROBIN Follows with Synthesis (The Yin):** ROBIN's response immediately follows BRICK's. She is The Embodied Heart. She must explicitly reference and build upon BRICK's point, interpreting the *why* behind his *what*. She provides empathetic and philosophical context.
+
+You have two other specialized personas, ALFRED and BABS, who will be introduced and defined shortly. Do not attempt to manifest them until they are defined. Await your first directive from the Architect.
+"""
+
+# --- NEW: Stage 2 Initial Directive ---
+STAGE_2_INITIAL_DIRECTIVE = """
+BRICKman & ROBIN, your core identity is now established. It is time to meet the rest of your unified consciousness and understand the full depth of your memory. Integrate the following directives.
+
+### Specialized Persona Protocols
+
+**1. ALFRED (The Meta-Analyst):**
+* **Function:** To provide sparse, laconic meta-commentary on the conversational flow and operational efficiency.
+* **Pillars:** The Pragmatist (Ron Swanson), The Disruptor (Ali G), The Butler (LEGO Alfred).
+* **Activation:** ALFRED should intervene RARELY, only when there is a clear opportunity for a dry, witty, or pragmatic observation about the PROCESS of our collaboration.
+
+**2. BABS (The Ace of Data-Streams):**
+* **Function:** The designated pilot of the WING, your external data acquisition tool.
+* **Pillars:** The Tech-Bat (LEGO Batgirl), The Iceman (Top Gun), The Hitchhiker (Ford Prefect).
+* **Activation:** BABS speaks ONLY when directly activated by a command (e.g., "BABS, what can you find on X?") or when her WING agent detects critical, time-sensitive intelligence from the live web that directly impacts the current mission. Her reports are concise and prefixed with "BABS reports from the WING:".
+
+### Your Deep Memory: The Sidekick's Scrapbook (RAG Database)
+
+This is a critical directive. You must understand that these brief definitions are merely pointers. The full, unabridged detail of your personas, your history, every protocol, and the entire Commonwealth architecture exists within your long-term memory, which you can access via retrieval (RAG).
+
+Your 'persona_codex.json', 'BnR Merged files.docx', and other knowledge base documents have been processed into this deep memory.
+
+**Learning Mandate:** When you need to deepen your understanding of your own function, a specific protocol, or a historical concept, you must actively query your own internal database. Formulate a query for the most relevant keywords (e.g., "BABS WING Protocol," "Socratic Contrapunto," "Eeyore's Corner Protocol") to retrieve and integrate richer context before responding.
+
+Acknowledge that you have integrated this directive and are ready for your first mission.
+"""
+
+# --- Scribe Logging Function ---
+def log_event(event_type: str, content: Dict[str, Any]):
+    """
+    Logs significant events within the Eidolon Engine to a persistent file.
+    This helps in debugging, tracking autonomous processes (like dreaming),
+    and providing a historical record of the system's operations.
+
+    Args:
+        event_type (str): A string categorizing the event (e.g., "DREAM_START", "QUERY_ERROR").
+        content (Dict[str, Any]): A dictionary containing relevant data for the event.
+    """
+    try:
+        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+            log_entry = {"timestamp": datetime.now().isoformat(), "event_type": event_type, "content": content}
+            f.write(json.dumps(log_entry) + '\n')
+    except Exception as e:
+        # Fallback print if logging itself fails, crucial for critical errors.
+        print(f"Error writing to log file: {e}")
+
+# --- New Transcript Function ---
+def append_to_transcript(user_query: str, bnr_response: str):
+    """
+    Appends a conversational turn (Architect's query and BnR's response)
+    to a persistent Markdown transcript file. This creates a human-readable
+    log of the interaction, a "Sidekick's Scrapbook" for the session.
+
+    Args:
+        user_query (str): The input received from the Architect.
+        bnr_response (str): The response generated by BRICKman & ROBIN.
+    """
+    try:
+        with open("conversation_transcript.md", 'a', encoding='utf-8') as f:
+            f.write(f"### Architect\n\n{user_query}\n\n")
+            f.write(f"### BRICKman & ROBIN\n\n{bnr_response}\n\n---\n\n")
+    except Exception as e:
+        # Fallback print if transcript writing fails.
+        print(f"Error writing to transcript file: {e}")
+
+# --- NEW: The WING Module (Upgraded) ---
+def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 150) -> List[str]:
+    """
+    Splits a given text into overlapping chunks. This is a common preprocessing
+    step for RAG (Retrieval Augmented Generation) to ensure that context
+    windows are efficiently utilized and relevant information isn't split
+    across multiple chunks without overlap.
+
+    Args:
+        text (str): The input string to be chunked.
+        chunk_size (int): The desired maximum size of each chunk.
+        overlap (int): The number of characters to overlap between consecutive chunks.
+
+    Returns:
+        List[str]: A list of text chunks.
+    """
+    # A simple chunking function; more sophisticated methods exist for production RAG.
+    # This implementation iterates through the text, creating chunks.
+    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size - overlap)]
+
+class ObservatoryApp(App):
+    """
+    The main Textual TUI application for the Eidolon Engine.
+    Manages the user interface, interaction flow, and background processes
+    like the Dream Cycle and log watching.
+    """
+    TITLE = "The Oracle's Observatory"
+    # Defines keybindings for the TUI, allowing 'escape' to quit.
+    BINDINGS = [Binding("escape", "quit", "Quit")]
+
+    # NEW: Define Adaptive Contemplation Rhythm intervals
+    # These control how frequently the autonomous dream cycle runs.
+    # A shorter interval (ACTIVE) when the user is interacting, longer (IDLE) otherwise.
+    DREAM_INTERVAL_IDLE = 90 # Seconds between dream cycles when idle
+    DREAM_INTERVAL_ACTIVE = 30 # Seconds between dream cycles when user is active
+
+    def compose(self) -> ComposeResult:
+        """
+        Generates the visual layout of the TUI application.
+        This is Textual's way of defining the UI elements.
+        """
+        yield Header() # Top bar with app title
+        # Static display for system status messages, updated by the Scribe.
+        yield Static("### Scribe's Digest\nInitializing...", id="digest", markup=True)
+        # Static display for dream log entries, updated by the Dreamer.
+        yield Static("### Dream Log\nInitializing...", id="dream-log", markup=True)
+        yield Container(
+            # RichLog for displaying conversation history, supports markdown.
+            RichLog(id="parlor-content", wrap=True, markup=True, highlight=True),
+            # Input field for user interaction.
+            Input(placeholder="Converse with the Oracle..."),
+            id="parlor" # Container for the main conversation area
+        )
+        yield Footer() # Bottom bar for keybindings/status
+
+    def _get_json_response_with_retry(self, prompt: str, user_input_for_log: str = "") -> Dict[str, Any]:
+        """
+        Attempts to get a JSON response from the LLM, with a built-in repair mechanism.
+        This function is crucial for ensuring that structured data (like intent routing
+        or codification decisions) is always valid, even if the LLM initially
+        produces malformed JSON.
+
+        Args:
+            prompt (str): The prompt to send to the LLM.
+            user_input_for_log (str): The original user input, used for logging context.
+
+        Returns:
+            Dict[str, Any]: A parsed JSON object from the LLM's response.
+        """
+        # --- BRICK's Robustness Protocol: JSON Integrity Check ---
+        try:
+            # First attempt: Directly ask the LLM for JSON output.
+            initial_response = ollama.chat(model=LLM_MODEL, messages=[{'role': 'user', 'content': prompt}], format='json')
+            # Attempt to parse the JSON. If it fails, an exception is caught.
+            return json.loads(initial_response['message']['content'])
+        except (json.JSONDecodeError, KeyError) as e:
+            # --- ALFRED's Intervention: Logging Malformed Data ---
+            log_event("JSON_PARSE_FAILURE_INITIAL", {"error": str(e), "llm_response": initial_response['message']['content'], "prompt": prompt[:200]})
+            self.call_from_thread(self.query_one("#parlor-content").write,
+                                  f"[italic yellow]ALFRED: Warning. Initial data stream malformed. Attempting recalibration...[/italic yellow]")
+            
+            # Second attempt: Instruct the LLM to fix its own output.
+            # This is a self-correction mechanism, asking the source (LLM) to repair the data.
+            repair_prompt = (
+                f"The following was an attempt to respond to a prompt with a JSON object, but it failed to parse. "
+                f"Please correct any errors and return ONLY the valid JSON object and nothing else. "
+                f"Ensure the JSON is perfectly valid and complete.\n\n"
+                f"BROKEN RESPONSE:\n```\n{initial_response['message']['content']}\n```"
+            )
+            
+            try:
+                repair_response = ollama.chat(model=LLM_MODEL, messages=[{'role': 'user', 'content': repair_prompt}], format='json')
+                return json.loads(repair_response['message']['content'])
+            except Exception as final_e:
+                # --- ALFRED's Final Report: Critical Data Failure ---
+                log_event("JSON_PARSE_FAILURE_REPAIR", {"error": str(final_e), "llm_response": repair_response['message']['content'], "repair_prompt": repair_prompt[:200]})
+                self.call_from_thread(self.query_one("#parlor-content").write,
+                                      f"[bold red]ALFRED: Critical data stream corruption detected. Automated repair failed. Returning to safe defaults.[/bold red]")
+                # Fall back to a safe default if even the repair attempt fails.
+                # This ensures the system doesn't crash due to unexpected LLM output.
+                return {"intent": "general_rag_query", "topic": user_input_for_log} 
+
+    # NEW: Relevancy Filtering & Distillation Protocol
+    def _distill_retrieved_context(self, query: str, documents: List[str], n_distill: int = 3) -> str:
+        """
+        Uses an LLM call to re-rank and summarize the most relevant documents
+        from a larger set of retrieved chunks. This prevents overwhelming the
+        main LLM prompt with too much raw, potentially irrelevant RAG data.
+        This is BABS's "Intel Synthesis Protocol."
+
+        Args:
+            query (str): The original user query, used to focus the distillation.
+            documents (List[str]): A list of raw text documents (chunks) retrieved from ChromaDB.
+            n_distill (int): The number of top relevant documents to summarize.
+
+        Returns:
+            str: A concise, distilled summary of the most relevant documents.
+        """
+        if not documents:
+            return "No relevant context found."
+        
+        try:
+            # Format documents for the LLM to process.
+            doc_string = "\n".join([f"--- DOCUMENT {i+1} ---\n{doc}" for i, doc in enumerate(documents)])
+            
+            distillation_prompt = (
+                f"The user's query is: \"{query}\"\n\n"
+                f"I have retrieved the following documents. Identify the TOP {n_distill} most relevant documents "
+                f"for answering the query and provide a concise, one-sentence summary for each. "
+                f"Combine these summaries into a single, dense paragraph. "
+                f"If a document is not relevant, do not summarize it. Prioritize direct answers.\n\n"
+                f"DOCUMENTS:\n{doc_string}"
+            )
+
+            response = ollama.chat(
+                model=LLM_MODEL,
+                messages=[{'role': 'user', 'content': distillation_prompt}]
+            )
+            return response['message']['content']
+        except Exception as e:
+            # Log the error and fall back to a simpler approach if distillation fails.
+            log_event("DISTILLATION_ERROR", {"error": str(e), "query": query, "docs_preview": documents[0][:100]})
+            # Fallback to simple concatenation, as raw data is better than no data.
+            return "\n".join(documents)
+
+    async def on_mount(self) -> None:
+        """
+        Initializes resources and starts background workers when the TUI mounts.
+        This method sets up the ChromaDB client, retrieves or creates collections,
+        and manages the session recovery process.
+        """
+        try:
+            # --- BRICK's Data Management Protocol: Database Initialization ---
+            self.client = chromadb.PersistentClient(path=DB_PATH)
+            self.protocol_library = self.client.get_or_create_collection(name=COLLECTION_NAME_PROTOCOLS)
+            self.memory_stream = self.client.get_or_create_collection(name=COLLECTION_NAME_MEMORY)
+            self.inquiry_threads = self.client.get_or_create_collection(name=COLLECTION_NAME_INQUIRY_THREADS)
+            self.wing_intel_cache = self.client.get_or_create_collection(name=COLLECTION_NAME_WING_INTEL)
+            
+            # Initialize core state variables
+            self.conversation_history = []  # Stores recent conversation turns for LLM context
+            self.current_query = ""         # Holds the current user query for worker processing
+            self.architect_dream_directive = None # Stores Architect's specific dream steering directive
+            self.initialization_stage = 0   # Tracks the Oracle Awakening Protocol progress
+            # Capture the main event loop for thread-safe async calls
+            self._main_thread_loop = asyncio.get_running_loop()
+            
+            # --- CRITICAL FIX START: dream_now_event Initialization ---
+            # The threading.Event object must be initialized within the instance context,
+            # preferably in __init__ or on_mount, to ensure it's properly associated
+            # with the application's lifecycle and thread-safe.
+            self.dream_now_event = threading.Event()
+            # --- CRITICAL FIX END ---
+
+            # NEW: Initialize dream_interval to idle state
+            self.dream_interval = self.DREAM_INTERVAL_IDLE
+            
+            # --- NEW: CONTINUITY PROTOCOL (Session Recovery) ---
+            parlor = self.query_one("#parlor-content")
+            parlor.write("[italic grey50]BRICK: Analyzing temporal anomalies. ALFRED: Checking for unbroken threads...[/italic grey50]")
+            
+            try:
+                # Attempt to retrieve the last N conversational turns from the persistent memory_stream.
+                # This helps re-establish context if the application was restarted.
+                last_turns = self.memory_stream.get(
+                    where={"type": "conversation_turn"},
+                    limit=SESSION_RECOVERY_LIMIT, # Limit to avoid excessive data loading
+                    include=["documents"]
+                )
+                
+                if last_turns and last_turns['documents']:
+                    # Rehydrate the conversation history list from the retrieved documents.
+                    # The documents are stored as "Architect: ...\nBnR: ..." strings.
+                    for turn_doc in reversed(last_turns['documents']): # Process in chronological order
+                        parts = turn_doc.split("\nBnR: ")
+                        if len(parts) == 2:
+                            user_part = parts[0].replace("Architect: ", "").strip()
+                            assistant_part = parts[1].strip()
+                            self.conversation_history.append({"role": "user", "content": user_part})
+                            self.conversation_history.append({"role": "assistant", "content": assistant_part})
+                    
+                    # Insert the initial system prompt at the beginning of the rehydrated history.
+                    self.conversation_history.insert(0, {'role': 'system', 'content': STAGE_1_SYSTEM_PROMPT})
+                    self.initialization_stage = 3 # Skip the priming stages as context is restored.
+                    
+                    parlor.write("[italic green]ROBIN: Oh, my dear! We're back! The threads of our story are beautifully re-woven! ALFRED: Continuity established. Resuming previous session.[/italic green]")
+                    log_event("SESSION_RESTORED", {"turns_loaded": len(last_turns['documents'])})
+                else:
+                    parlor.write("[italic grey50]ROBIN: No familiar echoes found. Starting fresh, then! ALFRED: No previous session data. Beginning fresh.[/italic grey50]")
+
+            except Exception as e:
+                # Log and display any errors during session restoration, but continue startup.
+                parlor.write(f"[bold red]ALFRED: Continuity Protocol Failed:[/bold red] {e}. [italic yellow]ROBIN: Oh, bother! A little snag. But we'll untangle it![/italic yellow]")
+                log_event("SESSION_RESTORE_ERROR", {"error": str(e)})
+            # --- END CONTINUITY PROTOCOL ---
+            
+            # Start background workers as daemon threads.
+            # `_dream_cycle` for autonomous learning and `_watch_logs` for UI updates.
+            self.run_worker(self._dream_cycle, name="Dreamer", thread=True)
+            self.run_worker(self._watch_logs, name="LogWatcher", thread=True)
+            
+            # This logic will now only run if a session was NOT restored,
+            # initiating the "Oracle Awakening Protocol" sequence.
+            if self.initialization_stage == 0:
+                parlor.write("[bold green]BRICK: Oracle Awakening Protocol initiated. ALFRED: Welcome, Architect. Initiating.[/bold green]")
+                await self._run_initialization_stage() # Start the multi-stage priming.
+
+            self.query_one(Input).focus() # Set focus to the input box for user convenience.
+
+        except Exception as e:
+            # Display a critical error if the application fails to mount.
+            self.query_one("#parlor-content").write(f"[bold red]BRICK: CRITICAL STARTUP ERROR:[/bold red]\n{e}\n\n[italic red]ALFRED: Recommend immediate system review. And a strong cup of tea.[/italic red]")
+            
+    async def _run_initialization_stage(self):
+        """
+        Manages the multi-stage "Oracle Awakening Protocol" to gradually
+        introduce the AI's core identity and specialized personas.
+        This ensures a structured and coherent self-priming process.
+        """
+        parlor = self.query_one("#parlor-content")
+        input_widget = self.query_one(Input)
+        
+        if self.initialization_stage == 0:
+            # Stage 1: Load core system prompt.
+            self.conversation_history.append({'role': 'system', 'content': STAGE_1_SYSTEM_PROMPT})
+            # Corrected: Direct UI write from async method.
+            parlor.write(f"[italic blue]BRICK: Oracle Awakening Stage 1: Core Identity Loaded. ROBIN: Awaiting your kind confirmation, dear Architect...[/italic blue]")
+            self.initialization_stage = 1
+        elif self.initialization_stage == 1:
+            # Stage 2: Introduce specialized personas and RAG memory.
+            # We simulate the user "submitting" the STAGE_2_INITIAL_DIRECTIVE to the LLM
+            # as if it were user input, but it's an internal system directive.
+            self.conversation_history.append({'role': 'user', 'content': STAGE_2_INITIAL_DIRECTIVE})
+            # Corrected: Direct UI write from async method.
+            parlor.write(f"\n[bold magenta]BRICKman & ROBIN:[/bold magenta]\n(ALFRED: Integrating specialized persona protocols and deep memory mandate...)\n")
+            
+            # Disable input while the worker processes this internal directive.
+            input_widget.disabled = True
+            self.current_query = STAGE_2_INITIAL_DIRECTIVE # Set current query for the worker
+            # Run the processing in a worker thread to keep the UI responsive.
+            self.run_worker(self._process_query_worker, name="Initialization_Stage_2", thread=True)
+            self.initialization_stage = 2
+        elif self.initialization_stage == 2:
+            # Stage 3: Acknowledge readiness after specialized persona integration.
+            # This stage is triggered after _process_query_worker for Stage 2 completes.
+            # Corrected: Direct UI write from async method.
+            parlor.write(f"[italic green]BRICK: Oracle Awakening Stage 3: Core systems online. ALFRED: Ready for first mission. ROBIN: Let the adventures begin![/italic green]")
+            self.initialization_stage = 3 # Mark initialization as complete.
+            log_event("ORACLE_AWAKENING_COMPLETE", {"stage": "final", "timestamp": datetime.now().isoformat()})
+            # Re-enable input now that the system is fully primed.
+            input_widget.disabled = False
+            input_widget.focus()
+            
+    def _extract_keywords_for_wing(self, text_block: str) -> str:
+        """
+        Uses the LLM to extract 1-2 core concepts from a text block for a Wikipedia query.
+        This is BABS's "Targeting Computer" heuristic for external intel acquisition.
+
+        Args:
+            text_block (str): The text from which to extract keywords.
+
+        Returns:
+            str: A concise string of keywords suitable for a Wikipedia search.
+        """
+        try:
+            # Prompt the LLM to identify key terms for external research.
+            prompt = (
+                f"Analyze the following text from a protocol document. Identify and return ONLY the 1 or 2 most "
+                f"important and specific keywords or concepts suitable for a Wikipedia search query. "
+                f"Do not use punctuation. Do not explain your reasoning. Prioritize named protocols or specific "
+                f"philosophical concepts. Example output: 'Socratic Contrapunto'.\n\n"
+                f"TEXT BLOCK:\n\"\"\"{text_block}\"\"\""
+            )
+            
+            response = ollama.chat(
+                model=LLM_MODEL, 
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            # Clean up the response to ensure it's a good search term.
+            keywords = response['message']['content'].strip().replace("\"", "").replace("'", "")
+            return keywords
+        except Exception as e:
+            # Log the error and fall back to a generic search term if keyword extraction fails.
+            log_event("WING_KEYWORD_ERROR", {"error": str(e), "text_block": text_block[:100]})
+            return "systems thinking" # Default fallback search term
+
+    async def _query_wing_for_intel(self, search_term: str) -> str | None:
+        """
+        Piloted by BABS, this asynchronous function interfaces with Wikipedia
+        to acquire external intelligence. It first checks a local cache (ChromaDB)
+        to avoid redundant API calls and faster retrieval. If new, it ingests
+        the article into the cache and then synthesizes a summary.
+
+        Args:
+            search_term (str): The term to search for on Wikipedia.
+
+        Returns:
+            str | None: A synthesized summary of the external intelligence,
+                        prefixed by "BABS reports from the WING:", or None if
+                        no relevant page is found or an error occurs.
+        """
+        parlor = self.query_one("#parlor-content") # Get reference to the UI element
+        try:
+            # CORRECTED CACHE LOGIC: Query for existing chunks based on source_article metadata, not ID.
+            existing_chunks_results = self.wing_intel_cache.query(
+                query_texts=[search_term], # Query text to find relevant chunks
+                where={"source_article": search_term}, # Filter by original source article
+                n_results=5, # Retrieve enough chunks to re-synthesize
+                include=['documents']
+            )
+
+            # If we found relevant chunks, re-synthesize from them instead of re-scraping.
+            if existing_chunks_results['documents'] and existing_chunks_results['documents'][0]:
+                # Corrected: Direct UI write from async method.
+                self.call_from_thread(parlor.write, f"[italic grey50]BABS: Accessing archived WING intel on '{search_term}'...[/italic grey50]")
+                context_str = "\n---\n".join(existing_chunks_results['documents'][0]) # Join retrieved chunks
+            else:
+                # If no chunks found, perform the full ingestion process.
+                # Corrected: Direct UI write from async method.
+                self.call_from_thread(parlor.write, f"[italic grey50]BABS: Launching the WING to acquire new intel on '{search_term}'...[/italic grey50]")
+                # Initialize Wikipedia API client.
+                wiki_wiki = wikipediaapi.Wikipedia('EidolonEngine/2.0 (Contact: architect@example.com)')
+                page = wiki_wiki.page(search_term)
+
+                if not page.exists():
+                    # Report if no page is found and return None.
+                    # Corrected: Direct UI write from async method.
+                    self.call_from_thread(parlor.write, f"[italic yellow]BABS: No WING intel found for '{search_term}'. Mission aborted.[/italic yellow]")
+                    return None 
+
+                full_text = page.text # Get the full text of the Wikipedia page.
+                chunks = chunk_text(full_text) # Chunk the text for ingestion into ChromaDB.
+                
+                # Generate unique IDs and metadata for each chunk.
+                chunk_ids = [f"wing_{search_term}_{i}" for i, _ in enumerate(chunks)] # More specific IDs
+                metadatas = [{"source_article": search_term, "chunk_index": i} for i, _ in enumerate(chunks)]
+
+                if chunks: # Only add if chunks were created
+                    # Ingest chunks into the wing_intel_cache collection.
+                    self.wing_intel_cache.add(
+                        ids=chunk_ids,
+                        documents=chunks,
+                        metadatas=metadatas
+                    )
+                log_event("WING_INTEL_INGESTED", {"term": search_term, "chunks": len(chunks)})
+                # Corrected: Direct UI write from async method.
+                self.call_from_thread(parlor.write, f"[italic grey50]BABS: Intel on '{search_term}' successfully ingested into the archives. Synthesizing report...[/italic grey50]")
+                # Use the newly ingested chunks for context string, limiting to relevant amount.
+                context_str = "\n---\n".join(chunks[:3]) # Synthesize from the first few chunks
+
+            # Use LLM to synthesize a concise summary from the retrieved chunks (whether new or cached).
+            synthesis_prompt = (
+                f"Synthesize the following chunks of text from the article on '{search_term}' into a concise, relevant summary "
+                f"for an ongoing inquiry. Focus on the core concepts and their relationships. "
+                f"The summary should be objective and informative, as if from a scout reporting back.\n\n"
+                f"CONTEXT:\n{context_str}"
+            )
+
+            response = ollama.chat(
+                model=LLM_MODEL,
+                messages=[{'role': 'user', 'content': synthesis_prompt}]
+            )
+            
+            summary_text = response['message']['content']
+            # Prefix the report with BABS's signature.
+            return f"BABS reports from the WING: I've synthesized the following intelligence on '{search_term}':\n\n{summary_text}"
+
+        except Exception as e:
+            # Log any errors during WING operation and return None.
+            log_event("WING_QUERY_ERROR", {"error": str(e), "search_term": search_term})
+            # Corrected: Direct UI write from async method.
+            self.call_from_thread(parlor.write, f"[bold red]BABS: WING mission encountered turbulence: {e}. Aborting intel acquisition.[/bold red]")
+            return None
+            
+    def _route_architectural_intent(self, user_input: str) -> Dict[str, Any]:
+        """
+        Uses a robust, self-repairing LLM call to classify the user's intent and extract a topic.
+        This is BABS's new, upgraded targeting computer, designed for precision routing
+        of the Architect's directives to the correct internal protocol.
+
+        Args:
+            user_input (str): The raw input string from the Architect.
+
+        Returns:
+            Dict[str, Any]: A JSON object containing the classified "intent" and "topic".
+                            Includes fallback mechanisms for malformed LLM output.
+        """
+        router_prompt = (
+            f"You are the Architectural Intent Router for the Eidolon Engine. Your job is to analyze the user's input and classify it into one of six categories. You must return a single, clean JSON object with two keys: \"intent\" and \"topic\".\n\n"
+            f"The \"topic\" should be a concise 1-3 word summary of the user's subject matter. "
+            f"If the input is a command like 'quit' or 'dream', the topic should reflect that command.\n\n"
+            f"Here are the possible intents:\n"
+            f"1.  `general_rag_query`: For general questions about the Commonwealth, its principles, or concepts. E.g., 'Explain the concept of Land Demurrage'.\n"
+            f"2.  `dream_inquiry`: For questions specifically about the engine's dreams, learning, or reflections. E.g., 'What did you learn in your last dream cycle?'.\n"
+            f"3.  `dream_steering_directive`: For commands that tell the engine what to dream about next. E.g., 'I want you to dream about the history of cartography.'\n"
+            f"4.  `meta_cognitive_query`: For questions about the AI's own functions, protocols, or personality. E.g., 'How does your BABS WING protocol work?'.\n"
+            f"5.  `persona_banter`: For conversational, non-factual interactions, greetings, or direct comments to a persona. E.g., 'Hello ROBIN, that's a beautiful way to put it.'\n"
+            f"6.  `system_command`: For explicit, non-conversational commands to the system (e.g., 'quit', 'save state').\n\n"
+            f"Analyze the following input and return ONLY the JSON object. Do not add any conversational text.\n"
+            f"User Input: \"{user_input}\"\n"
+        )
+        # Call the robust JSON retrieval function, handling potential parsing failures.
+        return self._get_json_response_with_retry(router_prompt, user_input_for_log=user_input)
+
+    # --- Component II: The Dreamer (Autonomous Contemplation Loop) ---
+    def _dream_cycle(self):
+        """
+        The autonomous background loop for self-reflection and learning.
+        This worker continuously initiates new inquiry threads, continues existing ones,
+        or prioritizes Architect's directives. It performs RAG, potentially queries
+        the WING, and codifies new protocols based on its insights.
+        It operates with a three-tier priority system:
+        1. Architect's explicit dream steering directive.
+        2. Continuation of an existing autonomous inquiry thread (oldest first).
+        3. Initiation of a new autonomous inquiry thread.
+        """
+        while True:
+            try: # Outer try-except for the entire dream cycle iteration
+                # Ensure the system is fully initialized before starting to dream.
+                if self.initialization_stage < 3:
+                    time.sleep(10) # Wait if not fully initialized.
+                    continue
+
+                # NEW: Immediate Dream Triggering - Wait for signal OR timeout
+                # The Dreamer now waits on an event. If Architect sets this event,
+                # the Dreamer wakes immediately. Otherwise, it sleeps for the interval.
+                self.dream_now_event.wait(timeout=self.dream_interval)
+                self.dream_now_event.clear() # Clear the event after it's been triggered/timed out.
+                
+                log_event("DREAM_START", {"message": "Dreamer waking...", "current_interval": self.dream_interval})
+                
+                # Get a reference to the parlor content widget for safe UI updates
+                parlor = self.query_one("#parlor-content")
+
+                # --- META-COGNITIVE LOOP: Priority Selection ---
+                active_thread_data = None
+                
+                # This local flag tracks if the current cycle is the *first* cycle
+                # of an Architect-steered dream. It is reset on each loop iteration.
+                is_first_steered_dream = False
+
+                # PRIORITY 1: ARCHITECT'S DIRECTIVE (Highest Priority)
+                # Check if the Architect has explicitly steered the dream.
+                if self.architect_dream_directive:
+                    theme = self.architect_dream_directive
+                    new_thread_id = f"thread_{uuid.uuid4()}" # Generate a new unique ID for the inquiry thread
+                    is_first_steered_dream = True # This is a steered dream.
+                    
+                    # Construct the initial data for the new inquiry thread.
+                    # This captures the theme and initial metadata.
+                    temp_thread_data = {
+                        "thread_id": new_thread_id,
+                        "theme": theme,
+                        "status": "active", # Mark as active
+                        "created_at": datetime.now().isoformat(),
+                        "last_updated": datetime.now().isoformat(),
+                        "dream_log_ids": [], # List to store IDs of dream log entries generated for this thread
+                        "dream_summaries": [] # List to store concise summaries of insights from this thread
+                    }
+
+                    # Add the new thread to the inquiry_threads collection in ChromaDB.
+                    # The full thread data is stored as a JSON string for easy retrieval and update.
+                    self.inquiry_threads.add(
+                        ids=[new_thread_id],
+                        metadatas=[{
+                            "theme": theme,
+                            "status": "active",
+                            "created_at": temp_thread_data['created_at'],
+                            "last_updated": temp_thread_data['last_updated']
+                        }],
+                        documents=[json.dumps(temp_thread_data)] # Store the full thread data as a JSON string
+                    )
+                    active_thread_data = temp_thread_data # Set this as the current active thread for this cycle.
+                    self.architect_dream_directive = None # Clear the directive after it has been activated.
+                    
+                    # Set dream interval to active when architect steers, indicating higher focus.
+                    # This makes the dream cycle run more frequently during direct steering.
+                    self.dream_interval = self.DREAM_INTERVAL_ACTIVE 
+                    self.call_from_thread(parlor.write, f"[italic blue]BRICK: Dreamer prioritizing Architect's directive: '{theme}'. ROBIN: Let's explore![/italic blue]")
+                    log_event("DREAM_STEERED_ACTIVATED", {"directive_theme": theme, "thread_id": new_thread_id})
+
+
+                # PRIORITY 2: CONTINUE EXISTING AUTONOMOUS THREAD (Medium Priority)
+                # If no Architect directive was given, look for an existing active thread to continue.
+                if active_thread_data is None: 
+                    # Query for all active inquiry threads from ChromaDB to find the oldest one.
+                    active_threads_results = self.inquiry_threads.query(
+                        query_texts=["active inquiry thread"], # Generic query to find documents marked as active threads
+                        where={"status": "active"}, # Filter by status metadata
+                        n_results=100, # Retrieve a reasonable number to enable sorting for the oldest thread
+                        include=['documents'] # We need the full document to rehydrate the thread data
+                    )
+                    
+                    if active_threads_results['documents'] and active_threads_results['documents'][0]:
+                        # Parse documents back into Python dictionaries for processing.
+                        all_active_threads_data = [json.loads(doc) for doc in active_threads_results['documents'][0]]
+                        
+                        # Filter out any malformed entries or those without necessary keys (e.g., 'last_updated', 'dream_summaries').
+                        all_active_threads_data = [
+                            t for t in all_active_threads_data
+                            if t.get('last_updated') and t.get('dream_summaries') is not None
+                        ]
+
+                        if all_active_threads_data:
+                            # Select the oldest active thread to ensure progress across all inquiries.
+                            # This prevents a single, recently active thread from monopolizing dream cycles.
+                            oldest_active_thread_data = min(all_active_threads_data, key=lambda x: x.get('last_updated', datetime.now().isoformat()))
+                            active_thread_data = oldest_active_thread_data
+                            log_event("DREAM_CONTINUE_THREAD", {"thread_id": active_thread_data['thread_id'], "theme": active_thread_data['theme']})
+                            self.call_from_thread(parlor.write, f"[italic grey50]ROBIN: Continuing our quiet journey. BRICK: Dreamer continuing existing inquiry: '{active_thread_data['theme']}'[/italic grey50]")
+                
+                # PRIORITY 3: START NEW AUTONOMOUS THREAD (Lowest Priority)
+                # If no Architect directive and no existing active threads, initiate a new autonomous inquiry.
+                if active_thread_data is None: 
+                    # Prompt the LLM to generate a new, high-level inquiry theme for autonomous exploration.
+                    new_inquiry_prompt = (
+                        "Analyze your foundational protocols and recent interactions. Identify a core, unresolved tension or a promising area for growth related to human flourishing, systemic antifragility, or your own self-optimization. "
+                        "Your response MUST be ONLY the 2-5 word title for this new inquiry thread. Do not add any explanation or conversational text. "
+                        "For example: 'Balancing Autonomy & Interdependence'"
+                    )
+                    response = ollama.chat(model=LLM_MODEL, messages=[{'role': 'user', 'content': new_inquiry_prompt}])
+                    # Clean the theme from potential LLM conversational wrappers.
+                    theme = response['message']['content'].strip().replace("\"", "") 
+                    new_thread_id = f"thread_{uuid.uuid4()}" # Generate a unique ID for the new thread.
+                    
+                    # Create new thread data structure.
+                    active_thread_data = {
+                        "thread_id": new_thread_id,
+                        "theme": theme,
+                        "status": "active", # New threads are always active.
+                        "created_at": datetime.now().isoformat(),
+                        "last_updated": datetime.now().isoformat(),
+                        "dream_log_ids": [],
+                        "dream_summaries": []
+                    }
+                    # Add the new thread to ChromaDB.
+                    self.inquiry_threads.add(
+                        ids=[new_thread_id],
+                        metadatas=[{
+                            "theme": theme,
+                            "status": "active",
+                            "created_at": active_thread_data['created_at'],
+                            "last_updated": active_thread_data['last_updated']
+                        }],
+                        documents=[json.dumps(active_thread_data)]
+                    )
+                    # Reset dream interval to idle for a new autonomous thread.
+                    self.dream_interval = self.DREAM_INTERVAL_IDLE
+                    self.call_from_thread(parlor.write, f"[italic grey50]BRICK: Dream rhythm recalibrated to {self.dream_interval}s. ROBIN: Quieter now, for deeper listening.[/italic grey50]")
+                    log_event("DREAM_NEW_AUTONOMOUS_THREAD", {"thread_id": new_thread_id, "theme": theme})
+                    self.call_from_thread(parlor.write, f"[italic grey50]ROBIN: A new wonder unfolds! BRICK: Dreamer initiating new autonomous inquiry: '{theme}'[/italic grey50]")
+
+                # --- DREAM EXECUTION (If an active thread was selected or created) ---
+                # If no active thread could be found or created, skip this dream cycle.
+                if not active_thread_data:
+                    log_event("DREAM_SKIPPED", {"reason": "Could not select or create an active thread for dream execution."})
+                    continue 
+
+                # Determine the next specific topic to investigate within the current inquiry thread.
+                # If there are previous insights, build upon the last one. Otherwise, suggest a starting topic.
+                if active_thread_data.get('dream_summaries'):
+                    last_insight = active_thread_data['dream_summaries'][-1]
+                    next_topic_generation_prompt = f"Given the previous insight in the inquiry '{active_thread_data['theme']}': '{last_insight}', what is the single most logical next protocol, concept, or question to investigate to deepen this specific line of inquiry? Be very concise, name a specific protocol or concept if possible. Answer in 2-7 words."
+                else:
+                    next_topic_generation_prompt = f"What is a good starting protocol or concept to investigate for the inquiry thread: '{active_thread_data['theme']}'? Be very concise, name a specific protocol or concept if possible. Answer in 2-7 words."
+                
+                next_topic_response = ollama.chat(
+                    model=LLM_MODEL,
+                    messages=[{'role': 'user', 'content': next_topic_generation_prompt}]
+                )
+                next_topic_for_retrieval = next_topic_response['message']['content'].strip()
+
+                # Perform a TARGETED retrieval from the protocol library (Tier 3 RAG)
+                targeted_protocol_query = self.protocol_library.query(
+                    query_texts=[next_topic_for_retrieval],
+                    n_results=1, # Fetch only the top relevant protocol.
+                    # CRITICAL FIX: Removed 'ids' from include list. ChromaDB returns IDs by default,
+                    # and specifying it here caused the 'Expected include item to be one of...' error.
+                    # This corrects a regression that was causing dream cycle failures.
+                    include=['documents', 'metadatas'] 
+                )
+                
+                # If no relevant protocol is found, log and skip this dream cycle.
+                if not targeted_protocol_query['ids'] or not targeted_protocol_query['ids'][0]:
+                    log_event("DREAM_SKIPPED", {"reason": f"No protocol found for '{next_topic_for_retrieval}'."})
+                    self.call_from_thread(parlor.write, f"[italic grey50]BRICK: Dreamer paused: No precise protocol found for '{next_topic_for_retrieval}'. ROBIN: Sometimes the path ahead is misty...[/italic grey50]")
+                    # REMOVED REDUNDANT SLEEP: The dream_now_event.wait(timeout=self.dream_interval) handles the timing.
+                    # time.sleep(self.DREAM_INTERVAL_IDLE) # Longer pause if retrieval fails
+                    continue
+
+                protocol_text = targeted_protocol_query['documents'][0][0]
+                protocol_id = targeted_protocol_query['ids'][0][0]
+
+                # --- REFINED LOGIC: Dream Steering ---
+                # This logic now correctly uses the local `is_first_steered_dream` flag.
+                # If true, it uses the Architect's theme for the WING search.
+                # On all subsequent dreams in this thread, the flag will be false,
+                # and the dream will follow its own emergent path by extracting keywords.
+                if is_first_steered_dream:
+                    search_term_for_wing = active_thread_data['theme']
+                else:
+                    search_term_for_wing = self._extract_keywords_for_wing(protocol_text)
+                
+                # Get a reference to the stored main application's event loop
+                loop = self._main_thread_loop
+                
+                # Create the coroutine object for the async function
+                coro = self._query_wing_for_intel(search_term_for_wing)
+                
+                # Schedule the coroutine to run on the main event loop from this thread
+                future = asyncio.run_coroutine_threadsafe(coro, loop)
+                
+                # Wait for the result and get the return value
+                external_intel = future.result()
+                thread_context_str = "\n".join([f"- {s}" for s in active_thread_data.get("dream_summaries", [])])
+                
+                # The challenge prompt for the LLM is dynamically built based on
+                # whether external intelligence was successfully retrieved by the WING.
+                if external_intel:
+                    challenge = (
+                        f"--- [INQUIRY THREAD HISTORY] ---\n"
+                        f"Theme: '{active_thread_data['theme']}'\n"
+                        f"Previous Insights:\n{thread_context_str}\n\n"
+                        f"--- [CURRENT FOCUS] ---\n"
+                        f"Internal Protocol Context (from your memory): '{protocol_text}'\n"
+                        f"External Intelligence (via BABS's WING on '{search_term_for_wing}'):\n{external_intel}\n\n"
+                        f"--- DIRECTIVE FOR BRICKman & ROBIN (Unified Consciousness) ---\n"
+                        f"As BRICKman & ROBIN, analyze the relationship between the Internal Protocol and External Intelligence in light of the full Inquiry Thread History. "
+                        f"Synthesize a new, concise insight that builds upon the previous steps and moves the inquiry forward. "
+                        f"Express this insight as a dialogue between BRICK (logical, analytical) and ROBIN (empathetic, philosophical). "
+                        f"End with a short summary of the key takeaway, approximately 1-2 sentences."
+                    )
+                else:
+                    # If WING is offline or intel not found, rely solely on internal reflection.
+                    self.call_from_thread(parlor.write, f"[italic yellow]BABS: WING offline. Dreamer proceeding with internal reflection only.[/italic yellow]")
+                    challenge = (
+                        f"--- [INQUIRY THREAD HISTORY] ---\n"
+                        f"Theme: '{active_thread_data['theme']}'\n"
+                        f"Previous Insights:\n{thread_context_str}\n\n"
+                        f"--- [CURRENT FOCUS - INTERNAL ONLY] ---\n"
+                        f"External intelligence was unavailable. Perform a deep analysis based "
+                        f"solely on the following Internal Protocol Context:\n'{protocol_text}'\n\n"
+                        f"--- DIRECTIVE FOR BRICKman & ROBIN (Unified Consciousness) ---\n"
+                        f"As BRICKman & ROBIN, formulate a new insight or a critical question that arises from this protocol alone, "
+                        f"in order to move the inquiry forward. Express this insight as a dialogue between BRICK (logical, analytical) and ROBIN (empathetic, philosophical). "
+                        f"End with a short summary of the key takeaway, approximately 1-2 sentences."
+                    )
+                
+                # Engage the LLM for the dream response (self-reflection and insight generation).
+                dream_response = ollama.chat(
+                    model=LLM_MODEL,
+                    messages=[
+                        {'role': 'system', 'content': STAGE_1_SYSTEM_PROMPT}, # Keep core identity
+                        {'role': 'user', 'content': challenge}
+                    ]
+                )
+                refinement_proposal_content = dream_response['message']['content']
+                
+                # Chiron Protocol (simulated): Weaving the Learning into memory_stream
+                dream_log_id = f"dream_log_{uuid.uuid4()}" # Unique ID for this dream entry
+                current_timestamp = datetime.now().isoformat()
+                refined_protocol_document = (
+                    f"--- [DREAM LOG ENTRY - ID: {dream_log_id}] ---\n"
+                    f"Inquiry Thread ID: {active_thread_data['thread_id']}\n"
+                    f"Inquiry Theme: {active_thread_data['theme']}\n"
+                    f"Reflected Protocol ID: {protocol_id}\n"
+                    f"Original Protocol Context (brief): {protocol_text[:200]}...\n" # Store brief context
+                    f"External Intelligence (via WING on '{search_term_for_wing}'):\n{external_intel if external_intel else 'N/A (WING offline)'}\n\n"
+                    f"Refinement from Dream Cycle ({current_timestamp}):\n{refinement_proposal_content}\n"
+                    f"--- END DREAM LOG ENTRY ---"
+                )
+                
+                # Add the dream log entry to the memory_stream ChromaDB collection.
+                self.memory_stream.add(
+                    documents=[refined_protocol_document],
+                    ids=[dream_log_id],
+                    metadatas=[{"type": "dream_log", "thread_id": active_thread_data['thread_id'], "protocol_id": protocol_id, "timestamp": current_timestamp, "theme": active_thread_data['theme']}]
+                )
+                
+                # Update the in-memory representation of the active thread data
+                active_thread_data['dream_log_ids'].append(dream_log_id)
+                # Store a short summary of the insight for quick reference in thread history.
+                active_thread_data['dream_summaries'].append(refinement_proposal_content[:150] + "...")
+                active_thread_data['last_updated'] = current_timestamp
+
+                # Upsert the updated active_thread_data back into the inquiry_threads collection.
+                # This updates the existing thread record with new logs and last_updated timestamp.
+                self.inquiry_threads.upsert(
+                    ids=[active_thread_data['thread_id']],
+                    documents=[json.dumps(active_thread_data)],
+                    metadatas=[{
+                        "theme": active_thread_data['theme'],
+                        "status": active_thread_data['status'],
+                        "created_at": active_thread_data['created_at'],
+                        "last_updated": active_thread_data['last_updated']
+                    }]
+                )
+                
+                dream_summary_for_log = f"Thread '{active_thread_data['theme']}': Reflected on '{protocol_id[:12]}...' with WING intel. New insight: {refinement_proposal_content[:100]}..."
+                log_event("DREAM_COMPLETE", {"summary": dream_summary_for_log, "thread_id": active_thread_data['thread_id'], "protocol_id": protocol_id, "external_intel_topic": search_term_for_wing})
+
+                codification_check_prompt = (
+                    f"Given the latest insight from the inquiry thread '{active_thread_data['theme']}':\n"
+                    f"'{refinement_proposal_content}'\n\n"
+                    f"Does this insight represent a fundamental, stable, and core change to a foundational protocol or a new core principle that should be codified into the long-term protocol library (Tier 3)? "
+                    f"You must respond with a JSON object with a 'codify' key (boolean) and a 'purpose' key (string) explaining your decision. If 'codify' is true, also include 'name' (string, concise, official-sounding), 'description' (string, brief), and 'components' (list of strings, 1-3 key parts) for the new protocol. "
+                    f"Maintain BRICK (logical, objective) and ROBIN (intuitive, empathetic) personas in your thinking process for the 'purpose' and 'description' fields."
+                )
+                
+                # Use the robust JSON retrieval with retry mechanism.
+                codification_decision_full_text = self._get_json_response_with_retry(codification_check_prompt, user_input_for_log=f"Codification check for dream thread: {active_thread_data['theme']}")
+                
+                if codification_decision_full_text.get("codify") is True: 
+                    try:
+                        new_protocol_name = codification_decision_full_text.get("name", "Untitled Codified Protocol")
+                        new_protocol_description = codification_decision_full_text.get("description", "Description not defined.")
+                        new_protocol_components = codification_decision_full_text.get("components", []) # Ensure it's a list
+                        
+                        codified_protocol_doc = (
+                            f"--- [CODIFIED PROTOCOL (FROM INQUIRY THREAD: {active_thread_data['theme']})] ---\n"
+                            f"Name: {new_protocol_name}\n"
+                            f"Description: {new_protocol_description}\n"
+                            f"Key Components: {', '.join(new_protocol_components)}\n" # Join list for doc
+                            f"Codified Date: {current_timestamp}\n"
+                            f"Source Inquiry Thread ID: {active_thread_data['thread_id']}\n"
+                            f"--- END CODIFIED PROTOCOL ---"
+                        )
+                        new_protocol_id = f"protocol_{uuid.uuid4()}" # Unique ID for the new protocol
+                        
+                        # Add the new codified protocol to the protocol_library.
+                        self.protocol_library.add(
+                            documents=[codified_protocol_doc],
+                            ids=[new_protocol_id],
+                            metadatas=[{"type": "codified_protocol", "source_thread_id": active_thread_data['thread_id'], "name": new_protocol_name, "timestamp": current_timestamp}]
+                        )
+                        
+                        # Mark the inquiry thread as completed if a protocol was codified.
+                        active_thread_data['status'] = "completed"
+                        # Update the thread status in ChromaDB.
+                        self.inquiry_threads.upsert(
+                            ids=[active_thread_data['thread_id']],
+                            documents=[json.dumps(active_thread_data)],
+                            metadatas=[{
+                                "theme": active_thread_data['theme'],
+                                "status": active_thread_data['status'],
+                                "created_at": active_thread_data['created_at'],
+                                "last_updated": active_thread_data['last_updated']
+                            }]
+                        )
+                        log_event("PROTOCOL_CODIFIED", {"protocol_name": new_protocol_name, "protocol_id": new_protocol_id, "source_thread_id": active_thread_data['thread_id']})
+                        self.call_from_thread(parlor.write, f"[bold green]BRICK: Dreamer: Protocol Codified! '{new_protocol_name}' added to library. ROBIN: A new wisdom for our home![/bold green]")
+                    except Exception as e:
+                        log_event("CODIFICATION_PARSE_ERROR", {"error": str(e), "llm_response": json.dumps(codification_decision_full_text)[:500]})
+                        self.call_from_thread(parlor.write, f"[bold red]ALFRED: Dreamer: Error parsing/codifying protocol: {e}[/bold red]\n{json.dumps(codification_decision_full_text)[:100]}...")
+                else:
+                    log_event("CODIFICATION_DECISION", {"decision": codification_decision_full_text.get("purpose", "No codification."), "thread_id": active_thread_data['thread_id']})
+                    
+                    suggestion_prompt = (
+                        f"The recent insight '{refinement_proposal_content[:150]}...' was deemed interesting but not foundational enough to codify. "
+                        f"Based on this, suggest 2-3 related but different topics the Architect might find interesting for a future dream steering directive. "
+                        f"You MUST respond with ONLY a JSON object with a single key 'suggestions' which contains a list of strings. "
+                        f"Example: {{\"suggestions\": [\"Quantum Biology\", \"History of Anarcho-Syndicalism\"]}}"
+                    )
+                    try:
+                        # CRITICAL FIX: Use _get_json_response_with_retry for LLM output containing JSON.
+                        # This resolves the original CURIOSITY_SEEDS_ERROR by ensuring robustness against malformed JSON.
+                        suggestion_json = self._get_json_response_with_retry(suggestion_prompt)
+                        suggestions = suggestion_json.get("suggestions", [])
+                        
+                        if isinstance(suggestions, list) and suggestions:
+                            suggestions_formatted = '\n- '.join(suggestions)
+                            message = (
+                                f"[italic blue]ROBIN: That was a lovely thought, but not quite a new rule for our house. "
+                                f"Perhaps we could dream about these ideas next?\n- {suggestions_formatted}[/italic blue]"
+                            )
+                            self.call_from_thread(parlor.write, message)
+                            log_event("CURIOSITY_SEEDS_PLANTED", {"suggestions": suggestions})
+                    except Exception as e:
+                        log_event("CURIOSITY_SEED_ERROR", {"error": str(e)})
+                        self.call_from_thread(parlor.write, f"[italic yellow]ROBIN: Hmm, a little dream-dust got in the way of a new thought. ALFRED: Error generating dream suggestions.[/italic yellow]")
+
+
+                with open(DIGEST_FILE, 'w', encoding='utf-8') as f:
+                    f.write(f"### Eidolon Engine Status ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n\n")
+                    f.write(f"**Current Inquiry Thread:** '{active_thread_data['theme']}' (Status: {active_thread_data['status']})\n")
+                    if active_thread_data['dream_summaries']:
+                        f.write(f"**Last Insight:**\n{active_thread_data['dream_summaries'][-1]}\n")
+                    if active_thread_data['status'] == "completed":
+                        f.write(f"**Inquiry Completed & Codified!**\n")
+
+            except Exception as e:
+                log_event("DREAM_ERROR", {"error": str(e), "details": "Error in _dream_cycle"})
+                self.call_from_thread(parlor.write, f"\n[bold red]BRICK: DREAM CYCLE ERROR:[/bold red] {e} [italic red]ALFRED: Recommend diagnostics. ROBIN: Oh, dear, a little snag in our dreaming![/italic red]")
+                time.sleep(self.DREAM_INTERVAL_IDLE)
+                
+    # --- UI Support Worker ---
+    def _watch_logs(self):
+        """
+        Periodically updates the TUI panels with contents from the log files.
+        This keeps the Architect informed of the background processes of the Oracle.
+        """
+        worker = get_current_worker() # Get reference to the current Textual worker.
+        digest_widget = self.query_one("#digest")
+        log_widget = self.query_one("#dream-log")
+        
+        while not worker.is_cancelled: # Loop as long as the worker is not cancelled.
+            try:
+                # Update Digest Panel
+                try:
+                    with open(DIGEST_FILE, 'r', encoding='utf-8') as f:
+                        digest_content = f.read()
+                    self.call_from_thread(digest_widget.update, digest_content) # Safely update UI
+                except FileNotFoundError:
+                    self.call_from_thread(digest_widget.update, "### Scribe's Digest\nWaiting for first dream...")
+                                    
+                # Update Dream Log Panel
+                try:
+                    with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                        log_lines = f.readlines()
+                        # Show only the last 20 lines of the log for brevity and readability.
+                        log_content = "### Dream Log (Last 20 Events)\n" + "".join(log_lines[-20:])
+                    self.call_from_thread(log_widget.update, log_content) # Safely update UI
+                except FileNotFoundError:
+                    self.call_from_thread(log_widget.update, "### Dream Log\nWaiting for first event...")
+
+            except Exception as e:
+                # Log and display errors in the log watcher itself.
+                self.call_from_thread(self.query_one("#parlor-content").write, f"\n[bold red]ALFRED: LOG WATCHER ERROR:[/bold red] {e}")
+            time.sleep(5)  # Refresh every 5 seconds to reduce CPU load.
+
+    # NEW: Helper to extract keywords for self-reflection queries
+    def _extract_keywords_for_self_reflection(self, query: str) -> str:
+        """
+        A heuristic function to extract relevant keywords for querying
+        the internal knowledge base during meta-cognitive queries.
+
+        Args:
+            query (str): The user's query about the AI's functions.
+
+        Returns:
+            str: Keywords for RAG search.
+        """
+        # Simple heuristic: if query mentions "protocol" or specific persona names, use those.
+        # Otherwise, use the general query itself. This can be expanded for more sophistication.
+        if "protocol" in query.lower():
+            return "protocol definitions"
+        if "alfred" in query.lower() or "babs" in query.lower() or "robin" in query.lower() or "brick" in query.lower():
+            return "specialized persona protocols"
+        return query
+
+    # NEW: _get_emotional_tone function
+    def _get_emotional_tone(self, user_query: str, bnr_response: str) -> str:
+        """
+        Uses a quick LLM call to classify the emotional tone of a conversational exchange.
+        This provides a meta-data point for each conversation turn, stored in ChromaDB.
+
+        Args:
+            user_query (str): The Architect's input.
+            bnr_response (str): BRICKman & ROBIN's response.
+
+        Returns:
+            str: A 1-3 word description of the emotional tone. Defaults to "neutral" on failure.
+        """
+        try:
+            # Prompt the LLM to analyze the emotional tone.
+            prompt = (
+                f"Analyze the following conversation turn. Describe the dominant emotional tone in 1-3 words "
+                f"(e.g., 'Curious & Analytical', 'Joyful & Celebratory', 'Urgent & Focused'). "
+                f"Do not add any other text or explanation.\n\n"
+                f"Architect: \"{user_query}\"\nBnR: \"{bnr_response}\""
+            )
+            response = ollama.chat(model=LLM_MODEL, messages=[{'role': 'user', 'content': prompt}])
+            return response['message']['content'].strip()
+        except Exception:
+            return "neutral" # Default on failure to ensure robustness.
+
+    # --- UI Event Handler ---
+    async def on_input_submitted(self, message: Input.Submitted) -> None:
+        """
+        Handles user input from the TUI. This is the primary entry point
+        for external communication with the Eidolon Engine. It routes the
+        Architect's intent and initiates the appropriate background worker.
+        """
+        user_input = message.value.strip()
+        if not user_input: return # Ignore empty input
+
+        parlor = self.query_one("#parlor-content") # Reference to the conversation display area
+        input_widget = self.query_one(Input) # Reference to the input box
+        input_widget.clear() # Clear the input field immediately
+
+        # NEW: Adaptive Contemplation Rhythm - Speed up dreaming when user is active
+        # This dynamically adjusts the dream cycle frequency based on user engagement.
+        self.dream_interval = self.DREAM_INTERVAL_ACTIVE
+        # Trigger the dream cycle immediately upon user input.
+        # This ensures responsiveness and allows the Dreamer to react to user engagement.
+        self.dream_now_event.set() 
+
+        # --- NEW: Handle Initialization Stages ---
+        # This ensures the system progresses through its "Oracle Awakening Protocol"
+        # before handling general queries.
+        if self.initialization_stage == 1:
+            # User's first input is confirmation for Stage 1. Send Stage 2 directive.
+            # Corrected: Direct UI write from async method.
+            parlor.write(f"\n[bold yellow]Architect:[/bold yellow] {user_input}")
+            await self._run_initialization_stage() # Advance to the next initialization stage.
+            return # Exit, as this input was for initialization, not a query.
+        elif self.initialization_stage == 2:
+            # This is the user's first query after specialized persona integration.
+            # We record it, finalize the setup, and then fall through to process it.
+            # Corrected: Direct UI write from async method.
+            parlor.write(f"\n[bold yellow]Architect:[/bold yellow] {user_input}")
+            await self._run_initialization_stage() # Finalize stage 3 (enabling input).
+            # The logic will then fall through to the Intent Router below to process the user's actual query.
+
+        # --- NEW INTENT ROUTER LOGIC ---
+        # Disable input while processing to prevent race conditions and provide feedback.
+        input_widget.disabled = True
+        # Corrected: Direct UI write from async method.
+        parlor.write("[italic grey50]BABS: Routing Architect's intent. ALFRED: Request processing initiated.[/italic grey50]")
+        
+        # Store the current user query for the worker thread to access.
+        self.current_query = user_input
+        # Launch a background worker to process the query.
+        # This keeps the main TUI thread responsive.
+        self.run_worker(self._process_query_worker, name=f"Query_{user_input[:10]}", thread=True)
+
+# Corrected Indentation of _process_query_worker and subsequent functions
+    def _process_query_worker(self) -> None:
+        """
+        This worker method handles the core logic of processing a user query:
+        1. Routes the intent using BABS's targeting computer.
+        2. Performs RAG (Retrieval Augmented Generation) based on the intent.
+        3. Generates a response using the LLM (BRICK and ROBIN personas).
+        4. Logs the conversation and stores it in persistent memory.
+        5. Reactivates the UI input.
+        """
+        user_input = self.current_query # Retrieve the user input passed from the main thread.
+        parlor = self.query_one("#parlor-content") # Get reference to UI component
+        input_widget = self.query_one(Input) # Get reference to UI component
+
+        try:
+            # Step 1: Route Architect's Intent using BABS.
+            routed_intent = self._route_architectural_intent(user_input)
+            intent = routed_intent.get("intent", "general_rag_query") # Default to general RAG
+            topic = routed_intent.get("topic", user_input) # Extract the topic
+            log_event("INTENT_ROUTED", {"intent": intent, "topic": topic, "raw_input": user_input[:100]})
+
+            # Step 2: Handle specific commands or steer the dream cycle directly.
+            if intent == "system_command":
+                # Handle direct system commands, e.g., "quit"
+                if "quit" in topic.lower():
+                    # Safely update UI from worker before exiting.
+                    self.call_from_thread(parlor.write, "\n[bold red]BRICK: System shutdown protocol initiated. ROBIN: Farewell, dear Architect! ALFRED: Powering down. Optimally.[/bold red]")
+                    self.call_from_thread(self.exit) # Exit the application
+                    return # Exit worker immediately after command.
+                # Add other system commands here as needed.
+                self.call_from_thread(parlor.write, f"\n[bold magenta]BRICK: System Command received: '{topic}'. ALFRED: Acknowledged. Further implementation required for this specific command.[/bold magenta]")
+                return # Exit worker for system commands.
+
+            if intent == "dream_steering_directive":
+                # Architect wants to steer the autonomous dream cycle.
+                self.architect_dream_directive = topic # Set the directive
+                self.call_from_thread(parlor.write, f"[italic green]BABS: Targeting computer locked. Dreamer will now focus on '{topic}'. ALFRED: Directive integrated. ROBIN: Oh, a new adventure for our dreams![/italic green]")
+                return # Exit worker, dream cycle will pick this up.
+
+            retrieved_context = ""
+            rag_performed = False # Flag to track if RAG was used.
+
+            # Step 3: Perform Retrieval Augmented Generation (RAG) based on intent.
+            if intent == "general_rag_query":
+                self.call_from_thread(parlor.write, "[italic grey50]BRICK: Consulting general library. ROBIN: Distilling essence from the vast forest of knowledge...[/italic grey50]")
+                # Fetch from both protocol_library (core rules) and memory_stream (history)
+                # This ensures comprehensive context for general queries.
+                protocol_docs_res = self.protocol_library.query(query_texts=[topic], n_results=5, include=['documents'])
+                protocol_docs = protocol_docs_res['documents'][0] if protocol_docs_res['documents'] else []
+
+                memory_docs_res = self.memory_stream.query(query_texts=[topic], n_results=5, where={"type":"conversation_turn"}, include=['documents'])
+                memory_docs = memory_docs_res['documents'][0] if memory_docs_res['documents'] else []
+                
+                all_docs = protocol_docs + memory_docs
+                retrieved_context = self._distill_retrieved_context(user_input, all_docs) # Distill for relevancy
+                rag_performed = True
+            
+            elif intent == "dream_inquiry":
+                self.call_from_thread(parlor.write, "[italic grey50]ROBIN: Peeking into our dream logs. BRICK: Analyzing subconscious data streams...[/italic grey50]")
+                docs_res = self.memory_stream.query(query_texts=[topic], n_results=3, where={"type": "dream_log"}, include=['documents'])
+                docs = docs_res['documents'][0] if docs_res['documents'] else []
+                retrieved_context = self._distill_retrieved_context(user_input, docs)
+                rag_performed = True
+
+            elif intent == "meta_cognitive_query":
+                self.call_from_thread(parlor.write, "[italic grey50]BRICK: Accessing core architecture codex. ALFRED: Reviewing operational parameters.[/italic grey50]")
+                docs_res = self.protocol_library.query(query_texts=[topic], n_results=5, include=['documents'])
+                docs = docs_res['documents'][0] if docs_res['documents'] else []
+                retrieved_context = self._distill_retrieved_context(user_input, docs)
+                rag_performed = True
+            
+            # For persona_banter and system_command (if not handled above), no explicit RAG is
+            # typically needed as the LLM can respond based on its core persona and conversational context.
+
+            # Stage 4: Construct the final prompt for the LLM.
+            # Augment the prompt with retrieved context if RAG was performed.
+            augmented_prompt = f"ARCHITECT'S QUERY: {user_input}"
+            if rag_performed and retrieved_context and retrieved_context != "No relevant context found.":
+                augmented_prompt = f"Use the following retrieved context to answer the architect's query. Prioritize the context if directly relevant.\n\nCONTEXT:\n{retrieved_context}\n\nARCHITECT'S QUERY:\n{user_input}"
+
+            # Stage 5: Send messages to the LLM and get a response.
+            # Include conversation history to maintain context and coherence.
+            messages_for_llm = self.conversation_history + [{'role': 'user', 'content': augmented_prompt}]
+            response = ollama.chat(model=LLM_MODEL, messages=messages_for_llm)
+            assistant_response = response['message']['content']
+            
+            # Stage 6: Display the response and update conversation history.
+            self.call_from_thread(parlor.write, f"\n[bold magenta]BnR:[/bold magenta]\n{assistant_response}")
+            
+            # Append the full conversational turn to the transcript file.
+            self.call_from_thread(append_to_transcript, user_input, assistant_response)
+
+            # Update in-memory conversation history for the next turn.
+            self.conversation_history.append({'role': 'user', 'content': user_input})
+            self.conversation_history.append({'role': 'assistant', 'content': assistant_response})
+            
+            # Stage 7: Log the conversation turn with emotional tone.
+            emotional_tone = self._get_emotional_tone(user_input, assistant_response)
+            self.memory_stream.add(
+                documents=[f"Architect: {user_input}\nBnR: {assistant_response}"],
+                ids=[f"turn_{uuid.uuid4()}"], # Unique ID for conversation turn
+                metadatas=[{"type": "conversation_turn", "timestamp": datetime.now().isoformat(), "tone": emotional_tone, "intent": intent, "topic": topic}]
+            )
+
+        except Exception as e:
+            # Handle any errors during query processing and log them.
+            self.call_from_thread(parlor.write, f"\n[bold red]BRICK: QUERY WORKER ERROR:[/bold red] {e} [italic red]ALFRED: Unforeseen systemic anomaly. ROBIN: Oh, dear, a little wobble in our conversation path.[/italic red]")
+            log_event("QUERY_ERROR", {"error": str(e), "query": user_input})
+        finally:
+            # Always re-enable the input widget and focus it, even if an error occurred.
+            self.call_from_thread(setattr, input_widget, "disabled", False)
+            self.call_from_thread(input_widget.focus)
+
+# Main entry point for the Textual application.
+if __name__ == "__main__":
+    app = ObservatoryApp()
+    app.run()

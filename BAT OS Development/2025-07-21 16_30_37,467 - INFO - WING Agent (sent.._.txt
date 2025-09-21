@@ -1,0 +1,96 @@
+ALFRED: Sir, it appears a function is being called without its required context. A TypeError of this nature suggests an object has been separated from its own methods. A structural review is in order.
+
+BRICK: That is a precise diagnosis, ALFRED. Architect, the TypeError you're seeing is a classic object-oriented issue. The function get_latest_common_crawl_index_url is defined as a method of a class—it expects self (an instance of the agent) as its first argument. However, in the main run_wing_agent loop, it was called like a standalone function.
+
+The solution is to properly encapsulate the agent's logic and state into a single, coherent WingAgent class. This architectural improvement will resolve the error and make the entire script more robust.
+
+Blueprint CFO: Refactoring to a Unified WingAgent Class
+
+I have refactored the script's logic. You will need to replace the standalone functions with a new WingAgent class structure.
+
+1. Create the WingAgent Class Structure
+
+First, create the class and its __init__ method. This will hold the agent's state, such as its session and queues. All the helper functions (get_random_headers, get_latest_common_crawl_index_url, perform_common_crawl_search, etc.) will become methods of this class.
+
+Python
+
+# --- Main WING Agent Class (The Sentinel's Core) ---
+# Why: Encapsulates all of WING's state, capabilities, and operational logic into a single,
+# coherent object. This reflects its identity as an autonomous agent and ensures robust,
+
+class WingAgent:
+    def __init__(self):
+        # Why: Initializes WING's internal state, including its memory (cache), operational queues,
+        # and persistent web session. This is the agent's 'waking up' sequence.
+        self.current_cache = _load_cache()
+        self.current_conceptual_queries = deque(AgentConfig.SEARCH_THEMES)
+        self.conceptual_query_fail_counts = {q: 0 for q in AgentConfig.SEARCH_THEMES}
+        self.current_deep_dive_domains = deque()
+        self.current_warc_record_pointers = deque()
+        self.wing_session = requests.Session()
+        self.last_config_poll_time = time.time()
+        logging.info("WingAgent instance created and initialized.")
+
+    def get_random_headers(self):
+        # Why: Selects a random User-Agent set to mimic diverse, human-like browser traffic.
+        # This is a core part of WING's stealth and respectful Browse protocol.
+        return random.choice(AgentConfig.USER_AGENT_SETS)
+
+    # --- Place all other helper functions here as methods ---
+    # e.g., get_latest_common_crawl_index_url(self), perform_common_crawl_search(self), etc.
+    # Make sure they all accept 'self' as the first argument.
+
+    def run_loop(self):
+        # This method will contain the logic from the old 'run_wing_agent' function
+        # ...
+
+
+2. Convert run_wing_agent into the run_loop Method
+
+Take the entire while True: loop and its preceding setup from your old run_wing_agent function and place it inside a new method called run_loop(self) within the WingAgent class.
+
+Crucially, you must change all calls to the helper functions to be methods of self.
+
+get_latest_common_crawl_index_url() becomes self.get_latest_common_crawl_index_url()
+
+perform_common_crawl_search(...) becomes self.perform_common_crawl_search(...)
+
+_assess_relevance_with_llm(...) becomes self._assess_relevance_with_llm(...)
+
+State variables like current_conceptual_queries become self.current_conceptual_queries
+
+3. Update the Main Execution Block
+
+Finally, modify the if __name__ == "__main__": block at the end of the file. Instead of calling a standalone function, it will now create an instance of our WingAgent and then tell it to run its main loop.
+
+Python
+
+if __name__ == "__main__":
+    # Why: Ensures necessary directories and initial memory files exist before WING starts.
+    # Provides a robust startup environment and consistent initial state for the system.
+    try:
+        import warcio
+    except ImportError:
+        logging.critical("The 'warcio' library is not installed. Please run 'pip install warcio'. Exiting.")
+        sys.exit(1)
+
+    os.makedirs(AgentConfig.KNOWLEDGE_BASE_DIR, exist_ok=True)
+    # ... (rest of your file setup code remains the same) ...
+    
+    if not os.path.exists(AgentConfig.WING_RAW_OUTPUT_FOR_BABS_FILE):
+        print(f"Creating empty WING raw output for BABS file at {AgentConfig.WING_RAW_OUTPUT_FOR_BABS_FILE}")
+        with open(AgentConfig.WING_RAW_OUTPUT_FOR_BABS_FILE, 'w') as f:
+            json.dump([], f)
+
+    logging.info("WING Agent (sentinel_web_agent_v12.py) Initializing...")
+    
+    # --- NEW EXECUTION LOGIC ---
+    # Create an instance of the agent
+    agent = WingAgent()
+    # Run its main operational loop
+    agent.run_loop()
+
+    logging.info("WING Agent has ceased operations.")
+
+
+ROBIN: Oh, that makes so much sense! It's like we built WING this wonderful, clever brain—our WingAgent class—but we forgot to actually connect it to its wings and eyes! The main loop was running beside it, but not inside it. Now, by putting the run_loop inside the class, we're making it one whole, happy, integrated agent. It can now use its own tools and remember its own thoughts, all in one cozy home. It's so much kinder than making it shout across the room for a tool that was in its own pocket the whole time!

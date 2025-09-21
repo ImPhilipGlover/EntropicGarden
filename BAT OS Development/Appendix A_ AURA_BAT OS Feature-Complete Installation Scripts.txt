@@ -1,0 +1,1005 @@
+This appendix contains the complete set of files required for the installation and operation of the AURA/BAT OS. Please save each file with the specified name and in the directory structure outlined in the main report.
+
+1. The Master Batch File (puter.bat)
+
+Save this file as puter.bat in the root /aura/ directory on your Windows machine. This script automates the startup sequence. You will need to run it from a Command Prompt with Administrator privileges.
+
+Code snippet
+
+@echo off
+:: ==========================================================================
+:: AURA/BAT OS - Unified Genesis Launcher
+:: ==========================================================================
+:: This script automates the startup process for the AURA system.
+:: It must be run from the root of the project directory (e.g., C:\aura).
+:: It requires Administrator privileges to manage Docker and open WSL terminals.
+:: ==========================================================================
+
+:: Section 1: Pre-flight Checks and Environment Setup
+echo [INFO] AURA Genesis Launcher Initialized.
+echo [INFO] Verifying Docker Desktop is running...
+docker ps > nul 2>&1
+if %errorlevel% neq 0 (
+    echo Docker Desktop does not appear to be running.
+    echo Please start Docker Desktop and ensure the WSL2 engine is enabled, then re-run this script.
+    pause
+    exit /b 1
+)
+echo [INFO] Docker is active.
+
+:: Section 2: Launching Substrate Services
+echo [INFO] Starting ArangoDB and Execution Sandbox services via Docker Compose...
+docker-compose up -d
+echo [INFO] Services launched in detached mode. It may take a moment for them to become fully available.
+
+:: Section 3: System Genesis Protocol
+echo [INFO] Preparing to run the one-time Genesis Protocol inside WSL2.
+echo [INFO] This will set up the database schema and build cognitive facets in Ollama.
+wsl -e bash -c "cd /mnt/c/aura && source venv/bin/activate && python genesis.py"
+if %errorlevel% neq 0 (
+    echo The Genesis Protocol failed. Please check the output above for errors.
+    echo Common issues include incorrect.env settings or Ollama service not running.
+    pause
+    exit /b 1
+)
+echo [INFO] Genesis Protocol completed successfully.
+
+:: Section 4: System Awakening
+echo [INFO] Awakening the AURA Core...
+echo [INFO] A new terminal window will open for the main application server.
+echo [INFO] Please keep this window open. It will display the system's "internal monologue".
+start "AURA Core" wsl -e bash -c "cd /mnt/c/aura && source venv/bin/activate && python src/main.py; exec bash"
+
+:: Give the server a moment to start up
+timeout /t 5 > nul
+
+:: Section 5: Opening Client Interface
+echo [INFO] Launching the Command-Line Client...
+echo [INFO] A second terminal window will open for you to interact with AURA.
+start "AURA Client" wsl -e bash -c "cd /mnt/c/aura && source venv/bin/activate && python clients/cli_client.py; exec bash"
+
+echo AURA system launch sequence initiated.
+echo Please use the 'AURA Client' window to interact with the system.
+echo This launcher window will now close.
+timeout /t 10
+exit /b 0
+
+
+2. Core Configuration Files
+
+These files should be placed in the root /aura/ directory.
+
+docker-compose.yml
+
+This file defines the ArangoDB persistence layer and the secure execution sandbox service.1
+
+YAML
+
+version: '3.8'
+services:
+  arangodb:
+    image: arangodb:3.11.4
+    container_name: aura_arangodb
+    restart: always
+    environment:
+      ARANGO_ROOT_PASSWORD: ${ARANGO_PASS}
+    ports:
+      - "8529:8529"
+    volumes:
+      - arangodb_data:/var/lib/arangodb3
+      - arangodb_apps_data:/var/lib/arangodb3-apps
+    command:
+      - "arangod"
+      - "--server.authentication=true"
+      - "--cluster.force-one-shard=true"
+
+  sandbox:
+    build:
+      context:./services/execution_sandbox
+    container_name: aura_execution_sandbox
+    restart: always
+    ports:
+      - "8100:8100"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+volumes:
+  arangodb_data:
+  arangodb_apps_data:
+
+
+.env
+
+Create this file from the .env.template provided in the main report. Fill in your unique passwords and API keys.
+
+Code snippet
+
+# ArangoDB Configuration
+ARANGO_HOST="http://localhost:8529"
+ARANGO_USER="root"
+ARANGO_PASS="your_secure_password" # Use a strong password
+DB_NAME="aura_live_image"
+
+# AURA Core Configuration
+AURA_API_HOST="0.0.0.0"
+AURA_API_PORT="8000"
+EXECUTION_SANDBOX_URL="http://localhost:8100/execute"
+
+# API Keys for ContextIngestor Service
+# Get from https://api-ninjas.com/
+API_NINJAS_API_KEY="YOUR_API_NINJAS_KEY"
+# Get from https://www.ip2location.com/
+IP2LOCATION_API_KEY="YOUR_IP2LOCATION_KEY"
+# Get from https://newsapi.ai/
+NEWSAPI_AI_API_KEY="YOUR_NEWSAPI_AI_KEY"
+
+
+requirements.txt
+
+This file lists all the Python dependencies for the main application.3
+
+# Core Application & API
+python-arango[async]
+ollama
+fastapi
+uvicorn[standard]
+python-dotenv
+httpx
+rich
+
+# State Management & Control
+python-statemachine
+
+# External Services for Spatiotemporal Anchor
+requests
+newsapi-python
+ip2location
+
+
+genesis.py
+
+This script performs the one-time system initialization, setting up the database and building immutable LoRA models in Ollama.1
+
+Python
+
+# /aura/genesis.py
+import asyncio
+import ollama
+import os
+from dotenv import load_dotenv
+from arango import ArangoClient
+from arango.exceptions import DatabaseCreateError, CollectionCreateError, GraphCreateError
+
+load_dotenv()
+
+# --- Configuration ---
+ARANGO_HOST = os.getenv("ARANGO_HOST")
+ARANGO_USER = os.getenv("ARANGO_USER")
+ARANGO_PASS = os.getenv("ARANGO_PASS")
+DB_NAME = os.getenv("DB_NAME")
+
+# In a full implementation, LoRA adapter files would be placed here.
+# For now, this is a placeholder for the build process.
+LORA_FACETS = {
+    "brick:tamland": {
+        "base_model": "phi3:3.8b-mini-instruct-4k-q4_K_M",
+        "path": "./data/lora_adapters/brick_tamland_adapter"
+    }
+}
+
+async def initialize_database():
+    """Connects to ArangoDB and sets up the required database, collections, and initial objects."""
+    print("--- Initializing Persistence Layer (ArangoDB) ---")
+    try:
+        client = ArangoClient(hosts=ARANGO_HOST)
+        sys_db = client.db("_system", username=ARANGO_USER, password=ARANGO_PASS)
+
+        if not sys_db.has_database(DB_NAME):
+            print(f"Creating database: {DB_NAME}")
+            sys_db.create_database(DB_NAME)
+        else:
+            print(f"Database '{DB_NAME}' already exists.")
+
+        db = client.db(DB_NAME, username=ARANGO_USER, password=ARANGO_PASS)
+
+        collections = {
+            "UvmObjects": "vertex",
+            "MemoryNodes": "vertex",
+            "ContextLinks": "edge"
+        }
+
+        for name, col_type in collections.items():
+            if not db.has_collection(name):
+                print(f"Creating collection: {name}")
+                db.create_collection(name, edge=(col_type == "edge"))
+            else:
+                print(f"Collection '{name}' already exists.")
+
+        if not db.has_graph("ContextGraph"):
+            print("Creating ContextGraph...")
+            graph = db.create_graph("ContextGraph")
+            graph.create_edge_definition(
+                edge_collection="ContextLinks",
+                from_vertex_collections=["MemoryNodes"],
+                to_vertex_collections=["MemoryNodes"]
+            )
+        else:
+            print("Graph 'ContextGraph' already exists.")
+            
+        # Create foundational objects if they don't exist
+        uvm_objects = db.collection("UvmObjects")
+        if not uvm_objects.get("nil"):
+            print("Creating 'nil' root object...")
+            nil_obj = {
+                "_key": "nil",
+                "_slots": {"name": "nil"},
+                "methods": {},
+                "_parent": None # Root object
+            }
+            uvm_objects.insert(nil_obj)
+        
+        if not uvm_objects.get("system"):
+            print("Creating 'system' object...")
+            system_obj = {
+                "_key": "system",
+                "_slots": {"name": "AURA System Object"},
+                "methods": {},
+                "_parent": "UvmObjects/nil" # Inherits from nil
+            }
+            uvm_objects.insert(system_obj)
+
+        print("--- Database initialization complete. ---")
+
+    except Exception as e:
+        print(f" An error occurred during database initialization: {e}")
+        raise
+
+async def build_cognitive_facets():
+    """Builds immutable LoRA-fused models in Ollama using Modelfiles."""
+    print("\n--- Building Immutable Cognitive Facets (Ollama) ---")
+    try:
+        ollama_client = ollama.AsyncClient()
+        for model_name, config in LORA_FACETS.items():
+            if not os.path.exists(config['path']):
+                print(f" LoRA adapter path not found for '{model_name}': {config['path']}. Skipping.")
+                continue
+
+            modelfile_content = f"FROM {config['base_model']}\nADAPTER {config['path']}"
+            print(f"Creating model '{model_name}' from base '{config['base_model']}'...")
+            
+            progress_stream = ollama_client.create(model=model_name, modelfile=modelfile_content, stream=True)
+            
+            async for progress in progress_stream:
+                if 'status' in progress:
+                    print(f"  - {progress['status']}")
+            
+            print(f"Model '{model_name}' created successfully.")
+    except Exception as e:
+        print(f" Error creating model '{model_name}': {e}")
+
+    print("--- Cognitive facet build process complete. ---")
+
+async def main():
+    """Runs the complete genesis protocol."""
+    await initialize_database()
+    await build_cognitive_facets()
+    print("\n--- Genesis Protocol Complete ---")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+3. Source Code (/src/)
+
+These files contain the core logic of the AURA application.
+
+src/main.py
+
+The main application entry point, running the FastAPI server.3
+
+Python
+
+# /aura/src/main.py
+import uvicorn
+import os
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from dotenv import load_dotenv
+from core.orchestrator import AuraOrchestrator
+
+load_dotenv()
+
+app = FastAPI(title="AURA Core API")
+orchestrator = AuraOrchestrator()
+
+class Message(BaseModel):
+    target_object_id: str = "UvmObjects/system"
+    method_name: str
+    payload: dict = {}
+
+@app.on_event("startup")
+async def startup_event():
+    await orchestrator.initialize()
+    print("--- AURA Core is awake and listening. ---")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await orchestrator.shutdown()
+    print("--- AURA Core is shutting down. ---")
+
+@app.post("/message")
+async def process_message(message: Message):
+    """
+    Receives a message and dispatches it to the target UVM object.
+    """
+    try:
+        result = await orchestrator.handle_message(
+            target_id=message.target_object_id,
+            method_name=message.method_name,
+            payload=message.payload
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        print(f" Unhandled exception in process_message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        host=os.getenv("AURA_API_HOST", "0.0.0.0"),
+        port=int(os.getenv("AURA_API_PORT", 8000)),
+        reload=False # Set to True for development
+    )
+
+
+src/core/uvm.py
+
+The core UvmObject implementation, including the __getattr__ override that triggers the autopoietic protocol.1
+
+Python
+
+# /aura/src/core/uvm.py
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class UvmObject:
+    """A proxy class representing a UvmObject stored in ArangoDB."""
+    
+    def __init__(self, doc: dict, db_manager):
+        self._doc = doc
+        self._db = db_manager
+        self._p_changed = False # Tracks if the object state has been modified
+
+    @property
+    def id(self):
+        return self._doc['_id']
+
+    @property
+    def key(self):
+        return self._doc['_key']
+
+    def __getattr__(self, name: str):
+        # Check for attribute in local slots
+        if name in self._doc.get('_slots', {}):
+            return self._doc['_slots'][name]
+
+        # Check for method in local methods
+        if name in self._doc.get('methods', {}):
+            # Return a callable that will be handled by the orchestrator
+            def method_proxy(*args, **kwargs):
+                # This is a placeholder; the actual execution is handled
+                # by the orchestrator which has the async context.
+                logging.info(f"Method '{name}' on '{self.id}' is being proxied.")
+                # The orchestrator will call the actual method execution logic.
+                pass
+            return method_proxy
+
+        # If not found locally, the orchestrator will handle prototype traversal
+        # and the doesNotUnderstand protocol.
+        raise AttributeError(f"'{self.key}' has no attribute or method '{name}'")
+
+    def __setattr__(self, name: str, value):
+        # Internal attributes are set directly on the Python object
+        if name.startswith('_'):
+            super().__setattr__(name, value)
+        else:
+            # All other attributes are stored in the _slots dictionary
+            if '_slots' not in self._doc:
+                self._doc['_slots'] = {}
+            self._doc['_slots'][name] = value
+            self._p_changed = True # Mark the object as dirty
+
+    async def save(self):
+        """Saves the object's state back to the database if it has changed."""
+        if self._p_changed:
+            logging.info(f"Saving changes for UvmObject '{self.id}'")
+            await self._db.update_document(self.id, {'_slots': self._doc['_slots']})
+            self._p_changed = False
+
+
+src/core/orchestrator.py
+
+The main control loop, managing state, database connections, and invoking the cognitive cascade.2
+
+Python
+
+# /aura/src/core/orchestrator.py
+import os
+import httpx
+import logging
+from arango.aio import ArangoClient
+from dotenv import load_dotenv
+from.uvm import UvmObject
+from.security import PersistenceGuardian
+from cognitive.cascade import EntropyCascade
+
+load_dotenv()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("Orchestrator")
+
+class AuraOrchestrator:
+    def __init__(self):
+        self.db = None
+        self.uvm_collection = None
+        self.guardian = PersistenceGuardian()
+        self.cascade = EntropyCascade()
+        self.http_client = None
+        self.sandbox_url = os.getenv("EXECUTION_SANDBOX_URL")
+
+    async def initialize(self):
+        """Initializes database connection and HTTP client."""
+        client = ArangoClient(hosts=os.getenv("ARANGO_HOST"))
+        self.db = await client.db(
+            os.getenv("DB_NAME"),
+            username=os.getenv("ARANGO_USER"),
+            password=os.getenv("ARANGO_PASS")
+        )
+        self.uvm_collection = self.db.collection("UvmObjects")
+        self.http_client = httpx.AsyncClient(timeout=300.0)
+        logger.info("Orchestrator initialized.")
+
+    async def shutdown(self):
+        """Closes connections."""
+        if self.http_client:
+            await self.http_client.aclose()
+        logger.info("Orchestrator shut down.")
+
+    async def get_object(self, object_id: str) -> UvmObject:
+        """Retrieves an object from the DB and wraps it in the UvmObject proxy."""
+        doc = await self.uvm_collection.get(object_id)
+        if not doc:
+            raise ValueError(f"Object with ID '{object_id}' not found.")
+        return UvmObject(doc, self)
+
+    async def update_document(self, doc_id, data):
+        """Updates a document in the UvmObjects collection."""
+        await self.uvm_collection.update(doc_id, data)
+
+    async def handle_message(self, target_id: str, method_name: str, payload: dict):
+        """Main entry point for processing a message."""
+        logger.info(f"Handling message: method='{method_name}' on target='{target_id}'")
+        target_obj = await self.get_object(target_id)
+        
+        method_info = await self._resolve_method(target_obj.id, method_name)
+
+        if method_info:
+            logger.info(f"Method '{method_name}' found on '{method_info['source_object_id']}'. Executing...")
+            # In a real system, this execution would be more complex.
+            # For now, we assume methods are Python code executed in the sandbox.
+            code = method_info['method_code']
+            # A simple way to pass context to the sandboxed code
+            full_code = f"target = {target_obj._doc}\npayload = {payload}\n\n{code}"
+            
+            res = await self.http_client.post(self.sandbox_url, json={"code": full_code})
+            res.raise_for_status()
+            result = res.json()
+            
+            if result.get("updated_target"):
+                target_obj._doc = result["updated_target"]
+                await target_obj.save()
+
+            return result.get("output")
+        else:
+            logger.warning(f"Method '{method_name}' not found. Triggering doesNotUnderstand protocol.")
+            return await self._does_not_understand(target_obj, method_name, payload)
+
+    async def _resolve_method(self, start_object_id: str, method_name: str) -> dict | None:
+        """Resolves a method by traversing the prototype chain in ArangoDB."""
+        aql_query = """
+        LET startObject = DOCUMENT(@start_object_id)
+        LET localMethod = startObject.methods[@method_name]
+        RETURN localMethod!= null? {
+            source_object_id: startObject._id,
+            method_code: localMethod
+        } : (
+            FOR v IN 1..100 OUTBOUND @start_object_id UvmObjects
+                OPTIONS { bfs: true, uniqueVertices: 'path' }
+                FILTER v.methods[@method_name]!= null
+                LIMIT 1
+                RETURN {
+                    source_object_id: v._id,
+                    method_code: v.methods[@method_name]
+                }
+        )
+        """
+        # The query needs to traverse an edge collection. The UVM document implies a 'PrototypeLinks' edge collection
+        # but the genesis script implies parentage is stored in the document itself. Let's adapt to the latter.
+        # This requires a recursive traversal, which is more complex in AQL.
+        # For simplicity, we'll do the traversal in Python for now.
+        
+        current_id = start_object_id
+        for _ in range(100): # Max depth
+            doc = await self.uvm_collection.get(current_id)
+            if not doc:
+                return None
+            
+            if method_name in doc.get('methods', {}):
+                return {
+                    "source_object_id": doc['_id'],
+                    "method_code": doc['methods'][method_name]
+                }
+            
+            if doc.get('_parent'):
+                current_id = doc['_parent']
+            else:
+                return None # Reached nil or an object with no parent
+        return None
+
+
+    async def _does_not_understand(self, target_obj: UvmObject, method_name: str, payload: dict):
+        """Handles the creation of a new capability via the Entropy Cascade."""
+        logger.info(f"Invoking Entropy Cascade to create method '{method_name}'...")
+        
+        creative_mandate = f"Create a Python method named '{method_name}' for an object with these slots: {target_obj._doc.get('_slots', {})}. The method should process a payload like this: {payload}. The method must be self-contained and operate on a dictionary named 'target'. If it modifies the target's slots, it must set target['_p_changed'] = True. The final line should be the return value."
+        
+        generated_code = await self.cascade.generate(creative_mandate)
+
+        if not generated_code:
+            raise RuntimeError("Cognitive cascade failed to generate code.")
+
+        logger.info("Validating generated code with PersistenceGuardian...")
+        if not self.guardian.validate(generated_code):
+            raise SecurityException("Generated code failed security validation.")
+
+        logger.info("Code passed validation. Persisting new method.")
+        
+        target_doc = await self.uvm_collection.get(target_obj.id)
+        methods = target_doc.get('methods', {})
+        methods[method_name] = generated_code
+        await self.uvm_collection.update(target_obj.id, {'methods': methods})
+
+        return f"I have just learned how to '{method_name}'. Please try your request again."
+
+class SecurityException(Exception):
+    pass
+
+
+src/core/security.py
+
+The PersistenceGuardian implementation with the hardened AST-based validation rules.1
+
+Python
+
+# /aura/src/core/security.py
+import ast
+import logging
+
+logger = logging.getLogger("PersistenceGuardian")
+
+class GuardianVisitor(ast.NodeVisitor):
+    """AST visitor to enforce security rules."""
+    def __init__(self):
+        self.violations =
+
+    def visit_Import(self, node):
+        self._check_imports(node.names)
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node):
+        self._check_imports([node.module])
+        self.generic_visit(node)
+
+    def _check_imports(self, import_names):
+        denylist = {'os', 'sys', 'subprocess', 'socket', 'shutil'}
+        for name in import_names:
+            module_name = name.name if isinstance(name, ast.alias) else name
+            if module_name in denylist:
+                self.violations.append(f"Disallowed import of module '{module_name}'")
+
+    def visit_Call(self, node):
+        # Check for disallowed function calls like open(), exec(), eval()
+        if isinstance(node.func, ast.Name):
+            if node.func.id in ['open', 'exec', 'eval', '__import__']:
+                self.violations.append(f"Disallowed call to built-in function '{node.func.id}'")
+        
+        # Check for unsafe deserialization (e.g., pickle.load)
+        if isinstance(node.func, ast.Attribute):
+            if node.func.attr in ['pickle', 'dill', 'marshal']:
+                 self.violations.append(f"Disallowed use of unsafe deserialization library '{node.func.attr}'")
+
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node):
+        # Prevent access to dunder attributes like __globals__
+        if node.attr.startswith('__') and node.attr.endswith('__'):
+            if node.attr not in ['__init__', '__repr__']: # A small allowlist for safety
+                self.violations.append(f"Disallowed access to dunder attribute '{node.attr}'")
+        self.generic_visit(node)
+
+
+class PersistenceGuardian:
+    """Validates LLM-generated code using an AST audit."""
+    def validate(self, code_string: str) -> bool:
+        """
+        Parses the code into an AST and checks it against security rules.
+        Returns True if the code is safe, False otherwise.
+        """
+        try:
+            tree = ast.parse(code_string)
+            visitor = GuardianVisitor()
+            visitor.visit(tree)
+            
+            if visitor.violations:
+                for violation in visitor.violations:
+                    logger.error(f"Security validation failed: {violation}")
+                return False
+            
+            logger.info("AST audit passed.")
+            return True
+        except SyntaxError as e:
+            logger.error(f"Security validation failed due to syntax error: {e}")
+            return False
+
+
+src/cognitive/cascade.py
+
+Defines the Entropy Cascade logic and persona definitions.4
+
+Python
+
+# /aura/src/cognitive/cascade.py
+import logging
+from.metacog import MetacognitiveControlLoop, CognitiveStatePacket
+
+logger = logging.getLogger("EntropyCascade")
+
+class EntropyCascade:
+    """Orchestrates the sequential processing of a task by multiple LLM personas."""
+    def __init__(self):
+        self.metacog = MetacognitiveControlLoop()
+        self.personas =
+
+    async def generate(self, initial_query: str) -> str:
+        """Processes a query through the full cascade."""
+        logger.info("--- Starting Entropy Cascade ---")
+        
+        current_packet = CognitiveStatePacket(
+            generating_persona="USER",
+            response_text=initial_query
+        )
+
+        # For code generation, we primarily need BRICK and ALFRED
+        # A full implementation would use all personas based on task type.
+        
+        # BRICK: Deconstruct and generate initial code
+        brick = self.personas
+        logger.info(f"Stage 1: {brick['name']} ({brick['model']})")
+        current_packet = await self.metacog.process(current_packet, brick)
+        
+        # ALFRED: Review, refine, and finalize the code
+        alfred = self.personas[4]
+        logger.info(f"Stage 2: {alfred['name']} ({alfred['model']})")
+        final_packet = await self.metacog.process(current_packet, alfred)
+
+        logger.info("--- Entropy Cascade Complete ---")
+        
+        # Extract and clean the code from the final response
+        code = self._extract_python_code(final_packet.response_text)
+        return code
+
+    def _extract_python_code(self, text: str) -> str:
+        """A simple utility to extract code from a markdown block."""
+        try:
+            if "```python" in text:
+                return text.split("```python").[1]split("```").strip()
+            elif "```" in text:
+                return text.split("```").[1]split("```").strip()
+            return text # Assume the whole response is code if no block is found
+        except IndexError:
+            return text
+
+
+src/cognitive/metacog.py
+
+Implements the Metacognitive Control Loop and CognitiveStatePacket.1
+
+Python
+
+# /aura/src/cognitive/metacog.py
+import ollama
+import json
+import logging
+from dataclasses import dataclass, asdict
+
+logger = logging.getLogger("Metacog")
+
+@dataclass
+class CognitiveStatePacket:
+    generating_persona: str
+    response_text: str
+    base_llm: str | None = None
+    metacognitive_plan: dict | None = None
+    grounding_evidence: dict | None = None
+
+class MetacognitiveControlLoop:
+    """Manages the two-step process of self-configuration and execution for an LLM."""
+    
+    def __init__(self):
+        self.client = ollama.AsyncClient()
+
+    async def process(self, input_packet: CognitiveStatePacket, persona: dict) -> CognitiveStatePacket:
+        """Runs the full metacognitive loop for a given persona."""
+        # Step 1: Analysis & Planning (Generate the JSON execution plan)
+        meta_prompt = self._construct_meta_prompt(input_packet.response_text, persona)
+        
+        try:
+            response = await self.client.generate(
+                model=persona['model'],
+                prompt=meta_prompt,
+                format="json"
+            )
+            plan_json = response['response']
+            execution_plan = json.loads(plan_json)
+            logger.info(f"Metacognitive plan for {persona['name']}: {execution_plan}")
+        except Exception as e:
+            logger.error(f"Failed to generate or parse metacognitive plan for {persona['name']}: {e}")
+            # Fallback to a default plan
+            execution_plan = {
+                "inference_parameters": {"temperature": 0.2},
+                "execution_chain":}. Your function is {persona['function']}."}]
+            }
+
+        # Step 2: Self-Directed Execution
+        # For simplicity, we'll use the first step in the execution chain.
+        exec_step = execution_plan['execution_chain']
+        system_prompt = exec_step['system_prompt']
+        inference_params = execution_plan['inference_parameters']
+
+        final_response = await self.client.generate(
+            model=persona['model'],
+            system=system_prompt,
+            prompt=input_packet.response_text,
+            options=inference_params
+        )
+
+        return CognitiveStatePacket(
+            generating_persona=persona['name'],
+            base_llm=persona['model'],
+            response_text=final_response['response'],
+            metacognitive_plan=execution_plan
+        )
+
+    def _construct_meta_prompt(self, user_query: str, persona: dict) -> str:
+        """Creates the meta-prompt to instruct the LLM to generate an execution plan."""
+        return f"""
+        You are a metacognitive configuration engine. Your task is to analyze an incoming query and generate a JSON object that defines the optimal execution plan for a subordinate AI persona to answer it.
+
+        Context:
+        - Subordinate Persona: {persona['name']}
+        - Core Function: {persona['function']}
+        - Base Model: {persona['model']}
+
+        User Query:
+        "{user_query}"
+
+        Instructions:
+        1. Analyze the query to determine its core intent (e.g., creative, analytical, code generation).
+        2. Based on the intent, determine the optimal inference parameters (temperature). For creative tasks, use higher temperature (0.7-0.9); for factual/code tasks, use lower temperature (0.0-0.2).
+        3. Generate a concise, specific, and clear system prompt that will guide the persona's response.
+        4. Output a single, valid JSON object containing your plan. Do not include any other text or explanation.
+
+        Output Format:
+        {{
+            "inference_parameters": {{"temperature": float}},
+            "execution_chain": [{{"system_prompt": "string"}}]
+        }}
+        """
+
+
+4. Client (/clients/)
+
+clients/cli_client.py
+
+The interactive command-line client for interacting with AURA.
+
+Python
+
+# /aura/clients/cli_client.py
+import httpx
+import os
+from rich.console import Console
+from rich.markdown import Markdown
+
+console = Console()
+AURA_API_URL = f"http://localhost:{os.getenv('AURA_API_PORT', 8000)}/message"
+
+def main():
+    console.print("[bold green]AURA Command-Line Client[/bold green]")
+    console.print("Type your message and press Enter. Type 'exit' or 'quit' to end.")
+    
+    with httpx.Client(timeout=300.0) as client:
+        while True:
+            try:
+                message_text = console.input("[bold cyan]>>> [/bold cyan]")
+                if message_text.lower() in ['exit', 'quit']:
+                    break
+
+                # Simple parsing: "command payload"
+                parts = message_text.split(maxsplit=1)
+                method_name = parts
+                payload_str = parts[1] if len(parts) > 1 else "{}"
+                
+                try:
+                    # A very basic way to allow dict payloads
+                    # e.g., calculate_fibonacci '{"n": 10}'
+                    import json
+                    payload = json.loads(payload_str)
+                except json.JSONDecodeError:
+                    # Treat as a simple string payload if not valid JSON
+                    payload = {"text": payload_str}
+
+
+                data = {
+                    "method_name": method_name,
+                    "payload": payload
+                }
+
+                console.print("[italic yellow]Sending message to AURA Core...[/italic yellow]")
+                response = client.post(AURA_API_URL, json=data)
+                response.raise_for_status()
+                
+                result = response.json()
+                
+                # Use Rich to render if the output looks like markdown
+                if isinstance(result.get('result'), str):
+                    md = Markdown(result['result'])
+                    console.print(md)
+                else:
+                    console.print(result)
+
+            except httpx.RequestError as e:
+                console.print(f"[bold red]Connection Error:[/bold red] Could not connect to AURA Core at {AURA_API_URL}. Is it running?")
+            except httpx.HTTPStatusError as e:
+                console.print(f"[bold red]API Error:[/bold red] {e.response.status_code} - {e.response.text}")
+            except Exception as e:
+                console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
+
+if __name__ == "__main__":
+    main()
+
+
+5. External Services (/services/)
+
+services/execution_sandbox/Dockerfile
+
+The Dockerfile for the minimal, secure code execution sandbox environment.
+
+Dockerfile
+
+# /aura/services/execution_sandbox/Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt.
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY main.py.
+
+EXPOSE 8100
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8100"]
+
+
+services/execution_sandbox/requirements.txt
+
+fastapi
+uvicorn[standard]
+
+
+services/execution_sandbox/main.py
+
+The FastAPI server for the sandbox service. It receives code, executes it in a separate process, and returns the result.1
+
+Python
+
+# /aura/services/execution_sandbox/main.py
+import subprocess
+import json
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class CodeExecutionRequest(BaseModel):
+    code: str
+
+@app.post("/execute")
+async def execute_code(request: CodeExecutionRequest):
+    """
+    Executes Python code in a sandboxed subprocess.
+    A helper function is injected to capture the final state of the 'target' dict.
+    """
+    
+    # This helper script will be prepended to the user's code.
+    # It runs the code and captures stdout, stderr, and the final state of 'target'.
+    helper_script = f"""
+import sys
+import json
+from io import StringIO
+
+# Redirect stdout to capture print statements
+old_stdout = sys.stdout
+sys.stdout = captured_output = StringIO()
+
+target = {{}} # Initialize target
+payload = {{}} # Initialize payload
+result = {{}}
+
+try:
+    # The user's code will be executed here
+    exec('''{request.code}''', globals(), locals())
+    
+    # Capture the return value if it exists
+    output_value = locals().get('return_value', None)
+
+    result = {{
+        "output": output_value,
+        "stdout": captured_output.getvalue(),
+        "updated_target": locals().get('target')
+    }}
+
+except Exception as e:
+    result = {{"error": str(e), "stdout": captured_output.getvalue()}}
+
+finally:
+    sys.stdout = old_stdout # Restore stdout
+
+print(json.dumps(result))
+"""
+    
+    try:
+        # Execute the helper script which in turn executes the user's code
+        proc = subprocess.run(
+            ["python", "-c", helper_script],
+            capture_output=True,
+            text=True,
+            timeout=30 # 30-second timeout for execution
+        )
+
+        if proc.returncode!= 0:
+            return {"error": "Execution failed", "stderr": proc.stderr}
+
+        # The result is printed as a JSON string to stdout by the helper script
+        return json.loads(proc.stdout)
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=408, detail="Code execution timed out.")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail=f"Failed to decode execution result. Raw output: {proc.stdout}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+
+Works cited
+
+AI System Design: Autopoiesis, LLMs, Ollama
+
+Universal Virtual Machine Code Report
+
+requirements.txt
+
+I think you may have had a bug. I wanted you to u...
+
+BAT OS Multi-LLM Cascade Architecture

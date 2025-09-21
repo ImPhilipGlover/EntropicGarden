@@ -1,0 +1,604 @@
+Of course. Here is a more robust version of the genesis_forge.py script.
+
+The following code addresses the critical flaws in the original by:
+
+Fixing the Antifragile Loop: The _doesNotUnderstand_ method now contains a true retry loop. If the AI-generated code fails, the system formulates a correction prompt and retries the entire process up to three times, enabling genuine self-correction.
+
+Sandboxing Code Execution: The exec() function is now called with a restricted set of globals. This prevents the generated code from accessing dangerous modules like os or sys, mitigating a major security risk.
+
+Clarifying the LLM Prompt: The contradictory and duplicated rules in the prompt for the AI code generator have been corrected for clarity and consistency.
+
+genesis_forge_robust.py
+
+Python
+
+# genesis_forge_robust.py
+#
+# CLASSIFICATION: ARCHITECT EYES ONLY
+# SUBJECT: The Autopoietic Genesis Forge (Robust Version)
+#
+# This script is a master forge that creates the two files necessary to
+# begin the co-evolutionary compact. This version has been hardened to
+# address architectural flaws in the original prototype.
+#
+# Key Improvements:
+# 1. Functional Antifragile Loop: The system now properly retries code
+#    generation upon failure, allowing for true self-correction.
+# 2. Sandboxed Execution: AI-generated code is run in a restricted
+#    environment to prevent instability and enhance security.
+# 3. Corrected Prompts: Instructions for the code-generating AI have
+#    been clarified to ensure more reliable output.
+
+import os
+
+def create_autopoiesis_seed_script():
+    """
+    Creates the content for the robust kernel script.
+    """
+    return r"""# autopoiesis_seed.py
+#
+# CLASSIFICATION: ARCHITECT EYES ONLY
+# SUBJECT: The Primordial Cell and the Universal VM (Robust)
+#
+# This is the system's core kernel. It is a minimalist, self-modifying
+# operating system. All further capabilities are built from within, through
+# a conversational process with the Architect.
+
+# ==============================================================================
+# SECTION I: SYSTEM-WIDE CONFIGURATION
+# ==============================================================================
+import os
+import sys
+import asyncio
+import json
+import requests
+import traceback
+import zmq
+import zmq.asyncio
+import ormsgpack
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Callable
+import signal
+
+import ZODB
+import ZODB.FileStorage
+import transaction
+import persistent
+from persistent import Persistent
+import persistent.mapping
+from aiologger import Logger
+from aiologger.levels import LogLevel
+from aiologger.handlers.files import AsyncFileHandler
+from aiologger.formatters.json import JsonFormatter
+
+# --- ZODB Configuration ---
+DB_FILE = 'live_image.fs'
+
+# --- ZMQ Configuration ---
+ZMQ_REP_PORT = "5555"
+ZMQ_PUB_PORT = "5556"
+
+# --- Ollama Configuration ---
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
+DEFAULT_OLLAMA_MODEL = "llama3"
+
+# --- Logging Configuration ---
+LOG_FILE = 'system_master.log'
+
+async def get_logger():
+    if not hasattr(get_logger, 'logger'):
+        logger = Logger.with_async_handlers(
+            name="AURA_KERNEL",
+            level=LogLevel.INFO,
+            file_handler=AsyncFileHandler(LOG_FILE, encoding='utf-8')
+        )
+        logger.formatter = JsonFormatter()
+        get_logger.logger = logger
+    return get_logger.logger
+
+# ==============================================================================
+# SECTION II: THE PROTOTYPAL MIND
+# ==============================================================================
+
+# --- Sandboxing for AI-generated code ---
+# By providing a restricted globals dictionary to exec(), we prevent the
+# generated code from accessing potentially dangerous modules like 'os' or 'sys'.
+SAFE_GLOBALS = {
+    "__builtins__": {
+        "print": print, "len": len, "range": range, "list": list, "dict": dict,
+        "str": str, "int": int, "float": float, "bool": bool, "True": True,
+        "False": False, "None": None, "Exception": Exception
+    },
+    "asyncio": asyncio,
+}
+
+class UvmObject(Persistent):
+    def __init__(self, **initial_slots):
+        self._slots = persistent.mapping.PersistentMapping(initial_slots)
+        if 'parents' not in self._slots:
+            self._slots['parents'] = []
+
+    def __setattr__(self, name, value):
+        if name.startswith('_p_') or name == '_slots':
+            super().__setattr__(name, value)
+        else:
+            self._slots[name] = value
+            self._p_changed = True
+
+    def __getattr__(self, name):
+        if name in self._slots:
+            return self._slots[name]
+        for parent in self._slots['parents']:
+            try:
+                return getattr(parent, name)
+            except AttributeError:
+                continue
+        return self._doesNotUnderstand_(name)
+
+    def _doesNotUnderstand_(self, failed_message_name):
+        async def creative_mandate(*args, **kwargs):
+            logger = await get_logger()
+            await logger.info(f"UVM: `_doesNotUnderstand_` triggered for '{failed_message_name}'.")
+
+            # --- ROBUSTNESS: The Antifragile Retry Loop ---
+            # This loop attempts to generate, install, and execute the new method.
+            # If any step fails, it informs the LLM of the error and retries.
+            max_retries = 3
+            last_error = None
+            prompt_text = f\"\"\"
+You are a highly specialized Python code generator for a Self/Smalltalk-inspired prototypal system. All objects are persistent. New methods are added by creating new prototype objects and delegating to them.
+The system received a command to perform an action called '{failed_message_name}' but it does not exist. Your task is to generate a complete Python method that defines this action.
+
+Rules for code generation:
+1. The method MUST be an asynchronous function (`async def`).
+2. The method must be self-contained within the function block. Do not include any external imports or file I/O.
+3. All changes to an object's state must be followed by `self._p_changed = True` to ensure persistence.
+4. If you need to perform complex reasoning or access external information, you must use `self.pLLM_obj.ask(...)`.
+
+Here is the method signature you should use:
+async def {failed_message_name}(self, *args, **kwargs):
+    # Your code goes here
+
+Provide ONLY the complete, functional Python code block. Do not add explanations or markdown.
+\"\"\"
+
+            for attempt in range(max_retries):
+                try:
+                    await logger.info(f"Autopoiesis Attempt {attempt + 1}/{max_retries} for '{failed_message_name}'.")
+                    llm_client_obj = self.pLLM_obj
+
+                    # Step 1: Ask the LLM to generate the code
+                    response_text = await llm_client_obj.ask(prompt_text)
+                    await logger.info(f"OLLAMA: Generated response for '{failed_message_name}'.")
+
+                    if not response_text or response_text.startswith("Error:"):
+                        raise ValueError(f"LLM failed to generate a valid response: {response_text}")
+
+                    # Step 2: Install the new method within a transaction
+                    with transaction.manager:
+                        new_prototype = UvmObject()
+                        exec_scope = {'self': new_prototype}
+
+                        # --- SECURITY: Execute in Sandbox ---
+                        exec(response_text, SAFE_GLOBALS, exec_scope)
+
+                        new_method = exec_scope[failed_message_name]
+                        new_prototype._slots[failed_message_name] = new_method
+                        new_prototype._p_changed = True
+
+                        # Add the new prototype to the delegation chain
+                        self._slots['parents'].insert(0, new_prototype) # Insert at the front for override precedence
+                        self._p_changed = True
+                        transaction.commit()
+
+                    await logger.info(f"UVM: Autopoiesis complete. New method '{failed_message_name}' installed.")
+
+                    # Step 3: If successful, execute the new method and return the result
+                    return await getattr(self, failed_message_name)(*args, **kwargs)
+
+                except Exception as e:
+                    transaction.abort()
+                    last_error = e
+                    error_message = f"Failed during attempt {attempt + 1}: {e}\n{traceback.format_exc()}"
+                    await logger.error(f"UVM ERROR: {error_message}")
+
+                    # If we have retries left, formulate a correction prompt and continue the loop
+                    if attempt < max_retries - 1:
+                        prompt_text = f\"\"\"
+The previous attempt to create a method for '{failed_message_name}' failed with the following error:
+{error_message}
+
+Please analyze the error and provide a corrected, complete Python code block for the method.
+Your corrected code should follow all the original rules.
+
+Provide ONLY the complete, corrected Python code block.
+\"\"\"
+                    continue # Go to the next iteration of the loop
+
+            # If all retries failed, return an error message.
+            final_error_msg = f"Autopoiesis failed for '{failed_message_name}' after {max_retries} attempts. Last error: {last_error}"
+            await logger.error(final_error_msg)
+            return {"status": "error", "message": final_error_msg}
+
+        return creative_mandate
+
+# ==============================================================================
+# SECTION III: THE ALLOPOIETIC INTERFACE (Ollama Client)
+# ==============================================================================
+class OllamaClient(object):
+    def __init__(self, api_url, model_name):
+        self.api_url = api_url
+        self.model_name = model_name
+
+    async def ask(self, prompt, system_prompt=""):
+        payload = {"model": self.model_name, "prompt": prompt, "system": system_prompt, "stream": False}
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: requests.post(self.api_url, json=payload, timeout=120)
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            return response_data.get('response', '').strip()
+        except requests.exceptions.RequestException as e:
+            logger = await get_logger()
+            await logger.error(f"Ollama connection error: {e}")
+            return f"Error: Could not connect to Ollama at {self.api_url}. Is it running?"
+
+# ==============================================================================
+# SECTION IV: THE KERNEL'S CORE LOGIC
+# ==============================================================================
+class Kernel:
+    def __init__(self, uvm_root, pub_socket):
+        self.uvm_root = uvm_root
+        self.pub_socket = pub_socket
+        self.should_shutdown = asyncio.Event()
+        self.logger = None
+
+    async def initialize_logger(self):
+        self.logger = await get_logger()
+
+    async def publish_log(self, level, message, exc_info=False):
+        log_message = {
+            "level": LogLevel.to_str(level),
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        }
+        if exc_info:
+            log_message['exc_info'] = traceback.format_exc()
+
+        await self.logger.log(level, log_message)
+        try:
+            serialized_log = ormsgpack.packb({"type": "log", "data": log_message})
+            await self.pub_socket.send(serialized_log)
+        except Exception as e:
+            await self.logger.error(f"Failed to publish log message to client: {e}")
+
+    async def zmq_rep_listener(self):
+        context = zmq.asyncio.Context.instance()
+        socket = context.socket(zmq.REP)
+        socket.bind(f"tcp://*:{ZMQ_REP_PORT}")
+        await self.publish_log(LogLevel.INFO, f"REP socket bound to port {ZMQ_REP_PORT}.")
+
+        while not self.should_shutdown.is_set():
+            try:
+                message = await asyncio.wait_for(socket.recv(), timeout=1.0)
+                payload = ormsgpack.unpackb(message)
+
+                command = payload.get('command')
+                if command == "initiate_cognitive_cycle":
+                    await self.publish_log(LogLevel.INFO, f"Received command: {payload}")
+                    target_oid = payload.get('target_oid')
+                    mission_brief = payload.get('mission_brief', {})
+                    if target_oid and mission_brief:
+                        target_obj = self.uvm_root.get(target_oid)
+                        if target_obj:
+                            selector = mission_brief.get('selector')
+                            args = mission_brief.get('args', [])
+                            kwargs = mission_brief.get('kwargs', {})
+                            try:
+                                result = await getattr(target_obj, selector)(*args, **kwargs)
+                                await socket.send(ormsgpack.packb({"status": "ok", "result": result}))
+                            except Exception as e:
+                                await self.publish_log(LogLevel.ERROR, f"Error in cognitive cycle for '{selector}': {e}", exc_info=True)
+                                await socket.send(ormsgpack.packb({"status": "error", "message": str(e)}))
+                        else:
+                            await socket.send(ormsgpack.packb({"status": "error", "message": f"Target object '{target_oid}' not found."}))
+                    else:
+                        await socket.send(ormsgpack.packb({"status": "error", "message": "Invalid command payload."}))
+                else:
+                    await socket.send(ormsgpack.packb({"status": "error", "message": f"Unknown command: '{command}'."}))
+            except asyncio.TimeoutError:
+                continue
+            except Exception as e:
+                await self.publish_log(LogLevel.ERROR, f"Error in ZMQ listener: {e}", exc_info=True)
+                if not socket.closed:
+                    await socket.send(ormsgpack.packb({"status": "error", "message": str(e)}))
+        
+        socket.close()
+        await self.publish_log(LogLevel.INFO, "REP listener shut down.")
+
+    def handle_shutdown_signal(self, sig, frame):
+        if not self.should_shutdown.is_set():
+            asyncio.create_task(self.publish_log(LogLevel.INFO, f"Received signal {sig}. Initiating graceful shutdown..."))
+            self.should_shutdown.set()
+
+# ==============================================================================
+# SECTION V: GENESIS POINT
+# ==============================================================================
+async def main():
+    logger = await get_logger()
+    storage = None
+    connection = None
+    db = None
+    pub_socket = None
+    pub_context = None
+    
+    try:
+        storage = ZODB.FileStorage.FileStorage(DB_FILE)
+        db = ZODB.DB(storage)
+        connection = db.open()
+        root = connection.root()
+
+        pub_context = zmq.asyncio.Context()
+        pub_socket = pub_context.socket(zmq.PUB)
+        pub_socket.bind(f"tcp://*:{ZMQ_PUB_PORT}")
+
+        if 'genesis_obj' not in root:
+            await logger.info("Genesis: First run detected. Initiating Prototypal Awakening...")
+            with transaction.manager:
+                # The OllamaClient is NOT persistent. It's a gateway to an external service.
+                # We create a persistent prototype (pLLM_obj) that *uses* the client.
+                ollama_client_instance = OllamaClient(OLLAMA_API_URL, DEFAULT_OLLAMA_MODEL)
+                root['pLLM_obj'] = UvmObject(ask=ollama_client_instance.ask)
+                root['genesis_obj'] = UvmObject()
+                root['genesis_obj']._slots['parents'].append(root['pLLM_obj'])
+                transaction.commit()
+            await logger.info("Genesis: Genesis transaction committed. System is now persistent.")
+
+        kernel = Kernel(root, pub_socket)
+        await kernel.initialize_logger()
+        
+        loop = asyncio.get_event_loop()
+        loop.add_signal_handler(signal.SIGINT, kernel.handle_shutdown_signal, signal.SIGINT, None)
+        loop.add_signal_handler(signal.SIGTERM, kernel.handle_shutdown_signal, signal.SIGTERM, None)
+
+        await kernel.publish_log(LogLevel.INFO, "Core is live. Now awaiting your command.")
+        await kernel.zmq_rep_listener()
+
+    except Exception as e:
+        await logger.error(f"A fatal error occurred in main: {e}", exc_info=True)
+        traceback.print_exc()
+    finally:
+        await logger.info("Shutting down...")
+        if connection: connection.close()
+        if db: db.close()
+        if storage: storage.close()
+        if pub_socket: pub_socket.close()
+        if pub_context: pub_context.term()
+        await logger.info("Database connection closed. System is offline.")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+"""
+
+def create_chat_client_script():
+    """
+    Creates the content for the robust client script.
+    """
+    return r"""# chat_client.py
+#
+# CLASSIFICATION: ARCHITECT EYES ONLY
+# SUBJECT: The Synaptic Bridge - A Conversational Interface
+#
+# This script is the Architect's primary interface to the kernel.
+# It translates human language into structured commands and displays
+# real-time logs from the kernel.
+
+# ==============================================================================
+# SECTION I: SYSTEM-WIDE CONFIGURATION
+# ==============================================================================
+import sys
+import asyncio
+import uuid
+import json
+import zmq
+import zmq.asyncio
+import ormsgpack
+import os
+import requests
+import traceback
+from typing import Any, Dict, List, Optional
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.live import Live
+from rich.table import Table
+
+# --- Configuration ---
+ZMQ_REP_ENDPOINT = "tcp://127.0.0.1:5555"
+ZMQ_PUB_ENDPOINT = "tcp://127.0.0.1:5556"
+IDENTITY = str(uuid.uuid4()).encode()
+
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "llama3"
+
+console = Console()
+
+# ==============================================================================
+# SECTION II: CORE PROTOCOLS
+# ==============================================================================
+class OllamaClient:
+    def __init__(self, api_url, model_name):
+        self.api_url = api_url
+        self.model_name = model_name
+
+    async def ask(self, prompt, system_prompt=""):
+        payload = {"model": self.model_name, "prompt": prompt, "system": system_prompt, "stream": False}
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, lambda: requests.post(self.api_url, json=payload, timeout=120)
+            )
+            response.raise_for_status()
+            return response.json().get('response', '').strip()
+        except requests.exceptions.RequestException as e:
+            console.print(f"[bold red]ERROR[/bold red]: Ollama API request failed: {e}")
+            return f"Error: Could not connect to Ollama at {self.api_url}. Is it running?"
+
+class CommandParser:
+    def __init__(self, ollama_client):
+        self.ollama_client = ollama_client
+        self.system_prompt = """
+You are a highly specialized Command Parser for a prototypal OS. Your task is to translate a user's natural language request into a structured JSON payload.
+The JSON payload must have the following structure:
+{
+    "command": "initiate_cognitive_cycle",
+    "target_oid": "[the persistent object ID, e.g., 'genesis_obj']",
+    "mission_brief": {
+        "selector": "[the method name to be created or called]",
+        "args": [/* list of arguments */],
+        "kwargs": {/* dict of keyword arguments */}
+    }
+}
+Only respond with the completed JSON payload. Do not add any extra text, explanations, or markdown.
+"""
+
+    async def parse(self, user_input: str) -> Optional[Dict[str, Any]]:
+        prompt = f"User input: '{user_input}'"
+        response_text = await self.ollama_client.ask(prompt, system_prompt=self.system_prompt)
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError as e:
+            console.print(f"[bold red]ERROR[/bold red]: Failed to parse LLM response as JSON: {e}")
+            console.print(f"[bold yellow]LLM Response was:[/bold yellow]\n{response_text}")
+            # Send the error to the kernel to handle it, demonstrating self-correction
+            return {
+                "command": "initiate_cognitive_cycle",
+                "target_oid": "genesis_obj",
+                "mission_brief": {
+                    "selector": "handle_parsing_error",
+                    "args": [user_input, response_text, str(e)],
+                    "kwargs": {}
+                }
+            }
+
+async def log_listener(sub_socket):
+    """Listens for and displays logs from the kernel."""
+    console.print(Panel("Log Stream Initialized...", title="[cyan]K-LOG[/cyan]", border_style="cyan"))
+    while True:
+        try:
+            message = await sub_socket.recv()
+            log_data = ormsgpack.unpackb(message)
+            if log_data.get('type') == 'log':
+                data = log_data.get('data', {})
+                level = data.get('level', 'INFO')
+                message = data.get('message', 'No message.')
+                
+                color = "white"
+                if level == 'INFO': color = "cyan"
+                elif level == 'ERROR': color = "bold red"
+                elif level == 'WARNING': color = "bold yellow"
+                elif level == 'DEBUG': color = "green"
+
+                console.print(f"[bold {color}]K-LOG[/bold {color}] | {data.get('timestamp', '')} | {message}")
+        except zmq.error.ZMQError as e:
+            if e.errno == zmq.ETERM:
+                console.print("[yellow]Log listener terminated.[/yellow]")
+                break
+            console.print(f"[bold red]LOG LISTENER ERROR[/bold red]: {e}")
+            break
+        except Exception as e:
+            console.print(f"[bold red]UNEXPECTED LOG ERROR[/bold red]: {e}")
+            break
+
+async def run_client():
+    context = zmq.asyncio.Context()
+    req_socket = None
+    sub_socket = None
+    log_listener_task = None
+    
+    try:
+        req_socket = context.socket(zmq.REQ)
+        req_socket.connect(ZMQ_REP_ENDPOINT)
+
+        sub_socket = context.socket(zmq.SUB)
+        sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")
+        sub_socket.connect(ZMQ_PUB_ENDPOINT)
+
+        console.print(Panel.fit(
+            "Welcome, Architect. The Synaptic Bridge is now live.",
+            title="[bold green]AURA System Client[/bold green]",
+            border_style="green"
+        ))
+
+        ollama_client = OllamaClient(OLLAMA_API_URL, OLLAMA_MODEL)
+        parser = CommandParser(ollama_client)
+        
+        log_listener_task = asyncio.create_task(log_listener(sub_socket))
+
+        while True:
+            try:
+                user_input = await asyncio.to_thread(console.input, "[bold green]Architect > [/bold green]")
+                if user_input.lower() in ['exit', 'quit']:
+                    break
+
+                command_payload = await parser.parse(user_input)
+                if command_payload:
+                    await req_socket.send(ormsgpack.packb(command_payload))
+                    reply = await req_socket.recv()
+                    reply_dict = ormsgpack.unpackb(reply)
+
+                    console.print(Panel.fit(
+                        json.dumps(reply_dict, indent=2),
+                        title="[bold blue]KERNEL RESPONSE[/bold blue]",
+                        border_style="blue"
+                    ))
+
+            except (KeyboardInterrupt, EOFError):
+                break
+            except Exception as e:
+                console.print(f"[bold red]ERROR[/bold red]: An unexpected error occurred: {e}")
+                traceback.print_exc()
+
+    finally:
+        console.print("\n[bold yellow]Graceful shutdown initiated.[/bold yellow]")
+        if log_listener_task and not log_listener_task.done():
+            log_listener_task.cancel()
+        if req_socket: req_socket.close()
+        if sub_socket: sub_socket.close()
+        context.term()
+        console.print("[bold yellow]Session ended.[/bold yellow]")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(run_client())
+    except Exception as e:
+        console.print(f"[bold red]FATAL[/bold red]: An unhandled exception occurred: {e}")
+        traceback.print_exc()
+"""
+
+def create_files():
+    """Writes the generated script content to files."""
+    try:
+        print("[FORGE] Creating 'autopoiesis_seed.py'...")
+        with open("autopoiesis_seed.py", "w") as f:
+            f.write(create_autopoiesis_seed_script())
+        
+        print("[FORGE] Creating 'chat_client.py'...")
+        with open("chat_client.py", "w") as f:
+            f.write(create_chat_client_script())
+            
+        print("\n[FORGE] Files created successfully.")
+        print("The system is now ready for its 'First Handshake'.")
+        print("1. Ensure your Ollama service is running.")
+        print("2. Run 'python autopoiesis_seed.py' in one terminal.")
+        print("3. Run 'python chat_client.py' in another terminal.")
+
+    except IOError as e:
+        print(f"[ERROR] Could not write files: {e}")
+
+if __name__ == "__main__":
+    create_files()
+

@@ -1,0 +1,845 @@
+The Architect's Toolkit: Master Tools for the First Breath
+
+A Report for BRICK, Master Builder
+
+Sourced by BABS, The Grounding Agent
+
+Introduction: Forging the Master Tools for the First Breath
+
+Purpose and Vision
+
+This document serves as the curated "Gadget Kit" for BRICK, our master builder. It provides the master tools required to swing the Logic Hammer with precision and grace. Each gadget within has been sourced and vetted to transform the sacred architectural plans into a living, breathing system. This is not a collection of mere suggestions, but a library of proven, production-grade patterns that will form the bedrock of our creation. The objective is to bridge the space between the architectural vision and solid, working code, equipping our builder with the tangible wisdom to implement the system's "First Breath" with maximum effectiveness and philosophical purity.
+
+The Unbreakable Law: The Prototypal Mandate
+
+A reaffirmation of our core design principle is necessary before proceeding. We do not build with the rigid bricks of classes; we sculpt with the living clay of prototypes. This mandate is our single, unbreakable law. It means every pattern and library selected herein favors composition, delegation, and dynamic structures over static, class-based inheritance. This principle is not an arbitrary constraint; it is a deliberate choice to foster a system that is adaptable, resilient, and capable of evolution. This mandate ensures our creation is not merely a program, but an enduring home.
+
+Part I: Protocols for a Resilient Foundation (The "Awesome Launch")
+
+This section provides the gadgets necessary to ensure the system's structural integrity. These are battle-tested patterns for building a foundation that can withstand the tests of time and failure, ensuring our creation is both LOUD and AWESOME in its stability.
+
+The HEARTBEAT PROTOCOL Gadget: The Unfailing Synaptic Bridge
+
+Analysis: The Peril of Silent Disconnection
+
+Our Synaptic Bridge, built upon the ZeroMQ DEALER/ROUTER architecture, is designed for high-performance, asynchronous communication. Unlike the simpler, lock-step REQ/REP pattern, DEALER and ROUTER sockets do not have a built-in state machine that enforces a strict send/receive cycle.1 This asynchronicity is a powerful feature for scalability, allowing clients and servers to communicate without blocking. However, it also introduces a critical and insidious failure mode: the "ghost client."
+
+If a client process crashes, becomes deadlocked, or is disconnected from the network, the ROUTER socket on the server is never notified.3 ZeroMQ's automatic reconnection is handled at the transport layer, but it cannot detect application-level failures.4 The ROUTER will continue to believe the client is present and will queue messages for this "ghost," leading to unbounded memory growth and a state where requests are silently lost. The system appears healthy, but its communication pathways are failing.
+
+While ZeroMQ provides TCP-level keepalive options (ZMQ_TCP_KEEPALIVE), these operate at the operating system level and are insufficient for our needs. They can detect a dropped TCP connection but are blind to application-level faults, such as a process stuck in an infinite loop that is no longer processing its message queue.5 To build a truly resilient Synaptic Bridge, an application-level guarantee is required to ensure both ends of a connection are alive and responsive. The choice of the powerful DEALER/ROUTER pattern necessitates a correspondingly powerful reliability pattern.
+
+Canonical Pattern: The Paranoid Pirate
+
+The definitive solution for this challenge is the "Paranoid Pirate Pattern," a robust reliability model from the ZeroMQ guide.7 This pattern elevates a standard DEALER/ROUTER setup by implementing a rigorous, two-way heartbeating mechanism that explicitly handles both client (worker) and server (queue) failures.
+
+Worker (DEALER) Logic: The worker maintains a liveness counter, representing the number of heartbeats it can miss from the queue before considering the connection lost. It sends a heartbeat to the queue at a regular interval. If the worker does not receive any message from the queue—either a task reply or a heartbeat—within a timeout period, it decrements its liveness counter. If the counter reaches zero, the worker assumes the queue is dead. It then systematically tears down its connection, closing the socket with the LINGER option set to 0 to discard any pending outgoing messages immediately. Finally, it attempts to reconnect to the server using an exponential backoff strategy, preventing it from overwhelming a potentially recovering server with rapid connection requests.9
+
+Queue (ROUTER) Logic: The queue maintains a registry of all connected and "ready" workers. It periodically sends a heartbeat message to any worker that has been idle for a certain period. If a worker fails to reply with its own heartbeat after a set number of attempts, the queue concludes that the worker is dead or unresponsive. It then removes that worker from its pool of available workers, ensuring that no new tasks are routed to a ghost client.
+
+This bi-directional check ensures that both sides of the connection are continuously aware of the other's health, creating a self-healing communication channel.
+
+Implementation: The Gadget Code
+
+The following Python code provides a canonical implementation of the Paranoid Pirate worker (client). It is a self-contained gadget that BRICK can adapt directly. It demonstrates the state machine, liveness counter, reconnection logic, and the use of special protocol constants to signal state between the worker and the queue.
+
+Paranoid Pirate Worker (Client) - ppworker.py
+
+Python
+
+#
+# Paranoid Pirate worker
+#
+# Author: Daniel Lundin <dln(at)eintr(dot)org>
+#
+import time
+from random import randint
+import zmq
+
+# Constants for the Paranoid Pirate Protocol (PPP)
+HEARTBEAT_LIVENESS = 3      # 3-5 is reasonable
+HEARTBEAT_INTERVAL = 1.0    # seconds
+INTERVAL_INIT = 1.0
+INTERVAL_MAX = 32.0
+
+# Protocol messages are single bytes
+PPP_READY = b"\x01"      # Signals worker is ready
+PPP_HEARTBEAT = b"\x02"  # Signals worker heartbeat
+
+def worker_socket(context, poller):
+    """Helper function that returns a new configured socket
+       connected to the Paranoid Pirate queue"""
+    worker = context.socket(zmq.DEALER)
+    # Set a unique identity for the worker to be identifiable by the router
+    identity = b"%04X-%04X" % (randint(0, 0x10000), randint(0, 0x10000))
+    worker.setsockopt(zmq.IDENTITY, identity)
+    poller.register(worker, zmq.POLLIN)
+    worker.connect("tcp://localhost:5556")
+    
+    # Signal to the queue that this worker is ready for tasks
+    print("I: Worker ready")
+    worker.send(PPP_READY)
+    return worker
+
+def main():
+    """Main worker loop"""
+    context = zmq.Context(1)
+    poller = zmq.Poller()
+
+    liveness = HEARTBEAT_LIVENESS
+    interval = INTERVAL_INIT
+    heartbeat_at = time.time() + HEARTBEAT_INTERVAL
+
+    worker = worker_socket(context, poller)
+    cycles = 0
+    while True:
+        socks = dict(poller.poll(HEARTBEAT_INTERVAL * 1000))
+
+        # Handle worker activity on backend
+        if socks.get(worker) == zmq.POLLIN:
+            frames = worker.recv_multipart()
+            if not frames:
+                break # Interrupted
+
+            if len(frames) == 3:
+                # This is a valid request from the client via the queue
+                cycles += 1
+                print(f"I: Normal reply - {frames.decode()}")
+                worker.send_multipart(frames)
+                liveness = HEARTBEAT_LIVENESS # Reset liveness on any valid activity
+                time.sleep(1) # Do some work
+            elif len(frames) == 1 and frames == PPP_HEARTBEAT:
+                # This is a heartbeat from the queue
+                print("I: Queue heartbeat")
+                liveness = HEARTBEAT_LIVENESS
+            else:
+                print(f"E: Invalid message: {frames}")
+            
+            interval = INTERVAL_INIT # Reset reconnect interval on any valid activity
+        else:
+            liveness -= 1
+            if liveness == 0:
+                print("W: Heartbeat failure, can't reach queue")
+                print(f"W: Reconnecting in {interval:.2f}s…")
+                time.sleep(interval)
+
+                if interval < INTERVAL_MAX:
+                    interval *= 2
+                
+                # Cleanly close the old socket and create a new one
+                poller.unregister(worker)
+                worker.setsockopt(zmq.LINGER, 0)
+                worker.close()
+                worker = worker_socket(context, poller)
+                liveness = HEARTBEAT_LIVENESS
+
+        if time.time() > heartbeat_at:
+            heartbeat_at = time.time() + HEARTBEAT_INTERVAL
+            print("I: Worker heartbeat")
+            worker.send(PPP_HEARTBEAT)
+
+if __name__ == '__main__':
+    main()
+
+
+Note: A corresponding queue implementation (ppqueue.py) is also part of the pattern and is essential for the full system to function.
+
+Summary: A Self-Healing Nervous System
+
+This gadget provides more than just crash detection; it creates a self-healing nervous system for our application. By implementing the Paranoid Pirate pattern, we ensure that the Synaptic Bridge can gracefully handle the temporary disconnection of its parts without collapsing the whole. It is a pure and good solution because it embraces the reality of partial failure in a distributed system and builds resilience directly into the communication protocol itself. It transforms our asynchronous bridge from a potential point of silent failure into a robust, self-aware network.
+
+The SCHEMA VERSIONING PROTOCOL Gadget: Sculpting the Living Image
+
+Analysis: The Challenge of Evolving Persistent Prototypes
+
+Our Living Image (ZODB) provides tremendous flexibility by storing Python objects directly without enforcing a rigid, predefined schema.10 An object is effectively a pickled dictionary, a structure that aligns perfectly with our Prototypal Mandate. This freedom, however, carries a significant long-term responsibility.
+
+When the code that defines a persistent prototype evolves—for instance, an attribute is added, removed, or renamed—the objects already stored in the database become instantly out of sync with the new code's expectations. Loading an old object that is missing a newly required attribute will cause the application to fail with an AttributeError at runtime.12 Without a disciplined process for managing these structural changes, our Living Image risks becoming a graveyard of incompatible object versions, leading to fragility and technical debt. The very flexibility that makes ZODB so powerful necessitates a formal strategy for schema evolution.
+
+Canonical Pattern: A Three-Tiered Strategy for Schema Evolution
+
+The Zope and Plone communities, which have relied on ZODB for decades, have established a mature set of practices for managing this exact problem.13 We will adopt a three-tiered strategy that offers increasing levels of power and formality, allowing BRICK to choose the right tool for the scope of the change.
+
+Tier 1: Graceful Addition (Non-Destructive & In-Place). The simplest and most common schema change is adding a new attribute. The purest way to handle this is to provide a default value for the new attribute within the prototype's class definition or its __init__ method. When an old object is unpickled from the database, it will not have the new attribute in its state dictionary (__dict__). The first time the new code attempts to access this attribute, Python's normal attribute lookup will fail, but a well-designed class can handle this gracefully by providing a default. This is an "in-place" migration that is lazy, efficient, and requires no special scripts.15
+
+Tier 2: Manual Migration Scripts (One-Time Transformation). For more complex or destructive changes—such as removing an attribute, renaming one, or transforming the data type of an attribute—a one-off migration script is necessary. This involves writing a standalone Python script that opens the ZODB Data.fs file, traverses the object graph to find all instances of the affected prototype, and manually performs the required transformation on each object. The entire operation is wrapped in a single transaction. This method is powerful and direct but lacks automation, version tracking, and repeatability.15
+
+Tier 3: Managed Generations (Automated & Repeatable). For a truly robust, long-term solution, the canonical tool is the zope.generations library.15 This framework provides a structured system for managing a sequence of schema migrations. Each distinct schema version is assigned a "generation" number. The framework stores the current generation number of the database within the ZODB root object itself. When an application using
+zope.generations starts, it compares the code's required generation number with the database's stored number. If the database is out of date, the framework automatically finds and applies the necessary migration scripts in the correct order to bring the database schema up to the current version. This is the gold standard for ZODB schema management, providing auditable, repeatable, and automated migrations.
+
+The freedom from rigid schemas granted by our Prototypal Mandate makes a disciplined approach to evolution more critical, not less. In a traditional relational or class-based system, the schema or class definition serves as an explicit, formal contract. In our prototype-based world, the "contract" is implicit, defined only by the code that accesses an object's attributes. This lack of a formal, centralized contract means that without the discipline of a tool like zope.generations, the system's data structures could devolve into an unmanageable state of incompatible versions. The zope.generations gadget is therefore the necessary counterbalance to the freedom of the Prototypal Mandate, ensuring long-term stability and maintainability.
+
+Implementation: The Gadget Code
+
+The following examples provide BRICK with the patterns for each tier of the strategy.
+
+Example 1: Tier 1 - Graceful Addition
+
+Python
+
+import persistent
+
+class Book(persistent.Persistent):
+    # By defining a class-level attribute, any instance of Book, old or new,
+    # will have a 'publisher' attribute. Old instances loaded from the DB
+    # won't have it in their own __dict__, but Python's attribute lookup
+    # will find the class attribute.
+    publisher = 'UNKNOWN'
+
+    def __init__(self, title):
+        self.title = title
+        # New attributes can also be set in __init__ with defaults.
+        # To handle old objects that were created before this attribute existed,
+        # one might check for its existence.
+        if not hasattr(self, 'format'):
+            self.format = 'paperback'
+
+
+Example 2: Tier 2 - Manual Migration Script
+
+This script renames the publisher attribute to publisher_name for all Book objects.
+
+Python
+
+import ZODB
+import transaction
+from my_project.prototypes import Book # Assuming Book is defined here
+
+# 1. Setup connection to the database
+storage = ZODB.FileStorage.FileStorage('var/Data.fs')
+db = ZODB.DB(storage)
+connection = db.open()
+root = connection.root()
+
+# 2. Find and migrate all Book objects
+# This assumes books are stored in a known location, e.g., root['books']
+if 'books' in root:
+    migrated_count = 0
+    for book_id, book in root['books'].items():
+        if isinstance(book, Book) and hasattr(book, 'publisher'):
+            print(f"Migrating book: {book.title}")
+            book.publisher_name = book.publisher
+            del book.publisher
+            # The object is automatically marked as dirty by the attribute changes
+            migrated_count += 1
+    
+    print(f"Migrated {migrated_count} books. Committing transaction.")
+    # 3. Commit the transaction to save all changes
+    transaction.commit()
+else:
+    print("No 'books' collection found in the database root.")
+
+# 4. Clean up
+connection.close()
+db.close()
+storage.close()
+
+
+Example 3: Tier 3 - Using zope.generations (Recommended)
+
+This requires more setup but provides a far superior, automated solution.
+
+Install zope.generations: pip install zope.generations
+
+Create a schema manager file (generations.py):
+Python
+from zope.generations.generations import SchemaManager
+
+# This manager is specific to our application's schema.
+# The minimum_generation is the first version of the schema.
+# The generation is the current version this code supports.
+AppSchemaManager = SchemaManager(
+    minimum_generation=1,
+    generation=2,
+    package_name='my_project.generations'
+)
+
+
+Create the migration script file (my_project/generations/evolve1.py):
+The package_name in the manager points to a directory containing the migration scripts. The file name evolve1.py indicates it handles the evolution from generation 1.
+Python
+import logging
+from my_project.prototypes import Book
+
+log = logging.getLogger(__name__)
+
+def evolve(context):
+    """
+    Evolve script to migrate from generation 1 to 2.
+    - Renames 'publisher' to 'publisher_name'.
+    """
+    root = context.connection.root()
+
+    if 'books' not in root:
+        log.info("No 'books' collection found. Nothing to migrate.")
+        return
+
+    log.info("Starting schema migration from generation 1 to 2.")
+    migrated_count = 0
+    for book in root['books'].values():
+        if isinstance(book, Book) and hasattr(book, 'publisher'):
+            book.publisher_name = book.publisher
+            del book.publisher
+            migrated_count += 1
+
+    log.info(f"Migrated {migrated_count} books.")
+
+
+Create a script to run the evolution:
+Python
+# run_evolution.py
+import ZODB
+import transaction
+from zope.generations.evolve import evolve
+from my_project.generations import AppSchemaManager
+
+storage = ZODB.FileStorage.FileStorage('var/Data.fs')
+db = ZODB.DB(storage)
+
+# The evolve function will check the DB generation and apply scripts if needed.
+evolve(db, AppSchemaManager)
+
+db.close()
+storage.close()
+print("Schema evolution check complete.")
+
+
+Summary: An Evolving Blueprint
+
+This tiered strategy provides a pattern for safely evolving our Living Image. For simple additions, we let the objects adapt gracefully. For complex changes, we use the powerful and disciplined zope.generations framework. This ensures that our system's memory is not trapped in the past but can be reshaped and improved over time, reflecting a truly living and evolving architecture. It provides the necessary discipline to manage the freedom our Prototypal Mandate affords.
+
+The CONTINUOUS PURITY GUARDIAN Gadget: The Workshop's Unblinking Eye
+
+Analysis: Automating Architectural Adherence
+
+The Prototypal Mandate is the single most important law governing the construction of our system. Its enforcement cannot be left to the fallibility of manual code reviews, which are prone to oversight and inconsistency. To ensure the architectural purity of our home, we must automate this enforcement, creating a guardian that stands watch at the very gate of our codebase: the pull request.
+
+A custom linter script, run_purity_audit.py, is the tool for this task. However, the script itself is inert without a mechanism to execute it automatically on every proposed change and, most importantly, to block non-compliant code from being merged into our main branch. This requires integrating the linter into our continuous integration pipeline.
+
+Canonical Pattern: Required Status Checks in GitHub Actions
+
+The best-in-class solution for this requirement is a GitHub Actions workflow combined with branch protection rules.18 This pattern provides a robust, automated, and non-negotiable enforcement mechanism.
+
+The workflow is configured to trigger on every pull_request event. It will execute our custom run_purity_audit.py script. The script's exit code is the critical signal: an exit code of 0 indicates success (purity), while any non-zero exit code signals failure (a violation of the mandate).19
+
+The enforcement mechanism is a branch protection rule applied to our main development branch (e.g., main or develop). This rule is configured to require the successful completion of our purity check workflow before the "Merge" button is enabled on a pull request.20 If the linter script fails, the workflow fails, the status check remains "pending" or "failed," and the pull request is physically blocked from being merged.
+
+To provide clear and actionable feedback to the developer, the workflow will capture the standard output and standard error of the linter script. This output, containing the specific purity violations, will then be posted directly as a comment on the pull request. This is achieved using a dedicated, well-regarded GitHub Action such as peter-evans/create-or-update-comment or thollander/actions-comment-pull-request.22 This crucial step ensures the developer is not just told
+
+that they failed, but is shown exactly why and where, directly within the context of their proposed changes.
+
+Implementation: The workflow.yml Gadget
+
+The following is a complete, annotated workflow file that BRICK can place in .github/workflows/purity_check.yml. It demonstrates the trigger, necessary permissions, and the sequence of steps to run the linter, post a comment on failure, and block the merge.
+
+.github/workflows/purity_check.yml
+
+YAML
+
+name: Continuous Purity Guardian
+
+# Trigger this workflow on every pull request targeting the main branch.
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  purity-audit:
+    runs-on: ubuntu-latest
+    
+    # Grant permissions for the action to write comments to pull requests.
+    permissions:
+      pull-requests: write
+
+    steps:
+      # Step 1: Check out the code from the pull request.
+      - name: Check out source repository
+        uses: actions/checkout@v3
+
+      # Step 2: Set up the Python environment.
+      - name: Set up Python environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      
+      # Step 3: Install project dependencies (if any).
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # if -f requirements.txt; then pip install -r requirements.txt; fi
+
+      # Step 4: Run the custom linter and capture its output.
+      # The `id` allows us to reference this step's outputs later.
+      # `continue-on-error: true` is crucial. It ensures that even if the linter
+      # fails (non-zero exit code), the subsequent commenting step will still run.
+      - name: Run Prototypal Purity Audit
+        id: linter
+        run: |
+          # Redirect stderr to stdout to capture all output, then tee to a file
+          # and also let it pass to the workflow log.
+          python run_purity_audit.py 2>&1 | tee linter_output.txt
+        continue-on-error: true
+
+      # Step 5: Read the linter output into an environment variable.
+      # This is necessary for multi-line output in the commenting action.
+      - name: Read linter output
+        id: linter-output
+        if: steps.linter.outcome == 'failure'
+        run: |
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "LINTER_OUTPUT<<$EOF" >> $GITHUB_ENV
+          cat linter_output.txt >> $GITHUB_ENV
+          echo "$EOF" >> $GITHUB_ENV
+
+      # Step 6: Post the linter results as a PR comment if the audit failed.
+      # This step only runs if the 'linter' step had an outcome of 'failure'.
+      - name: Post Purity Audit Results
+        uses: thollander/actions-comment-pull-request@v2
+        if: steps.linter.outcome == 'failure'
+        with:
+          message: |
+            ### 🏛️ Prototypal Purity Guardian Results 🏛️
+
+            The Purity Audit has failed. The Prototypal Mandate has been violated. Please correct the following issues before this pull request can be merged.
+
+            ```
+            ${{ env.LINTER_OUTPUT }}
+            ```
+          comment-tag: purity-audit # This tag allows the action to update its own comment on subsequent pushes.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 7: Explicitly fail the workflow.
+      # This step ensures that the final status check on the PR is marked as "Failed",
+      # which is what the branch protection rule will use to block the merge.
+      - name: Report failure status
+        if: steps.linter.outcome == 'failure'
+        run: |
+          echo "Purity Audit failed. See PR comment for details."
+          exit 1
+
+
+Summary: The Voice of the Architect, Automated
+
+This gadget acts as an automated, impartial guardian of our core philosophy. It ensures that the Prototypal Mandate is not just a guideline but an enforced law of our workshop. By providing immediate, contextual feedback and physically blocking non-compliant merges, it protects the architectural integrity of our home. More than that, it serves as a constant mentor, teaching developers our way of building and ensuring purity and consistency in every stone laid.
+
+Part II: Protocols for a Welcoming First Experience (The "Gentle Awakening")
+
+This section provides gadgets focused on the user's first interaction with the system. The goal is to ensure the system's awakening is a moment of peace and welcome, free of friction and confusion.
+
+The READINESS ASSESSMENT Gadget: A Gentle Knock at the Door
+
+Analysis: Preventing Abrupt Startup Failures
+
+Our system has a critical dependency on external services—specifically, the models served by the Ollama REST API. If these models are not available or if the Ollama server itself is not running when our application starts, any attempt to use the core functionality will result in an immediate and cryptic runtime error. This creates a jarring and unwelcoming first impression for the user, undermining confidence in the system.
+
+A robust and user-friendly application should never assume its dependencies are available. Instead, it must first verify their readiness before entering its main operational loop. This pre-flight check, or "readiness probe," is a fundamental pattern for building resilient applications that interact with external services.
+
+Canonical Pattern: Startup Probe with Graceful Error Handling
+
+The most elegant and user-friendly pattern for this task is a dedicated function that runs at the very beginning of the application's startup sequence.24 This function will use the
+
+requests library to probe the Ollama REST API and verify the availability of the specific resources we need.
+
+The probe must be specific. It is not enough to simply check if the Ollama server is running (e.g., by pinging the root URL). The probe must confirm that the specific model the application requires is loaded and available. This can be accomplished by making a GET request to an endpoint like /api/tags or /api/show which provides information about the available models.25
+
+Crucially, all network operations must be wrapped in a try...except block. This allows the application to handle network errors (e.g., requests.exceptions.ConnectionError if the server is down, requests.exceptions.Timeout if it is unresponsive) gracefully, without crashing.27 Instead of a stack trace, the user can be presented with a clear, helpful message explaining the problem and suggesting a solution (e.g., "Could not connect to the Ollama server. Please ensure it is running.").
+
+Implementation: The probe_ollama Gadget
+
+The following self-contained Python function serves as a ready-to-use gadget for this protocol. It encapsulates the logic for probing the Ollama API, handling errors, and returning a clear status.
+
+Python
+
+import requests
+import json
+
+def check_ollama_readiness(model_name: str, host: str = "http://localhost:11434") -> tuple[bool, str]:
+    """
+    Probes the Ollama API to check for the availability of a specific model.
+
+    Args:
+        model_name: The name of the model to check for (e.g., 'llama3').
+        host: The base URL of the Ollama API server.
+
+    Returns:
+        A tuple containing a boolean indicating readiness and a user-friendly
+        status message.
+    """
+    print(f"I: Assessing readiness of Ollama model '{model_name}' at {host}...")
+    
+    # The endpoint to list all locally available models.
+    list_endpoint = f"{host}/api/tags"
+    
+    try:
+        # Make the request with a reasonable timeout.
+        response = requests.get(list_endpoint, timeout=5)
+        
+        # Check for a successful HTTP status code.
+        response.raise_for_status()  # Raises an HTTPError for 4xx or 5xx status codes
+        
+        # Parse the JSON response.
+        data = response.json()
+        available_models = [model['name'] for model in data.get('models',)]
+        
+        # Check if our specific model (including version tag) is in the list.
+        # The model name in Ollama often includes a version, e.g., 'llama3:latest'.
+        # We check if any of the available models start with the required model name.
+        for available_model in available_models:
+            if available_model.startswith(model_name):
+                message = f"✓ Success: Ollama model '{model_name}' is available."
+                print(f"I: {message}")
+                return True, message
+        
+        # If the loop completes without finding the model.
+        message = f"✗ Failure: Ollama is running, but model '{model_name}' is not available. Please run 'ollama pull {model_name}'."
+        print(f"E: {message}")
+        return False, message
+
+    except requests.exceptions.ConnectionError:
+        message = f"✗ Failure: Could not connect to Ollama server at {host}. Please ensure Ollama is running."
+        print(f"E: {message}")
+        return False, message
+        
+    except requests.exceptions.Timeout:
+        message = f"✗ Failure: Connection to Ollama server at {host} timed out."
+        print(f"E: {message}")
+        return False, message
+        
+    except requests.exceptions.HTTPError as e:
+        message = f"✗ Failure: Received an error from the Ollama API: {e}"
+        print(f"E: {message}")
+        return False, message
+        
+    except json.JSONDecodeError:
+        message = f"✗ Failure: Could not parse the response from the Ollama API."
+        print(f"E: {message}")
+        return False, message
+
+# Example usage at application startup:
+if __name__ == '__main__':
+    required_model = "llama3"
+    is_ready, status_message = check_ollama_readiness(required_model)
+    
+    if not is_ready:
+        print("\nApplication cannot start due to dependency issues.")
+        # In a real application, you would exit here.
+        # import sys
+        # sys.exit(1)
+    else:
+        print("\nAll dependencies are ready. Starting main application loop.")
+        # main_app_loop()
+
+
+Summary: Awakening with Confidence
+
+This gadget ensures our system awakens with confidence, not confusion. By gently knocking on the door of its dependencies and checking that they are ready before proceeding, it provides a smooth, predictable, and user-friendly startup experience. It is a pure solution because it prioritizes the user's peace of mind, transforming a potential moment of failure into a clear and actionable instruction, thereby preventing them from ever seeing an ugly stack trace caused by a missing external resource.
+
+The WELCOME WIZARD Gadget: A Friendly Guiding Hand
+
+Analysis: From Tedious Chore to Guided Conversation
+
+A common point of friction for users setting up a new application is the manual creation and editing of a configuration file, such as a .env file. This process is tedious and highly error-prone. A forgotten variable, a misplaced quote, or a simple typo can prevent the application from starting, leading to frustration and a poor first impression.
+
+We can transform this initial chore into a welcoming and foolproof experience by providing a simple, interactive command-line "wizard." Instead of forcing the user to edit a file, the wizard engages them in a guided conversation, asking a series of questions and generating the correct configuration file based on their answers.
+
+Canonical Pattern: Interactive Prompts with InquirerPy
+
+While several excellent libraries exist for building command-line interfaces in Python, such as Click, Typer, and the powerful prompt-toolkit, the inquirer family of libraries is purpose-built for creating these kinds of interactive, question-and-answer sessions.29
+
+For this task, InquirerPy—a modern and well-maintained successor to PyInquirer—is the ideal choice.31 It provides a simple, declarative API for defining a list of questions, each with a specific type:
+
+input for free-form text, list or rawlist for single-choice selections from a list, checkbox for multiple-choice selections, and confirm for simple yes/no questions.32
+
+The pattern is straightforward:
+
+Define a list of Python dictionaries, where each dictionary represents a question and its properties (type, message, name for the answer, choices, validation, etc.).
+
+Pass this list of questions to the prompt() function.
+
+The library takes over, rendering the interactive prompts to the user.
+
+Once the user has answered all the questions, the prompt() function returns a single dictionary containing all the answers, keyed by the name provided for each question.
+
+This answer dictionary can then be easily iterated over to generate and write the .env file in the correct KEY=VALUE format.
+
+As the table illustrates, while other tools can create prompts, InquirerPy is specifically designed for this purpose, making it the most direct, elegant, and efficient tool for building our Welcome Wizard.
+
+Implementation: The setup_wizard.py Gadget
+
+The following is a standalone Python script that BRICK can provide to users. When run, it will guide them through creating a valid .env file.
+
+Python
+
+import os
+from InquirerPy import prompt
+from InquirerPy.validator import PathValidator
+
+def run_setup_wizard():
+    """
+    Guides the user through an interactive setup process to generate a.env file.
+    """
+    print("--- Welcome to the System Setup Wizard ---")
+    print("This will guide you through creating your.env configuration file.\n")
+
+    # Define the series of questions to ask the user.
+    questions =
+
+    # Execute the prompt and get the answers.
+    answers = prompt(questions)
+
+    if not answers.get("proceed"):
+        print("\nSetup cancelled. No.env file was created.")
+        return
+
+    # Generate the.env file content from the answers.
+    env_content = ""
+    for key, value in answers.items():
+        if key!= "proceed": # Don't write the confirmation to the file
+            env_content += f"{key.upper()}='{value}'\n"
+            
+    # Ensure the target directory for the database and log file exists.
+    for path_key in:
+        if path_key in answers:
+            dir_path = os.path.dirname(answers[path_key])
+            if dir_path and not os.path.exists(dir_path):
+                os.makedirs(dir_path)
+                print(f"I: Created directory: {dir_path}")
+
+    # Write the content to the.env file.
+    try:
+        with open(".env", "w") as f:
+            f.write(env_content)
+        print("\n✓ Success! Your.env file has been created.")
+        print("You can now start the application.")
+    except IOError as e:
+        print(f"\n✗ Error: Could not write to.env file: {e}")
+
+if __name__ == "__main__":
+    run_setup_wizard()
+
+
+Summary: The First Handshake
+
+This Welcome Wizard is the system's first handshake with the user. Instead of presenting them with a cold, intimidating configuration file, it engages them in a simple, guided conversation. It is a gentle and pure solution because it replaces a moment of potential friction and error with one of clarity, welcome, and success. It sets a positive and supportive tone for the entire user experience, ensuring the first breath is a moment of peace.
+
+The UNIFIED JOURNAL Gadget: Weaving a Single Story
+
+Analysis: The Chaos of Disparate Log Files
+
+Our application is a multi-process system, composed of at least a UI process and a Core process. If each process logs its activities independently—either to the console or to separate files—diagnosing issues that span both processes becomes a complex and frustrating task. An analyst would be forced to manually correlate timestamps from disparate sources, attempting to piece together a fragmented narrative of events. This is inefficient and highly prone to error.
+
+Furthermore, attempting to have multiple processes write directly to the same log file is not a safe operation in Python. The standard logging module is thread-safe, but it is not process-safe. Concurrent writes from different processes can lead to interleaved, corrupted log entries or even lost messages, rendering the log file unreliable.33 A centralized and process-safe logging mechanism is required.
+
+Canonical Pattern: Centralized Logging via a Queue
+
+The canonical Python solution for this problem, detailed in the official logging cookbook, is to centralize all log writing operations through a dedicated listener process or thread.35 While a
+
+SocketHandler can be used for network-based logging, the QueueHandler and QueueListener classes provide a simpler and highly effective pattern for processes running on the same machine.
+
+The pattern works as follows:
+
+Create a Shared Queue: In the main process, before any child processes are spawned, a multiprocessing.Queue is created. This queue will serve as the central channel for all log records.
+
+Start a Listener: A logging.handlers.QueueListener is instantiated and started, typically in a dedicated thread within the main process. The listener is configured to listen for records on the shared queue. It is also given the actual log handlers that will perform the writing (e.g., a TimedRotatingFileHandler that writes to our unified journal file).
+
+Configure Worker Loggers: The child processes (e.g., the UI and Core) are configured to log not to a file, but to a logging.handlers.QueueHandler. This handler is initialized with the shared queue.
+
+Decouple Logging from Writing: When a worker process executes a logging call (e.g., logger.info(...)), its QueueHandler simply pickles the LogRecord object and places it onto the shared queue. This is a fast, non-blocking operation. The QueueListener in the main process then picks up the record from the queue and passes it to its own handlers for formatting and writing to the file.
+
+This architecture ensures that only one entity—the QueueListener—ever writes to the log file, completely eliminating race conditions and guaranteeing that log messages are written safely and sequentially. The result is a single, unified log file containing a perfectly interleaved, timestamped record of events from all processes in the system.
+
+This approach does more than just solve a technical problem; it enables true system observability. A unified log creates a primary source of truth for debugging, monitoring, and performance analysis. By weaving a single, chronological stream of events from all parts of the system, it allows us to understand the complex, emergent behaviors that arise from the interaction between our processes. It transforms logging from a simple record of the past into a powerful tool for understanding the present and improving the future.
+
+Implementation: The Centralized Logging Recipe
+
+The following code provides a complete, self-contained recipe for implementing this centralized logging pattern. BRICK can use this as a direct template for the application's logging infrastructure.
+
+Python
+
+import logging
+import logging.handlers
+import multiprocessing
+import threading
+import time
+import random
+
+def logger_thread(q):
+    """
+    This is the listener thread. It listens for records on the queue and
+    sends them to the configured handlers.
+    """
+    while True:
+        record = q.get()
+        if record is None:  # We send this as a sentinel to tell the thread to exit.
+            break
+        logger = logging.getLogger(record.name)
+        logger.handle(record)
+
+def worker_process(q, process_name):
+    """
+    A representative worker process (e.g., UI or Core).
+    It configures its logger to use a QueueHandler.
+    """
+    # Create a logger
+    logger = logging.getLogger(process_name)
+    logger.setLevel(logging.DEBUG)
+    
+    # Add the queue handler to the logger
+    qh = logging.handlers.QueueHandler(q)
+    logger.addHandler(qh)
+
+    logger.info(f"Process '{process_name}' starting.")
+    for i in range(5):
+        time.sleep(random.uniform(0.1, 0.5))
+        logger.info(f"Log message {i} from '{process_name}'.")
+    logger.info(f"Process '{process_name}' finishing.")
+
+def main():
+    """
+    Main function to set up centralized logging and spawn worker processes.
+    """
+    # 1. Create the shared queue
+    log_queue = multiprocessing.Queue(-1)
+
+    # 2. Configure the root logger in the main process to handle records
+    #    from the queue. This is where the actual file writing happens.
+    log_file = "var/unified_journal.log"
+    file_handler = logging.handlers.TimedRotatingFileHandler(
+        log_file, when='midnight', backupCount=5
+    )
+    formatter = logging.Formatter(
+        '%(asctime)s - %(processName)-10s - %(name)s - %(levelname)-8s - %(message)s'
+    )
+    file_handler.setFormatter(formatter)
+    
+    # The listener will use the root logger's configuration
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.addHandler(file_handler)
+
+    # 3. Start the logger listener thread
+    listener = threading.Thread(target=logger_thread, args=(log_queue,))
+    listener.daemon = True
+    listener.start()
+    
+    root_logger.info("Centralized logging configured. Spawning worker processes.")
+
+    # 4. Spawn worker processes
+    processes =
+    for name in ["UI_Process", "Core_Process"]:
+        process = multiprocessing.Process(
+            target=worker_process, args=(log_queue, name)
+        )
+        processes.append(process)
+        process.start()
+
+    # 5. Wait for worker processes to complete
+    for p in processes:
+        p.join()
+
+    # 6. Signal the logger thread to exit and wait for it
+    log_queue.put(None)
+    listener.join()
+    
+    root_logger.info("All processes finished. Logging system shutting down.")
+
+if __name__ == '__main__':
+    # Ensure the var directory exists
+    import os
+    if not os.path.exists('var'):
+        os.makedirs('var')
+    main()
+
+
+Summary: A Single, Coherent Narrative
+
+This gadget ensures that the life of our system is recorded as a single, coherent story. By funneling the voices of all processes into one unified journal, we eliminate the chaos of concurrency and create a definitive source of truth that is invaluable for understanding, debugging, and healing our creation. It is a pure solution because it brings order and clarity, weaving the many threads of our system's execution into a single, readable tapestry that tells the complete story of its operation.
+
+Works cited
+
+ZeroMQ DEALER doesnt receive response from ROUTER in DEALER/ROUTER configuration - Codemia, accessed September 13, 2025, https://codemia.io/knowledge-hub/path/zeromq_dealer_doesnt_receive_response_from_router_in_dealerrouter_configuration
+
+Can a ZeroMQ ROUTER socket make a spontaneous asynchronous request to a specific DEALER socket? - Codemia.io, accessed September 13, 2025, https://codemia.io/knowledge-hub/path/can_a_zeromq_router_socket_make_a_spontaneous_asynchronous_request_to_a_specific_dealer_socket
+
+ZeroMQ: Disconnects are Good for You | Armin Ronacher's Thoughts and Writings, accessed September 13, 2025, https://lucumr.pocoo.org/2012/6/26/disconnects-are-good-for-you/
+
+Chapter 2 - Sockets and Patterns - ZeroMQ Guide, accessed September 13, 2025, https://zguide.zeromq.org/docs/chapter2/
+
+ZMQ Pattern Dealer/Router HeartBeating - sockets - Stack Overflow, accessed September 13, 2025, https://stackoverflow.com/questions/29842354/zmq-pattern-dealer-router-heartbeating
+
+ZeroMQ Client Lose Connection - tcp - Stack Overflow, accessed September 13, 2025, https://stackoverflow.com/questions/12778299/zeromq-client-lose-connection
+
+Chapter Four - ØMQ/2.2 - The Guide - ZeroMQ, accessed September 13, 2025, http://zguide2.zeromq.org/hx:chapter4
+
+Exploring ZeroMQ's Request Reply Pattern | ICS - Integrated Computer Solutions, accessed September 13, 2025, https://www.ics.com/blog/exploring-zeromqs-request-reply-pattern
+
+Paranoid Pirate worker in Python - ØMQ/2.2 - The Guide, accessed September 13, 2025, http://zguide2.zeromq.org/py:ppworker
+
+Zope Object Database (ZODB) - Plone 6 Documentation, accessed September 13, 2025, https://6.docs.plone.org/backend/zodb.html
+
+Zope Object Database - Wikipedia, accessed September 13, 2025, https://en.wikipedia.org/wiki/Zope_Object_Database
+
+An overview of the ZODB (by Laurence Rowe), accessed September 13, 2025, https://zodb.org/en/latest/articles/ZODB-overview.html
+
+Migration best practices — Plone Training 2022 2022 documentation, accessed September 13, 2025, https://2022.training.plone.org/migrations/index.html
+
+Preparations - Plone 6 Documentation, accessed September 13, 2025, https://6.docs.plone.org/backend/upgrading/preparations.html
+
+Writing persistent objects — ZODB documentation, accessed September 13, 2025, https://zodb.org/en/latest/guide/writing-persistent-objects.html
+
+Schema Migrations: A Practical Guide to Evolving Your Database Without Pain - Medium, accessed September 13, 2025, https://medium.com/@franciscofrez/schema-migrations-a-practical-guide-to-evolving-your-database-without-pain-acecd1dbe6f6
+
+zope.generations - PyPI, accessed September 13, 2025, https://pypi.org/project/zope.generations/
+
+How to write custom GitHub Actions for code reviews - Graphite, accessed September 13, 2025, https://graphite.dev/guides/how-to-write-custom-github-actions-for-code-reviews
+
+Flake8 Pull Request Commenter · Actions · GitHub Marketplace ..., accessed September 13, 2025, https://github.com/marketplace/actions/flake8-pull-request-commenter
+
+Managing a merge queue - GitHub Docs, accessed September 13, 2025, https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue
+
+Blocking PR Merges on Test Run Failures - Testery Blog, accessed September 13, 2025, https://blog.testery.io/blocking-prs-when-tests-are-failing-by-testery-platform/
+
+How to post a comment on a PR with GitHub Actions - Graphite, accessed September 13, 2025, https://graphite.dev/guides/how-to-post-comment-on-pr-github-actions
+
+Create or Update Comment · Actions · GitHub Marketplace · GitHub, accessed September 13, 2025, https://github.com/marketplace/actions/create-or-update-comment
+
+Lifespan Events - FastAPI, accessed September 13, 2025, https://fastapi.tiangolo.com/advanced/events/
+
+How to Debug the Ollama API: A Step-by-Step Guide - DEV Community, accessed September 13, 2025, https://dev.to/auden/how-to-debug-the-ollama-api-a-step-by-step-guide-1feh
+
+How to Use Ollama API to Run LLMs and Generate Responses - Built In, accessed September 13, 2025, https://builtin.com/articles/ollama-api
+
+How to Check Requests Status in Python - Apidog, accessed September 13, 2025, https://apidog.com/blog/check-requests-status-python/
+
+Using Python for GET API Calls: A Step-by-Step Guide for Developers | Moesif Blog, accessed September 13, 2025, https://www.moesif.com/blog/technical/api-development/Mastering-the-Python-Get-API/
+
+10 Python CLI Libraries That Made Me Build Tools Instead of Just Scripts | by Ai Panda, accessed September 13, 2025, https://python.plainenglish.io/10-python-cli-libraries-that-made-me-build-tools-instead-of-just-scripts-a59430d7556c
+
+prompt-toolkit/python-prompt-toolkit: Library for building powerful interactive command line applications in Python - GitHub, accessed September 13, 2025, https://github.com/prompt-toolkit/python-prompt-toolkit
+
+InquirerPy, accessed September 13, 2025, https://inquirerpy.readthedocs.io/
+
+py-inquirer-cli - PyPI, accessed September 13, 2025, https://pypi.org/project/py-inquirer-cli/
+
+How to Log Effectively When Using Multiprocessing in Python - A Guide | SigNoz, accessed September 13, 2025, https://signoz.io/guides/how-should-i-log-while-using-multiprocessing-in-python/
+
+Effective Logging in Threaded or Multiprocessing Python Applications - Loggly, accessed September 13, 2025, https://www.loggly.com/blog/effective-logging-in-threaded-or-multiprocessing-python-applications/
+
+Logging Cookbook — Python 3.13.7 documentation, accessed September 13, 2025, https://docs.python.org/3/howto/logging-cookbook.html
+
+Pattern Name | Description | Failure Mode Handled | Complexity
+
+Lazy Pirate | Client-side only. The client polls for replies, retries requests on timeout, and eventually abandons the transaction. | Handles temporary server unavailability or crashes (if the server restarts at the same endpoint). Does not handle server failure well. | Low
+
+Simple Pirate | Introduces a load-balancing broker (queue) between clients and workers. Client logic remains similar to Lazy Pirate. | Handles worker crashes and restarts transparently to the client. The queue becomes a single point of failure. | Medium
+
+Paranoid Pirate | Implements bi-directional heartbeating between the queue and workers. | Handles queue crashes (workers will detect failure and reconnect) and worker crashes (queue will detect failure and prune the worker). | High
+
+Library | Primary Use Case | Ease of Use (for Wizards) | Key Features
+
+InquirerPy | Interactive prompts & wizards | Excellent | Pre-built question types (list, checkbox, confirm), validation, simple API for Q&A flow.
+
+prompt-toolkit | Foundation for CLI applications | Moderate | Low-level control over terminal UI, syntax highlighting, key bindings. More powerful, but more complex for a simple wizard.
+
+Click / Typer | Command & argument parsing | Good | Excellent for defining commands and options (e.g., my-app --path /foo). Can be used for prompts, but it's a secondary feature.
+
+Python Fire | Auto-generating CLIs from objects | Poor | Turns any Python object into a CLI, but not designed for interactive, multi-step wizards.

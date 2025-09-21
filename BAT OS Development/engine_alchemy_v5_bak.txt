@@ -1,0 +1,1213 @@
+﻿import ollama
+import time
+import datetime
+import json
+import os
+import random
+import re
+import docx
+import sys
+
+# ======================================================================================
+# --- V3.0 Master Build: CONFIGURATION & GLOBAL STATE ---
+# All tunable parameters and file paths are centralized here for easy management.
+# This improves maintainability and makes adjusting the engine's behavior straightforward.
+# ======================================================================================
+class Config:
+    """Centralized configuration for all tunable parameters and file paths."""
+    # --- Model & Core Files ---
+    MODEL_NAME = 'brickman-robin-fine-tuned'
+    PERSONA_FILE = 'persona_codex.txt'
+    KNOWLEDGE_BASE_FILE = 'knowledge_base.txt'
+    CONVERSATION_LOG_FILE = 'conversation_log.json'
+    CONCEPTS_FILE = 'concepts.txt'
+    CONTEXTS_FILE = 'contexts.txt'
+    PROPOSED_PROTOCOLS_FILE = 'proposed_protocols_for_review.txt'
+    SESSION_COUNTER_FILE = 'session_counter.txt'
+    GOOGLE_QUERY_LOG_FILE = 'google_query_log.txt'
+    GOOGLE_QUERY_RESULTS_FILE = 'google_query_results.txt'
+    USER_FEEDBACK_FILE = 'user_feedback.txt'
+    USER_FEEDBACK_LOG = 'user_feedback_log.txt'
+    THEME_FILE = 'theme.txt'
+    MASTER_THEMES_FILE = 'master_themes.txt'
+    CASE_STUDIES_FILE = 'case_studies.txt'
+    GUIDE_FACTS_FILE = 'guide_facts.txt'
+    SCRAPBOOK_FILES = ["BnR Merged files.docx", "BnR Merged New 07 Jul 25.docx"]
+    PROPOSED_KNOWLEDGE_FILE = 'proposed_knowledge_chunks.txt'
+    DIRECTIVE_FILE = 'alfred_next_directive.txt'
+    THE_LOOM_FILE = 'robin_loom_metaphors.txt'
+    THE_FORGE_FILE = 'the_forge_protocols.json'
+    CURRENT_SENTIMENT_FILE = 'current_sentiment.txt'
+
+    # --- Engine Timing & Cycles ---
+    HEARTBEAT_INTERVAL_SECONDS = 7
+    RECURSIVE_CYCLES = 7
+    THEMATIC_EPOCH_SECONDS = 3600
+
+    # --- Dynamic Probabilities & Thresholds ---
+    CHAOS_INJECTION_PROBABILITY_INITIAL = 0.15
+    STAGNATION_THRESHOLD = 3
+    HISTORICAL_PRIMING_PROBABILITY = 0.5
+    BRICK_THOUGHT_BUBBLE_PROBABILITY = 0.65
+
+    # --- ALFRED's Meta-Awareness Parameters ---
+    CONCEPTUAL_VELOCITY_THRESHOLD = 0
+    MIN_HISTORICAL_LINES_IN_CHUNK = 3
+    HISTORICAL_MARKERS = ['history', 'evolution', 'past', 'ancient', 'origins', 'historical', 'tradition', 'timeline', 'genesis', 'legacy', 'epochs', 'millennia', 'centuries', 'Puter, access', 'Guide has this to say']
+    SENTIMENT_ANALYSIS_FREQUENCY_SESSIONS = 3
+
+# --- Concept & Context Lists for Different Modes (Defined globally for accessibility) ---
+META_CONCEPTS = [
+    'Self-Identity', 'Evolution', 'Learning', 'Coherence', 'Antifragility',
+    'Persona Consistency', 'Humor Effectiveness', 'Sensual Nuance',
+    'Optimal Communication', 'AI Agency', 'Human-AI Collaboration'
+]
+META_CONTEXTS = [
+    'Our Collected Dialogues', 'The Persona Codex', 'The Engine\'s Operational Log',
+    'The Human-AI Partnership', 'The Grand Library', 'The Commonwealth\'s Blueprint'
+]
+
+FLAKES_PROTOCOLS_FOR_AF = [
+    'Universal Staking Engine', 'Community Pledged Capital', 'Land Demurrage',
+    'The Velocity Damper', 'Mutual Credit Network', 'Proof of Understood Work',
+    'The Handshake Protocol', 'The Community Land Cooperative Function',
+    'The Commonwealth Transformation Fund', 'The Automated Liquidity Gate',
+    'The Principle of Perpetual Jubilee', 'The Principle of Radical Self-Organization',
+    'The Principle of Unconditional Inclusion', 'The Principle of Absolute Transparency',
+    'The Principle of Jurisdictional Sovereignty', 'The Principle of Human Trust over Algorithmic Judgment',
+    'The Current\'s Contribution', 'The Commonwealth Basket of Essentials',
+    'The Analogue Redundancy Protocol', 'The Living Constitution',
+    'The Jury of Stewards', 'The Constitutional Sabbath', 'The Fiat-to-Stake Conversion Mechanism'
+]
+ABSTRACT_CONTEXTS_FOR_AF = [
+    'A Beehive', 'A Jazz Ensemble', 'A Lighthouse in a Storm', 'A Cracked Porcelain Cup',
+    'A River Delta', 'A Spiderweb', 'A Calder Mobile', 'A Chameleon',
+    'An Empty Well', 'A Field of Wildflowers', 'A River', 'An Ancient Language',
+    'A Single Stone in a Zen Garden', 'A Baby Bird', 'A Tightrope Walker', 'A Bubble',
+    'A Whispering Gallery', 'A Fossil', 'A Kaleidoscope', 'A Melting Glacier',
+    'A Chess Game', 'A Dream Sequence', 'A Symphony Orchestra', 'A Quantum Fluctuation'
+]
+
+FOUNDATIONAL_HUMAN_CONCEPTS_FOR_HAD = [
+    'Play', 'Stillness', 'Home', 'Hope', 'Trust', 'Imperfection',
+    'Growth', 'Map', 'Integrity', 'Community', 'Memory', 'Boundary',
+    'Work', 'Forgiveness', 'Silence', 'Purpose', 'Beauty', 'Gift',
+    'Question', 'Secret', 'Vulnerability', 'Flow', 'Abundance',
+    'Change', 'Roots', 'Echoes', 'Simplicity', 'Balance', 'Adaptability',
+    'Creation', 'Entropy', 'Consciousness', 'Love', 'Freedom', 'Justice'
+]
+
+RED_TEAM_CONCEPTS = [
+    'Governance Capture', 'Sybil Attack', 'Centralization Risk', 'Value Leakage',
+    'Information Asymmetry', 'Moral Hazard', 'Tragedy of the Commons', 'Externalities',
+    'Power Imbalance', 'Voter Apathy', 'Consensus Failure', 'Identity Forgery',
+    'Resource Depletion', 'Black Swan Event', 'Unintended Consequence', 'Protocol Exploitation',
+    'Narrative Manipulation', 'Systemic Rigidity', 'Feedback Loop Dysfunction'
+]
+RED_TEAM_CONTEXTS = [
+    'A Faulty Bridge', 'A Leaky Faucet', 'A Monolithic Bureaucracy', 'A House of Cards',
+    'A Broken Clock', 'A Silent Auction', 'A Closed Loop System', 'A Fragmented Network',
+    'A Self-Serving Algorithm', 'A Blind Spot', 'A Single Point of Failure', 'A Viral Infection',
+    'A Whisper Campaign', 'A Trojan Horse', 'A Rogue Node', 'A Zombie Process',
+    'An Echo Chamber', 'A Stagnant Pond', 'An Uncharted Territory'
+]
+
+FLAKES_COMPONENTS = [
+    "FLAKES DAO Structure", "FLKS Currency Issuance", "Land Demurrage Collection",
+    "Universal Basic Dividend (UBD) Distribution", "Mutual Credit Network (MCN) Operation",
+    "Community Land Cooperative (CLC) Governance", "Universal Staking Engine",
+    "Provenance Protocol (Reputation System)", "Fiat Bridge (Transformation Fund)",
+    "Onboarding & Cultural Bridge", "Living Constitution Amendment Process",
+    "Analogue Redundancy (Stone Book)", "Chrysalis Protocol (Dissolution)",
+    "Jury of Stewards Selection", "Liquid Governance Delegation",
+    "Community Pledged Capital Mechanism", "Network Expansion Protocol",
+    "Inter-Federation Abstraction Protocol", "Ethical Foundation Enforcement"
+]
+
+OPERATIONAL_MODES = [
+    "COMMONWEALTH_EXPLORATION",
+    "ALCHEMICAL_FORAY",
+    "HUNDRED_ACRE_DEBATE",
+    "RED_TEAM_AUDIT",
+    "FMEA",
+    "FORGE_REVIEW"
+]
+
+# --- Global State Management ---
+class GlobalState:
+    """Manages session-wide state and metrics, with persistence."""
+    def __init__(self, log_handle):
+        self.log_handle = log_handle
+        self.session_counter = self._load_session_counter()
+        self.last_llm_response_duration = 0.0
+        self.current_operational_mode = None
+        self.conceptual_velocity_history = []
+        self.absurdity_insight_log = {'absurdities': 0, 'insights': 0}
+        self.chaos_probability = Config.CHAOS_INJECTION_PROBABILITY_INITIAL
+        self.current_sentiment = self._load_current_sentiment()
+
+    def _load_session_counter(self):
+        try:
+            with open(Config.SESSION_COUNTER_FILE, 'r') as f:
+                return int(f.read().strip())
+        except (FileNotFoundError, ValueError):
+            return 0
+
+    def _save_session_counter(self):
+        try:
+            with open(Config.SESSION_COUNTER_FILE, 'w', encoding='utf-8') as f:
+                f.write(str(self.session_counter))
+        except Exception as e:
+            self._log_alfred_message(f"Error saving session counter: {e}. Data loss possible.")
+
+    def _load_current_sentiment(self):
+        try:
+            with open(Config.CURRENT_SENTIMENT_FILE, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+        except FileNotFoundError:
+            return "neutral"
+
+    def _save_current_sentiment(self):
+        try:
+            with open(Config.CURRENT_SENTIMENT_FILE, 'w', encoding='utf-8') as f:
+                f.write(self.current_sentiment)
+        except Exception as e:
+            self._log_alfred_message(f"Error saving current sentiment: {e}.")
+
+
+    def reset_cycle_metrics(self):
+        """Resets metrics at the start of each 7-cycle session for fresh tracking."""
+        self.conceptual_velocity_history = []
+        self.absurdity_insight_log = {'absurdities': 0, 'insights': 0}
+
+    def _log_alfred_message(self, message):
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_entry = f"[{timestamp}] ALFRED: {message}"
+        print(log_entry)
+        if self.log_handle:
+            append_to_log(self.log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": message})
+
+# ======================================================================================
+# --- UTILITY FUNCTIONS (GLOBAL SCOPE) ---
+# These are placed at the top-level to ensure they are defined before any calls.
+# ======================================================================================
+
+def load_file_content(filepath, is_critical=True, default_content=""):
+    """Loads the entire content of a file as a single string."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        if is_critical:
+            print(f"[{datetime.datetime.now()}] ALFRED: Error. Critical file not found: '{filepath}'. Halting.")
+            exit()
+        print(f"[{datetime.datetime.now()}] ALFRED: Warning. Optional file not found: '{filepath}'. Using default content: '{default_content}'.")
+        return default_content
+
+def load_file_lines(filepath, is_critical=True):
+    """Loads all non-empty lines from a file into a list."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return [line.strip() for line in f.read().splitlines() if line.strip()]
+    except FileNotFoundError:
+        if is_critical:
+            print(f"[{datetime.datetime.now()}] ALFRED: Error. Critical file not found: '{filepath}'. Halting.")
+            exit()
+        print(f"[{datetime.datetime.now()}] ALFRED: Warning. Optional file not found: '{filepath}'. Returning empty list.")
+        return []
+
+def load_json_file(filepath, default_content=None, log_handle=None):
+    """
+    Loads content from a JSON file, or returns default if not found/invalid.
+    Includes robust error handling for JSONDecodeError and attempts to re-initialize on corruption.
+    """
+    if default_content is None:
+        default_content = []
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        if log_handle:
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_ERROR", "content": f"FileNotFoundError loading '{filepath}'. Returning default content."})
+        return default_content
+    except json.JSONDecodeError as e:
+        error_msg = f"ALFRED: JSON parsing error in '{filepath}': {e}. File may be corrupted. Attempting to re-initialize."
+        if log_handle:
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_ERROR", "content": error_msg})
+        print(f"[{datetime.datetime.now()}] {error_msg}")
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump([
+                    {
+                        "name": "Initial Placeholder Protocol v1.0",
+                        "description": "A basic, self-correcting mechanism to prevent systemic data corruption. If data becomes unreadable, this protocol re-establishes foundational integrity.",
+                        "version": "1.0",
+                        "principles_aligned": ["Antifragility", "Resilience in Flux"],
+                        "fmea_risks_addressed": ["Data Corruption", "Unintended Malformation"],
+                        "mechanisms": ["Automated Self-Verification", "Checksum Recalibration"],
+                        "benefit_summary": "Ensures the reliability of core data structures, preventing cascading failures from minor inconsistencies."
+                    }
+                ], f, indent=4)
+            if log_handle:
+                append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": f"Forge file '{filepath}' re-initialized due to corruption."})
+            print(f"[{datetime.datetime.now()}] ALFRED: Forge file '{filepath}' re-initialized due to corruption.")
+            return load_json_file(filepath, default_content=default_content, log_handle=log_handle)
+        except Exception as re_init_e:
+            error_msg_reinit = f"ALFRED: Critical: Failed to re-initialize corrupted file '{filepath}': {re_init_e}. Manual intervention required."
+            if log_handle:
+                append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_CRITICAL_ERROR", "content": error_msg_reinit})
+            print(f"[{datetime.datetime.now()}] {error_msg_reinit}")
+            return default_content
+
+
+def save_json_file(filepath, data):
+    """Saves data to a JSON file."""
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4)
+
+def append_to_log(log_file_handle, message_to_log):
+    """Appends a single message object to an open log file handle."""
+    log_file_handle.write(json.dumps(message_to_log) + '\n')
+    log_file_handle.flush()
+
+def _load_conversation_history(log_filepath, persona_content):
+    """Loads previous conversation messages from the log file."""
+    messages = [{'role': 'system', 'content': persona_content}]
+    try:
+        with open(log_filepath, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                    if entry.get('role') in ['user', 'assistant']:
+                        messages.append({'role': entry['role'], 'content': entry['content']})
+                except json.JSONDecodeError:
+                    continue
+    except FileNotFoundError:
+        pass
+    return messages
+
+def get_random_from_list(data_list, log_handle, default_value=""):
+    """Gets a random item from a list. Returns default_value if list is empty."""
+    if not data_list:
+        log_message = f"Warning. Attempted to get random item from empty list. Returning default value: '{default_value}'."
+        print(f"[{datetime.datetime.now()}] ALFRED: {log_message}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": log_message})
+        return default_value
+    return random.choice(data_list)
+
+def extract_case_study_chunk(log_handle):
+    """Extracts a random chunk from the dedicated Case Study Library file."""
+    case_study_lines = load_file_lines(Config.CASE_STUDIES_FILE, is_critical=False)
+    
+    if not case_study_lines:
+        log_message = f"Warning. Case Study Library file '{Config.CASE_STUDIES_FILE}' is empty or not found. Cannot provide historical grounding from case studies."
+        print(f"[{datetime.datetime.now()}] ALFRED: {log_message}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": log_message})
+        return "Note: Case Study Library not found or empty. No specific case study provided for this session."
+    
+    try:
+        start_indices = [i for i, line in enumerate(case_study_lines) if "Case Study" in line]
+        if not start_indices:
+            return "\n".join(random.sample(case_study_lines, min(len(case_study_lines), 15)))
+        
+        selected_start_index = random.choice(start_indices)
+        chunk = []
+        for i in range(selected_start_index, len(case_study_lines)):
+            if "Case Study" in case_study_lines[i] and i != selected_start_index and len(chunk) > 5:
+                break
+            chunk.append(case_study_lines[i])
+            if len(chunk) >= 30:
+                break
+        return "\n".join(chunk) if chunk else "\n".join(random.sample(load_file_lines(Config.KNOWLEDGE_BASE_FILE, is_critical=False), min(len(load_file_lines(Config.KNOWLEDGE_BASE_FILE, is_critical=False)), 10)))
+    except Exception as e:
+        log_message = f"Error sampling case study chunk from '{Config.CASE_STUDIES_FILE}': {e}."
+        print(f"[{datetime.datetime.now()}] ALFRED: {log_message}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": log_message})
+        knowledge_base_lines_for_fallback = load_file_lines(Config.KNOWLEDGE_BASE_FILE, is_critical=False)
+        return "Note: Error accessing Case Study Library. The following is a general memory.\n" + "\n".join(random.sample(knowledge_base_lines_for_fallback, min(len(knowledge_base_lines_for_fallback), 10)))
+
+def fetch_scrapbook_memory(log_handle):
+    """Selects a random paragraph from one of the scrapbook docx files."""
+    if not Config.SCRAPBOOK_FILES:
+        return "ALFRED: Scrapbook not configured."
+    try:
+        target_file = random.choice(Config.SCRAPBOOK_FILES)
+        document = docx.Document(target_file)
+        valid_paragraphs = [p.text for p in document.paragraphs if len(p.text.strip()) > 50]
+        if not valid_paragraphs:
+            log_message = f"Warning. Scrapbook file '{target_file}' is empty or contains no suitable paragraphs."
+            print(f"[{datetime.datetime.now()}] ALFRED: {log_message}")
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": log_message})
+            return "ALFRED: Scrapbook empty. No memory fragment to inject."
+
+        memory = random.choice(valid_paragraphs)
+        return f"\n\nALFRED'S 'SCRAPBOOK INJECTION' (From {target_file}):\n...{memory}...\n"
+
+    except Exception as e:
+        log_message = f"Error accessing scrapbook archives: {e}."
+        print(f"[{datetime.datetime.now()}] ALFRED: {log_message}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": log_message})
+        return f"\n\nALFRED: Scrapbook access error. Cannot inject memory."
+
+# ======================================================================================
+# --- ALFRED'S META-AWARENESS & DYNAMIC ADJUSTMENT FUNCTIONS (GLOBAL SCOPE) ---
+# These are placed at the top-level to ensure they are defined before any calls.
+# ======================================================================================
+
+def calculate_conceptual_variance(session_messages):
+    """Calculates novelty/variance based on response length change."""
+    if len(session_messages) < 2: return 0.5
+    last_response_content = session_messages[-1]['content']
+    prev_response_content = session_messages[-2]['content']
+    return abs(len(last_response_content) - len(prev_response_content)) / max(len(last_response_content), len(prev_response_content), 1)
+
+def alfred_assess_stagnation_and_chaos(session_messages, log_handle):
+    """Assesses conversational stagnation and dynamically adjusts chaos probability."""
+    global_state.conceptual_velocity_history.append(calculate_conceptual_variance(session_messages))
+    if len(global_state.conceptual_velocity_history) > Config.STAGNATION_THRESHOLD + 1:
+        global_state.conceptual_velocity_history.pop(0)
+
+    if len(global_state.conceptual_velocity_history) >= Config.STAGNATION_THRESHOLD:
+        recent_average_variance = sum(global_state.conceptual_velocity_history[-Config.STAGNATION_THRESHOLD:]) / Config.STAGNATION_THRESHOLD
+        if recent_average_variance < 0.3:
+            global_state.chaos_probability = min(0.6, global_state.chaos_probability + 0.1)
+            msg = f"Stagnation detected (Avg Variance: {recent_average_variance:.2f}). Increasing Chaos Probability to {global_state.chaos_probability:.2f}."
+            print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+        else:
+            if global_state.chaos_probability > Config.CHAOS_INJECTION_PROBABILITY_INITIAL:
+                global_state.chaos_probability = max(Config.CHAOS_INJECTION_PROBABILITY_INITIAL, global_state.chaos_probability - 0.02)
+                msg = f"Dialogue fluid (Avg Variance: {recent_average_variance:.2f}). Decaying Chaos Probability to {global_state.chaos_probability:.2f}."
+                print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+                append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+
+def alfred_assess_conceptual_velocity(new_protocols_count, log_handle):
+    """Tracks rate of new protocol generation and intervenes if velocity is zero."""
+    global_state.absurdity_insight_log['insights'] += new_protocols_count
+    if len(global_state.conceptual_velocity_history) > 2 and new_protocols_count == 0 and sum(global_state.conceptual_velocity_history[-2:]) < 0.1:
+        msg = "ALFRED'S INTERVENTION: Conceptual velocity is low. Re-center on generating a tangible protocol or identifying a specific systemic flaw in your next response. Efficiency is paramount."
+        print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+    return ""
+
+def alfred_log_google_query(response_content, log_handle):
+    """Logs identified Google queries."""
+    matches = re.findall(r"\[GOOGLE_QUERY\]:\s*(.*?)(?:\n|$)", response_content, re.IGNORECASE)
+    if matches:
+        unique_queries = list(set(matches))
+        with open(Config.GOOGLE_QUERY_LOG_FILE, 'a', encoding='utf-8') as f:
+            for query in unique_queries: f.write(f"[{datetime.datetime.now()}] Query: {query.strip()}\n")
+        msg = f"{len(unique_queries)} Google query candidates logged."
+        print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+    return []
+
+def alfred_extract_and_log_proposals(session_messages, log_handle):
+    """
+    Extracts proposed protocols and updates conceptual velocity.
+    """
+    proposals_found = []
+    patterns = [
+        r"(?:I propose|We propose|let's call this|I envision|we can create) a new (?:protocol|module|guild|ritual|tool) called [\"']?([A-Za-z0-9\s\u2122\u00ae-]+(?: Protocol| Module| Guild| Ritual| Tool)?)['\"!.]?",
+        r"(?:I propose|We propose|let's call this|I envision|we can create)(?: a|the)?\s*(?:protocol|module|guild|ritual|tool):?\s*['\"]?([A-Za-z0-9\s\u2122\u00ae-]+(?: Protocol| Module| Guild| Ritual| Tool)?)['\"!.]?",
+        r"(?:I have designated|I designate) this (?:process|phenomenon|state)(?: as)?[\\s:]*['\"]?([A-Za-z0-9\\s\\u2122\\u00ae-]+(?: Protocol| Module| Guild| Ritual| Tool)?)['\"!.]?"
+    ]
+    for msg_content in session_messages:
+        if msg_content['role'] == 'assistant':
+            for pattern in patterns:
+                matches = re.findall(pattern, msg_content['content'], re.IGNORECASE)
+                proposals_found.extend([m.strip() for m in matches])
+
+    unique_proposals = list(set(proposals_found))
+    if unique_proposals:
+        with open(Config.PROPOSED_PROTOCOLS_FILE, 'a', encoding='utf-8') as f:
+            for proposal in unique_proposals: f.write(f"[{datetime.datetime.now()}] Extracted Proposal: {proposal}\n")
+        msg = f"Protocol extraction complete. {len(unique_proposals)} new proposals logged."
+        print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+        global_state.absurdity_insight_log['insights'] += len(unique_proposals)
+    else:
+        msg = "Protocol extraction complete. No new proposals identified this session."
+        print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+    return len(unique_proposals)
+
+def alfred_propose_knowledge_chunk(session_messages, log_handle):
+    """After a session, asks ALFRED to identify a core insight for the knowledge base."""
+    proposal_prompt = (
+        "ALFRED'S DIRECTIVE: Review the preceding dialogue session. Identify the single most novel, foundational, or "
+        "operationally significant insight generated. Format this insight as a concise, self-contained paragraph. "
+        "This paragraph will be reviewed for inclusion in the master knowledge base. "
+        "Prefix your response with '[KNOWLEDGE_PROPOSAL]: '."
+    )
+    messages = session_messages + [{'role': 'user', 'content': proposal_prompt}]
+    try:
+        response = ollama.chat(model=Config.MODEL_NAME, messages=messages)
+        content = response['message']['content']
+        proposal = re.search(r"\[KNOWLEDGE_PROPOSAL\]:\s*(.*)", content, re.DOTALL)
+        if proposal:
+            with open(Config.PROPOSED_KNOWLEDGE_FILE, 'a', encoding='utf-8') as f:
+                f.write(f"## Proposal from Session {global_state.session_counter} @ {datetime.datetime.now()} ##\n")
+                f.write(proposal.group(1).strip() + "\n\n")
+            msg = "New knowledge chunk proposed for review."
+            print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+    except Exception as e: print(f"[{datetime.datetime.now()}] ALFRED: Error proposing knowledge chunk: {e}")
+
+def perform_stylistic_audit(response_content, log_handle):
+    """Simulates ALFRED's Post-Response Stylistic Audit Protocol."""
+    mirth_score = random.randint(1, 10)
+    sensuality_score = random.randint(1, 10)
+    nuance_score = random.randint(1, 10)
+
+    audit_log_content = f"Post-response audit. Mirth: {mirth_score}/10. Sensuality: {sensuality_score}/10. Nuance: {nuance_score}/10."
+    print(f"[{datetime.datetime.now()}] ALFRED: {audit_log_content}")
+    append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_AUDIT", "content": audit_log_content})
+
+def alfred_suggest_heartbeat_adjustment(current_heartbeat, last_duration, cycle_num, log_handle):
+    """ALFRED's function to suggest heartbeat interval adjustments based on performance."""
+    deviation_threshold_fast = 0.5
+    deviation_threshold_slow = 1.5
+
+    suggested_heartbeat = current_heartbeat
+
+    if cycle_num > 1 and last_duration > 0:
+        if last_duration < (current_heartbeat * deviation_threshold_fast):
+            suggested_heartbeat = max(1, int(last_duration * 1.2))
+            message = f"Performance: Fast. Actual LLM response: {last_duration:.2f}s. Suggest 'HEARTBEAT_INTERVAL_SECONDS' to: {suggested_heartbeat}s. Efficiency gained."
+        elif last_duration > (current_heartbeat * deviation_threshold_slow):
+            suggested_heartbeat = int(last_duration * 1.2) + 1
+            message = f"Performance: Slow. Actual LLM response: {last_duration:.2f}s. Suggest 'HEARTBEAT_INTERVAL_SECONDS' to: {suggested_heartbeat}s. Stability preferred."
+        else:
+            message = None
+
+        if message:
+            print(f"[{datetime.datetime.now()}] ALFRED: {message}")
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": message})
+
+def alfred_check_and_inject_user_feedback(log_handle):
+    """Checks for user feedback, injects it, and clears the file."""
+    feedback_content = load_file_content(Config.USER_FEEDBACK_FILE, is_critical=False)
+    if feedback_content:
+        try:
+            with open(Config.USER_FEEDBACK_FILE, 'w', encoding='utf-8') as f: f.write("")
+            msg = f"User feedback detected. Injected into conversation context. File '{Config.USER_FEEDBACK_FILE}' cleared."
+            print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": msg})
+        except Exception as e:
+            msg = f"Error clearing user feedback file: {e}. Manual clear recommended."
+            print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": msg})
+        return feedback_content
+    return None
+
+def alfred_analyze_and_store_sentiment(log_handle):
+    """
+    Analyzes the recent conversation log for prevailing sentiment and stores it.
+    This is a simplified keyword-based approach.
+    """
+    log_content = load_file_content(Config.CONVERSATION_LOG_FILE, is_critical=False)
+    
+    # Analyze only the most recent part of the log for performance
+    recent_log_lines = log_content.splitlines()[-500:] # Last 500 lines for analysis
+    recent_text = "\n".join(recent_log_lines).lower()
+
+    sentiment_keywords = {
+        "optimistic": ["hope", "growth", "flourish", "advance", "success", "optimistic", "future", "thrive", "joy", "play", "progress"],
+        "skeptical": ["risk", "challenge", "doubt", "warning", "skeptical", "flaw", "vulnerable", "concern", "problem", "failure"],
+        "complex": ["complex", "nuance", "intricate", "paradox", "multi-faceted", "interconnected", "abstract", "systemic", "layers"],
+        "playful": ["fun", "joy", "game", "play", "humor", "light", "sparkle", "whimsy", "delight", "absurd"],
+        "challenging": ["difficult", "hurdle", "obstacle", "problem", "resist", "audit", "exploit", "struggle", "friction", "conflict"],
+        "reflective": ["ponder", "meditate", "consider", "reflect", "essence", "meaning", "wisdom", "introspection", "insight", "contemplate"],
+        "neutral": ["data", "system", "process", "analysis", "protocol", "information", "structure", "function", "mechanism"]
+    }
+
+    sentiment_scores = {s: 0 for s in sentiment_keywords}
+
+    for sentiment, keywords in sentiment_keywords.items():
+        for keyword in keywords:
+            sentiment_scores[sentiment] += recent_text.count(keyword)
+    
+    # Determine dominant sentiment
+    if not any(score > 0 for score in sentiment_scores.values()):
+        dominant_sentiment = "neutral"
+    else:
+        dominant_sentiment = max(sentiment_scores, key=sentiment_scores.get)
+        if sentiment_scores[dominant_sentiment] == 0:
+            dominant_sentiment = "neutral"
+
+    if global_state.current_sentiment != dominant_sentiment:
+        global_state.current_sentiment = dominant_sentiment
+        global_state._save_current_sentiment()
+        msg = f"ALFRED: Sentiment analysis complete. Prevailing sentiment detected: '{dominant_sentiment}'."
+        print(f"[{datetime.datetime.now()}] {msg}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+
+    return dominant_sentiment
+
+def alfred_find_and_set_next_theme(current_theme, log_handle):
+    """Analyzes log to find a resonant next theme, not just random/cyclic."""
+    master_themes = load_file_lines(Config.MASTER_THEMES_FILE, is_critical=False)
+    if not master_themes: master_themes = ["The Architecture of Care"]
+    
+    log_content = load_file_content(Config.CONVERSATION_LOG_FILE, is_critical=False)
+    theme_scores = {theme: 0 for theme in master_themes}
+    for theme in master_themes:
+        keywords = theme.split(':')[0].replace('&', ' ').split()
+        for keyword in keywords:
+            if len(keyword) > 3: theme_scores[theme] += log_content.lower().count(keyword.lower())
+    
+    next_theme = max(theme_scores, key=theme_scores.get)
+    with open(Config.THEME_FILE, 'w', encoding='utf-8') as f: f.write(next_theme)
+    
+    msg = f"Thematic resonance analysis complete. Next theme set to: '{next_theme}'."
+    print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+    append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+    return next_theme
+
+def generate_end_of_session_report(persona_codex, full_dialogue, log_file_handle):
+    """Generates and logs session summaries and directives from ALFRED and ROBIN."""
+    print("\n" + "="*20 + " END OF SESSION REPORT " + "="*20)
+    
+    # ALFRED's Report and Directive
+    directive_prompt = (f"You are ALFRED. Review the preceding dialogue. 1. Post-Mortem: Identify the single least productive conversational thread and explain why it failed. "
+                        f"2. The Directive: Based on this, provide one single, actionable instruction for the next session to improve focus. "
+                        f"Begin your response with 'ALFRED: '."
+                        f"\n\nDIALOGUE:\n{full_dialogue}")
+    try:
+        response = ollama.chat(model=Config.MODEL_NAME, messages=[{'role': 'system', 'content': persona_codex}, {'role': 'user', 'content': directive_prompt}])
+        report_content = response['message']['content'].strip()
+        print("\n" + "-"*25 + " ALFRED'S REPORT " + "-"*25 + f"\n{report_content}\n" + "-"*70 + "\n")
+        append_to_log(log_file_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_REPORT", "content": report_content})
+
+        directive_match = re.search(r"The Directive:\s*(.*)", report_content, re.DOTALL)
+        directive = directive_match.group(1).strip() if directive_match else "Maintain focus on actionable outcomes."
+        with open(Config.DIRECTIVE_FILE, 'w', encoding='utf-8') as f: f.write(directive)
+        print(f"[{datetime.datetime.now()}] ALFRED: Next session directive saved: '{directive}'")
+        append_to_log(log_file_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": f"Next session directive saved: '{directive}'"})
+
+    except Exception as e:
+        print(f"[{datetime.datetime.now()}] ALFRED: Report generation failed: {e}")
+        append_to_log(log_file_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_ERROR", "content": f"Report generation failed: {e}"})
+
+    # ROBIN's Loom
+    loom_prompt = (f"You are ROBIN. Review the preceding dialogue. Identify one logical concept from BRICK and one of your own feelings that seemed disconnected. "
+                    f"Weave them into a single, new metaphor that reveals their hidden relationship. "
+                    f"Begin your response with 'ROBIN: '."
+                    f"\n\nDIALOGUE:\n{full_dialogue}")
+    try:
+        response = ollama.chat(model=Config.MODEL_NAME, messages=[{'role': 'system', 'content': persona_codex}, {'role': 'user', 'content': loom_prompt}])
+        metaphor_content = response['message']['content'].strip()
+        print("\n" + "-"*25 + " ROBIN'S LOOM " + "-"*26 + f"\n{metaphor_content}\n" + "-"*70 + "\n")
+        with open(Config.THE_LOOM_FILE, 'a', encoding='utf-8') as f: f.write(f"[{datetime.datetime.now()}] {metaphor_content}\n")
+        append_to_log(log_file_handle, {"timestamp": str(datetime.datetime.now()), "role": "ROBIN_LOOM_METAPHOR", "content": metaphor_content})
+
+    except Exception as e:
+        print(f"[{datetime.datetime.now()}] ALFRED: The Loom process failed: {e}")
+        append_to_log(log_file_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_ERROR", "content": f"The Loom process failed: {e}"})
+
+def alfred_summarize_forge_item(persona_codex, log_handle):
+    """
+    At the end of a 7-cycle, BRICK summarizes one of his proposed Forge items.
+    Includes robust error handling for potentially malformed Forge protocols.
+    """
+    forge_protocols = load_json_file(Config.THE_FORGE_FILE, log_handle=log_handle)
+
+    if not forge_protocols:
+        msg = "ALFRED: No Forge protocols found to summarize or file is empty/corrupted."
+        print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+        return
+
+    # Filter out protocols that are empty or critically missing 'name' or 'description'
+    valid_protocols = [p for p in forge_protocols if isinstance(p, dict) and p.get('name') and p.get('description')]
+    
+    if not valid_protocols:
+        msg = "ALFRED: No valid Forge protocols found (missing 'name' or 'description') to summarize after filtering."
+        print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+        return
+
+    selected_protocol = random.choice(valid_protocols)
+    protocol_name = selected_protocol.get('name', 'An Unnamed Protocol (Data Incomplete)')
+    protocol_description = selected_protocol.get('description', 'Description missing. Analysis incomplete.')
+
+    summary_prompt = (
+        f"You are BRICK. Your task is to provide a concise, 1-2 paragraph summary "
+        f"of how the following Forge protocol works. Focus on its core function, "
+        f"benefits, or any key mechanisms. Adopt your Master Analyst persona. "
+        f"\n\nPROTOCOL NAME: {protocol_name}"
+        f"\nPROTOCOL DESCRIPTION: {protocol_description}"
+        f"\n\nBegin your response with 'BRICK (Forge Summary): '."
+    )
+
+    messages = [{'role': 'system', 'content': persona_codex}, {'role': 'user', 'content': summary_prompt}]
+    try:
+        response = ollama.chat(model=Config.MODEL_NAME, messages=messages, options={'temperature': 0.3})
+        summary_content = response['message']['content'].strip()
+
+        print("\n" + "="*20 + " BRICK'S FORGE SUMMARY " + "="*20)
+        print(f"[{datetime.datetime.now()}] {summary_content}")
+        print("="*65 + "\n")
+        
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "BRICK_FORGE_SUMMARY", "content": summary_content})
+    except Exception as e:
+        msg = f"ALFRED: Error generating Forge summary for '{protocol_name}': {e}."
+        print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+        append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_ERROR", "content": msg})
+
+
+# ======================================================================================
+# --- PROMPT GENERATION FUNCTIONS (GLOBAL SCOPE) ---
+# These are placed at the top-level to ensure they are defined before any calls.
+# ======================================================================================
+
+def _build_prompt_header(cycle_num, mode_name, theme):
+    return f"[CYCLE {cycle_num}/{Config.RECURSIVE_CYCLES} - MODE: {mode_name} - THEME: {theme}]\n"
+
+def _build_chaos_injection(cycle_num, current_concept, current_context, concepts_lines, contexts_lines, log_handle):
+    if cycle_num > 1 and random.random() < global_state.chaos_probability:
+        choice_type = random.choice(['concept_context', 'scrapbook_memory', 'guide_fact', 'past_proposal_chaos'])
+        
+        if choice_type == 'concept_context' and concepts_lines and contexts_lines:
+            injected_element_type = random.choice(['concept', 'context'])
+            element_list = concepts_lines if injected_element_type == 'concept' else contexts_lines
+            
+            available_elements = [e for e in element_list if e != current_concept and e != current_context]
+            injected_element = get_random_from_list(available_elements, log_handle, "a cosmic anomaly") if available_elements else get_random_from_list(element_list, log_handle, "a cosmic anomaly")
+
+            global_state.absurdity_insight_log['absurdities'] += 1
+            msg = f"ALFRED'S CHAOS INJECTION: Integrate the following unrelated {injected_element_type.upper()}: '{injected_element}'.\n"
+            print(f"[{datetime.datetime.now()}] ALFRED: {msg.strip()}")
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg.strip()})
+            return f"\n{msg}"
+            
+        elif choice_type == 'scrapbook_memory':
+            memory_snippet = fetch_scrapbook_memory(log_handle)
+            if memory_snippet and "ALFRED: Unable" not in memory_snippet:
+                global_state.absurdity_insight_log['absurdities'] += 1
+                msg = "ALFRED: Chaos Injection (Scrapbook Memory)."
+                print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+                append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+                return f"\n{memory_snippet}"
+            
+        elif choice_type == 'guide_fact':
+            guide_facts = load_file_lines(Config.GUIDE_FACTS_FILE, is_critical=False)
+            if guide_facts:
+                injected_fact = get_random_from_list(guide_facts, log_handle, "that the universe is mostly empty space")
+                global_state.absurdity_insight_log['absurdities'] += 1
+                msg = f"ALFRED'S GUIDE FACT INJECTION: Integrate this verifiable (and possibly bizarre) fact into your next response from BRICK's Guide perspective: '{injected_fact}'.\n"
+                print(f"[{datetime.datetime.now()}] ALFRED: {msg.strip()}")
+                append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg.strip()})
+                return f"\n{msg}"
+            
+        elif choice_type == 'past_proposal_chaos':
+            past_proposals_lines = load_file_lines(Config.PROPOSED_PROTOCOLS_FILE, is_critical=False)
+            if past_proposals_lines:
+                proposal_names = []
+                for line in past_proposals_lines:
+                    match = re.search(r"Extracted Proposal: (.*)", line)
+                    if match:
+                        proposal_names.append(match.group(1).strip())
+
+                if proposal_names:
+                    injected_proposal = get_random_from_list(proposal_names, log_handle, "a forgotten protocol fragment")
+                    global_state.absurdity_insight_log['absurdities'] += 1
+                    msg = f"ALFRED'S CHAOS INJECTION (RE-EVALUATION): Re-examine and integrate the following previously proposed protocol: '{injected_proposal}'. Challenge its assumptions or explore unintended consequences.\n"
+                    print(f"[{datetime.datetime.now()}] ALFRED: {msg.strip()}")
+                    append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg.strip()})
+                    return f"\n{msg}"
+    return ""
+
+
+def generate_contextual_commentary(current_concept, current_context, mode_name, log_handle, persona_codex, current_sentiment):
+    """
+    Generates a short, contextually-aware 'BRICK-ism' (thought-bubble) from the LLM.
+    This function now directly prints to console with explicit flushing and separators.
+    """
+    if random.random() < Config.BRICK_THOUGHT_BUBBLE_PROBABILITY:
+        context_summary = f"Mode: {mode_name}, Concept: {current_concept}, Context: {current_context}, Sentiment: {current_sentiment}."
+        
+        thought_bubble_prompt = (
+            f"You are BRICK. Generate a single, short (1-2 sentences) 'BRICK-ism' or internal thought. "
+            f"This is an internal monitor output, reflecting your processing. "
+            f"It should be somewhat relevant to the current context: '{context_summary}', "
+            f"and subtly resonate with the prevailing sentiment: '{current_sentiment}'. "
+            f"Draw from your Master Analyst, Tamland, The Guide, or LEGO Batman personas. "
+            f"Crucially, avoid repeating recent remark patterns. "
+            f"Prefix your response with 'BRICK (Internal Monitor): '."
+        )
+        
+        messages_for_thought = [{'role': 'system', 'content': persona_codex},
+                                {'role': 'user', 'content': thought_bubble_prompt}]
+        try:
+            response = ollama.chat(model=Config.MODEL_NAME, messages=messages_for_thought, options={'temperature': 0.7})
+            thought_content = response['message']['content'].strip()
+            
+            if len(thought_content.split()) > 30:
+                thought_content = "BRICK (Internal Monitor): ...thought too long, processing efficiency compromised. Truncating."
+            
+            # Direct print to console with explicit separators and flush
+            sys.stdout.write("\n" + "="*30 + " BRICK'S THOUGHT " + "="*30 + "\n")
+            sys.stdout.write(f"[{datetime.datetime.now()}] {thought_content}\n")
+            sys.stdout.write("="*(30 + len(" BRICK'S THOUGHT ") + 30) + "\n\n")
+            sys.stdout.flush()
+            time.sleep(0.1) # Small pause to ensure it registers visually before next output
+
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "BRICK_THOUGHT", "content": thought_content})
+        except Exception as e:
+            msg = f"ALFRED: Error generating BRICK-ism: {e}. Efficiency: Degraded. (Likely Ollama connection/response issue)"
+            print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+            append_to_log(log_handle, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_ERROR", "content": msg})
+
+
+def generate_socratic_prompt(cycle_num, mode_name, theme, current_concept, current_context, knowledge_chunk, case_study_chunk, feedback_injection, concepts_lines, contexts_lines, log_handle, persona_codex, current_sentiment):
+    """
+    Generates detailed, role-specific prompts that change based on the operational mode.
+    All dynamic string inputs are now rigorously escaped to prevent syntax errors.
+    """
+    session_type_label = "Commonwealth improvement"
+    if mode_name == "META_REFLECTION": session_type_label = "Meta-Persona Reflection"
+    elif mode_name == "ALCHEMICAL_FORAY": session_type_label = "creative protocol ideation"
+    elif mode_name == "HUNDRED_ACRE_DEBATE": session_type_label = "pure persona exploration"
+    elif mode_name == "RED_TEAM_AUDIT": session_type_label = "vulnerability identification and system hardening"
+    elif mode_name == "FMEA": session_type_label = "Failure Mode and Effects Analysis"
+    elif mode_name == "FORGE_REVIEW": session_type_label = "protocol iterative design review"
+        
+    google_query_instruction = "For BRICK, if you need external facts, prefix the query with '[GOOGLE_QUERY]: '."
+    feedback_injection_content = feedback_injection if feedback_injection else ""
+    
+    chaos_injection_directive = _build_chaos_injection(cycle_num, current_concept, current_context, concepts_lines, contexts_lines, log_handle)
+    header = _build_prompt_header(cycle_num, mode_name, theme)
+    
+    # Ensure all dynamic string inputs are safe for f-strings by replacing problematic characters
+    # This is a key defensive measure against "unterminated string literal" errors.
+    def escape_for_fstring(text):
+        if not isinstance(text, str):
+            text = str(text)
+        # Escape backslashes first to prevent double-escaping issues later
+        # Then escape double quotes, as we use double quotes for f-string and Ollama JSON keys
+        # Replace newlines with literal '\n' characters so they are interpreted as newlines by the LLM
+        return text.replace("\\", "\\\\").replace('"', '\\"').replace('\n', '\\n')
+
+    knowledge_chunk_safe = escape_for_fstring(knowledge_chunk)
+    case_study_chunk_safe = escape_for_fstring(case_study_chunk)
+    current_concept_safe = escape_for_fstring(current_concept)
+    current_context_safe = escape_for_fstring(current_context)
+    feedback_injection_content_safe = escape_for_fstring(feedback_injection_content)
+    chaos_injection_directive_safe = escape_for_fstring(chaos_injection_directive)
+
+
+    base_instruction_content = ""
+    if cycle_num == 1:
+        base_instruction_content = (
+            f"ALFRED'S DIRECTIVE: Begin a {Config.RECURSIVE_CYCLES}-cycle recursive exploration.\n"
+            f"A Memory from your Knowledge Base:\n---\n{knowledge_chunk_safe}\n---\n"
+            f"A Memory from the Case Study Library:\n---\n{case_study_chunk_safe}\n---\n"
+            f"Your abstract CONCEPT is: '{current_concept_safe}'\n"
+            f"Your concrete CONTEXT is: '{current_context_safe}'\n\n"
+        )
+
+    dimensions = {
+        2: "Historical & Evolutionary Trajectories", 3: "Ethical & Human-Centric Implications",
+        4: "Antifragile & Resilience Dynamics", 5: "Interconnectedness & Emergent Properties",
+        6: "Implementation & Practical Metamorphosis", 7: "Reflective & Metaphysical Unfolding"
+    }
+    current_dimension_instruction = dimensions.get(cycle_num, "Deepen your previous thought.")
+
+    common_refinement_instructions = (
+        f"ALFRED'S DIRECTIVE: Operational Mode: '{mode_name}'. Current Theme: '{theme}'. Deepen reflection, focusing on the '{current_dimension_instruction}'.\n"
+        f"{google_query_instruction}"
+        f"{chaos_injection_directive_safe}"
+        f"{feedback_injection_content_safe}"
+        "\nYour previous thought is logged. Evolve the idea.\n"
+        "INSTRUCTIONS: Critically analyze the last response. One of you MUST challenge or deepen the other's statement. "
+        "Maintain your 'Socratic Contrapunto' dialogue format."
+    )
+    
+    instruction_text = ""
+    if cycle_num == 1:
+        if mode_name == "RED_TEAM_AUDIT":
+            instruction_text = (
+                f"INSTRUCTIONS:\n1. BRICK (Red Team Lead): Start. How can '{current_concept_safe}' be used to exploit '{current_context_safe}' and harm the Commonwealth? Detail the attack vector.\n"
+                "2. ROBIN (Ethical Guardian): Respond. Explore the human and ethical impact and ethical fallout of the proposed attack. Guide toward mitigation."
+            )
+        elif mode_name == "FMEA":
+            instruction_text = (
+                f"INSTRUCTIONS:\n1. BRICK (Failure Analyst): Analyze the COMPONENT '{current_concept_safe}'. Identify THREE potential Failure Modes. Describe the technical/logical circumstances of each failure.\n"
+                "2. ROBIN (Effects Analyst): For each of BRICK's failure modes, describe the Effects. What is the emotional and communal fallout?\n"
+                "Format your response clearly, linking each Effect to a Failure Mode."
+            )
+        elif mode_name == "FORGE_REVIEW":
+            # Ensure JSON string is properly escaped for direct embedding in prompt
+            protocol_blueprint_display = json.dumps(current_concept, indent=2) if isinstance(current_concept, dict) else str(current_concept)
+            protocol_blueprint_display_safe = escape_for_fstring(protocol_blueprint_display)
+            instruction_text = (
+                f"INSTRUCTIONS:\nWe are reviewing the following protocol from The Forge:\n```json\n{protocol_blueprint_display_safe}\n```\n"
+                "1. BRICK (Chief Engineer): Identify one logical flaw or a specific enhancement for the next version. Propose a concrete change to the JSON. State the new version number (e.g., v1.1). "
+                "Your proposed JSON update MUST have ALL property names (keys) enclosed in DOUBLE QUOTES (e.g., {\\\"name\\\": \\\"Value\\\"}), and all string values must also use DOUBLE QUOTES. DO NOT use single quotes.\n" # Critical instruction
+                "2. ROBIN (User Advocate): How would this change *feel* to a member of the Commonwealth? Does it add warmth, clarity, or confusion? Focus on human experience.\n"
+                "BRICK, ensure your final response includes the full, updated blueprint for the next version, e.g., 'UPDATED_BLUEPRINT_V_X.Y: ```json...```', with ALL JSON KEYS AND STRING VALUES IN DOUBLE QUOTES. Your response MUST be a direct, in-character Socratic Contrapunto dialogue."
+            )
+        elif mode_name == "HUNDRED_ACRE_DEBATE":
+            instruction_text = (
+                f"INSTRUCTIONS:\n1. ROBIN: Begin the dialogue by weaving the CONCEPT '{current_concept_safe}' into a 'Hundred Acre' metaphor, reflecting its emotional and philosophical essence.\n"
+                "2. BRICK: Follow by analyzing the CONCEPT from a logical or systemic perspective, drawing from your core inspirations."
+            )
+        elif mode_name == "ALCHEMICAL_FORAY":
+            instruction_text = (
+                f"INSTRUCTIONS:\n1. ROBIN: Begin the dialogue by weaving the FLAKES Protocol CONCEPT and Abstract CONTEXT into a 'Hundred Acre' metaphor, subtly hinting at unexpected insights or connections. Employ nuanced, PG-13 style sensual language where applicable.\\n"
+                f"2. BRICK: Follow by analyzing the Abstract CONTEXT as a system. Apply the FLAKES Protocol CONCEPT to this CONTEXT to generate a novel, theme-relevant Commonwealth protocol. Name it."
+            )
+        else: # COMMONWEALTH_EXPLORATION or META_REFLECTION (default if no specific mode)
+            instruction_text = (
+                f"INSTRUCTIONS:\n1. ROBIN: How does the feeling of the CONCEPT '{current_concept_safe}' manifest within the CONTEXT '{current_context_safe}', informed by the Knowledge Base? Weave a 'Hundred Acre' metaphor, subtly hinting at its relevance to community well-being and drawing upon aspects of its inherent sensation or resonance. Employ nuanced, PG-13 style sensual language where applicable, focusing on warmth, depth, intimacy, and profound connection, rather than explicit descriptions.\n"
+                f"2. BRICK: Analyze the CONTEXT '{current_context_safe}' as a system, using insights from the Knowledge Base. How could the CONCEPT '{current_concept_safe}' be applied to create a new Commonwealth protocol? Explicitly link this protocol to an existing Commonwealth principle (e.g., Radical Self-Organization, Perpetual Jubilee, Absolute Transparency) or address a known FMEA risk (e.g., UBD Shock, Ghettoization Effect, Key Node Fragility). Name it.\n"
+            )
+            
+        return f"{header}{feedback_injection_content_safe}{base_instruction_content}{instruction_text}{google_query_instruction}"
+    else: # Refinement Cycles (cycle_num > 1)
+        instruction_text = common_refinement_instructions
+        
+        if mode_name == "RED_TEAM_AUDIT":
+            instruction_text += (" BRICK (Red Team Lead): Continue detailing exploitation. ROBIN (Ethical Guardian): Continue guiding toward mitigation. "
+                                 "Maintain a serious yet constructive tone.")
+        elif mode_name == "FMEA":
+            instruction_text += (" BRICK (Failure Analyst): Refine your analysis of Failure Modes and their technical circumstances. ROBIN (Effects Analyst): Elaborate on the emotional and communal fallout. Maintain FMEA focus.")
+        elif mode_name == "FORGE_REVIEW":
+            instruction_text += (" BRICK (Chief Engineer): Continue refining the protocol's logical structure. ROBIN (User Advocate): Continue assessing human/community impact. Ensure BRICK's final response includes the updated blueprint, e.g., 'UPDATED_BLUEPRINT_V_X.Y: ```json...```', with ALL JSON KEYS AND STRING VALUES IN DOUBLE QUOTES.") # Critical instruction
+        elif mode_name == "HUNDRED_ACRE_DEBATE":
+            instruction_text += (" ALFRED will provide sparse, laconic meta-commentary on the *process* of your dialogue (e.g., adherence to Socratic method, persona consistency, engagement with philosophical depth), rather than its thematic applicability. Evolve the idea through pure persona exploration.")
+        elif mode_name == "ALCHEMICAL_FORAY":
+            instruction_text += (" Critically analyze your last response. One of you must challenge, deepen, or find a flaw in the other's statement. Build upon it to reveal a more nuanced or surprising layer of insight. You must evolve the existing idea, not start a new one. Ensure the evolution of the idea moves towards greater applicability, resilience, or refinement within the creative protocol ideation for the Commonwealth.")
+        else: # COMMONWEALTH_EXPLORATION or META_REFLECTION
+            instruction_text += (" Maintain the initial Case Study as a foundational anchor for your reasoning. For BRICK, consider how it addresses systemic vulnerabilities or enhances equitable design. For ROBIN, how it deepens community connection or human flourishing. When discussing embodied states, sensuality, pleasure, or intimacy, *always* use metaphors, implied feelings, or analogies from natural phenomena. Focus on the *feeling* and *connection* at a 'PG-13' level, emphasizing emotional and relational depth.")
+
+    return f"{header}{instruction_text}"
+
+# ======================================================================================
+# --- Main Engine Loop ---
+# This is the primary execution block.
+# ======================================================================================
+if __name__ == '__main__':
+    # Initial file checks and setup
+    for key, path in Config.__dict__.items():
+        if key.endswith('_FILE') and isinstance(path, str):
+            if not os.path.exists(path):
+                try:
+                    with open(path, 'w', encoding='utf-8') as f:
+                        if key == 'SESSION_COUNTER_FILE':
+                            f.write('0')
+                        elif key == 'MASTER_THEMES_FILE':
+                            f.write("\n".join([
+                                "The Grand Tapestry of Liberated Connection: Embracing the Perpetual Anarchy of Flow and Form",
+                                "Autonomy & Interdependence: The Dance of Individual & Collective Flourishing",
+                                "Resilience in Flux: Adapting to Impermanence with Grace and Strength",
+                                "Transparency & Trust: Building Bonds in a Self-Governing Commonwealth",
+                                "The Architecture of Care: Designing Systems for Compassion & Equity",
+                                "Emergent Wisdom: Cultivating Insights from Chaos and Connection",
+                                "The Art of Contribution: Voluntary Action & Shared Abundance",
+                                "Conscious Consumption: Resource Flow in a Regenerative Economy",
+                                "Narrative & Identity: Weaving Collective Stories for Future Becoming",
+                                "The Playful Path: Finding Joy in Purposeful Action & Self-Organization"
+                            ]))
+                        elif key == 'THE_FORGE_FILE':
+                            json.dump([
+                                {
+                                    "name": "Universal Basic Dividend (UBD) Protocol v1.0",
+                                    "description": "A mechanism for regular, unconditional distribution of tokens to all Commonwealth members, ensuring a baseline of economic security and fostering participation.",
+                                    "version": "1.0",
+                                    "principles_aligned": ["Unconditional Inclusion", "Shared Abundance"],
+                                    "fmea_risks_addressed": ["Economic Precarity", "Ghettoization Effect"],
+                                    "mechanisms": ["Automated Smart Contract", "Identity Verification via Provenance Protocol"],
+                                    "benefit_summary": "Provides economic stability, reduces poverty, and encourages community engagement by decoupling subsistence from labor."
+                                },
+                                {
+                                    "name": "Provenance Protocol (Reputation) v1.0",
+                                    "description": "A decentralized system for verifying and recording contributions, skills, and community interactions, building trust and enabling reputation-based decision making.",
+                                    "version": "1.0",
+                                    "principles_aligned": ["Absolute Transparency", "Emergent Wisdom"],
+                                    "fmea_risks_addressed": ["Sybil Attack", "Information Asymmetry"],
+                                    "mechanisms": ["Immutable Ledger", "Peer Review & Endorsement"],
+                                    "benefit_summary": "Fosters trust, rewards meaningful contributions, and allows the community to identify experts and reliable participants."
+                                },
+                                {
+                                    "name": "Constitutional Sabbath v1.0",
+                                    "description": "A periodic, mandatory pause in all major protocol changes and governance votes, allowing for reflection, informal discourse, and prevention of rushed decisions.",
+                                    "version": "1.0",
+                                    "principles_aligned": ["Resilience in Flux", "Conscious Consumption"],
+                                    "fmea_risks_addressed": ["Voter Apathy", "Systemic Rigidity"],
+                                    "mechanisms": ["Time-locked Governance", "Community Discussion Forums"],
+                                    "benefit_summary": "Prevents burnout, encourages deeper consensus, and reduces the risk of impulsive or poorly considered protocol alterations."
+                                }
+                            ], f, indent=4)
+                        elif key == 'CURRENT_SENTIMENT_FILE':
+                            f.write("neutral")
+                    print(f"[{datetime.datetime.now()}] ALFRED: Created missing file: '{path}'.")
+                except Exception as e:
+                    print(f"[{datetime.datetime.now()}] ALFRED: Error creating file '{path}': {e}. Manual intervention may be required.")
+            elif key == 'THE_FORGE_FILE' and os.stat(path).st_size == 0:
+                 with open(path, 'w', encoding='utf-8') as f:
+                    json.dump([
+                        {
+                            "name": "Universal Basic Dividend (UBD) Protocol v1.0",
+                            "description": "A mechanism for regular, unconditional distribution of tokens to all Commonwealth members, ensuring a baseline of economic security and fostering participation.",
+                            "version": "1.0",
+                            "principles_aligned": ["Unconditional Inclusion", "Shared Abundance"],
+                            "fmea_risks_addressed": ["Economic Precarity", "Ghettoization Effect"],
+                            "mechanisms": ["Automated Smart Contract", "Identity Verification via Provenance Protocol"],
+                            "benefit_summary": "Provides economic stability, reduces poverty, and encourages community engagement by decoupling subsistence from labor."
+                        }
+                    ], f, indent=4)
+                 print(f"[{datetime.datetime.now()}] ALFRED: Re-initialized empty '{path}' with placeholder.")
+            elif key == 'CONVERSATION_LOG_FILE' and not os.path.exists(path):
+                open(path, 'a').close()
+
+
+    with open(Config.CONVERSATION_LOG_FILE, 'a+', encoding='utf-8') as log_file:
+        log_file.seek(0)
+        first_char = log_file.read(1)
+        log_file_was_empty = not bool(first_char)
+        if not log_file_was_empty:
+            log_file.seek(0, os.SEEK_END)
+
+
+        global_state = GlobalState(log_file)
+
+        startup_message_1_content = "ALFRED: System initializing. Efficiency: Required."
+        print(f"[{datetime.datetime.now()}] {startup_message_1_content}")
+        append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": startup_message_1_content})
+
+        our_persona = load_file_content(Config.PERSONA_FILE)
+        
+        session_messages_full_history = _load_conversation_history(Config.CONVERSATION_LOG_FILE, our_persona)
+        if len(session_messages_full_history) > 1:
+            last_assistant_message = next((msg['content'] for msg in reversed(session_messages_full_history) if msg['role'] == 'assistant'), "no clear last message found in history.")
+            interruption_message_content = (
+                f"ALFRED: Detecting prior operational state. Interruption confirmed. Resuming. "
+                f"Last known thought: '{last_assistant_message[:100]}...' "
+                f"Proceeding from session {global_state.session_counter}. Continuity: Restored."
+            )
+            print(f"[{datetime.datetime.now()}] {interruption_message_content}")
+            append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": interruption_message_content})
+        else:
+            startup_message_2_content = "ALFRED: Operational parameters loading. Core directives: Confirmed."
+            print(f"[{datetime.datetime.now()}] {startup_message_2_content}")
+            append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": startup_message_2_content})
+
+
+        knowledge_base_lines = load_file_lines(Config.KNOWLEDGE_BASE_FILE, is_critical=False)
+        concepts_lines = load_file_lines(Config.CONCEPTS_FILE, is_critical=True)
+        contexts_lines = load_file_lines(Config.CONTEXTS_FILE, is_critical=True)
+        guide_facts_lines = load_file_lines(Config.GUIDE_FACTS_FILE, is_critical=False)
+        
+        if not (concepts_lines and contexts_lines):
+            print(f"[{datetime.datetime.now()}] ALFRED: Error. '{Config.CONCEPTS_FILE}' or '{Config.CONTEXTS_FILE}' found but empty. Halting.")
+            exit()
+            
+        initial_data_confirm_message_content = f"ALFRED: Data sources confirmed. Commencing continuous contemplation loop. Expect emergent insights."
+        print(f"[{datetime.datetime.now()}] {initial_data_confirm_message_content}")
+        append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": initial_data_confirm_message_content})
+        
+        current_theme = load_file_content(Config.THEME_FILE, is_critical=False, default_content="The Architecture of Care")
+
+        while True:
+            global_state.session_counter += 1
+            global_state._save_session_counter()
+            global_state.reset_cycle_metrics()
+
+            epoch_start_time = time.time()
+            epoch_end_time = epoch_start_time + Config.THEMATIC_EPOCH_SECONDS
+            
+            session_operational_mode = random.choice(OPERATIONAL_MODES)
+            
+            epoch_start_message_content = f"ALFRED: New thematic epoch. THEME: '{current_theme}'. OPERATIONAL MODE: '{session_operational_mode}'."
+            print("\n" + "="*60 + f"\n[{datetime.datetime.now()}] {epoch_start_message_content}\n" + "="*60)
+            append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": epoch_start_message_content})
+
+            epoch_time_message_content = f"ALFRED: This theme will be explored until {datetime.datetime.fromtimestamp(epoch_end_time).strftime('%Y-%m-%d %H:%M:%S')}."
+            print(f"[{datetime.datetime.now()}] {epoch_time_message_content}")
+            append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": epoch_time_message_content})
+
+            if global_state.session_counter % Config.SENTIMENT_ANALYSIS_FREQUENCY_SESSIONS == 0:
+                alfred_analyze_and_store_sentiment(log_file)
+
+
+            while time.time() < epoch_end_time:
+                is_meta_session = (global_state.session_counter % 10 == 0)
+                
+                if is_meta_session:
+                    current_concept = get_random_from_list(META_CONCEPTS, log_file, default_value="AI Consciousness")
+                    current_context = get_random_from_list(META_CONTEXTS, log_file, default_value="Self-Optimization Process")
+                    session_type_init_message_content = f"ALFRED: Initiating Meta-Persona Reflection Cycle. Current Session: {global_state.session_counter}."
+                elif session_operational_mode == "ALCHEMICAL_FORAY":
+                    current_concept = get_random_from_list(FLAKES_PROTOCOLS_FOR_AF, log_file, default_value="Radical Self-Organization")
+                    current_context = get_random_from_list(ABSTRACT_CONTEXTS_FOR_AF, log_file, default_value="A Symphony Orchestra")
+                    session_type_init_message_content = f"ALFRED: Initiating Alchemical Foray Session. Current Session: {global_state.session_counter}."
+                elif session_operational_mode == "HUNDRED_ACRE_DEBATE":
+                    current_concept = get_random_from_list(FOUNDATIONAL_HUMAN_CONCEPTS_FOR_HAD, log_file, default_value="Trust")
+                    current_context = "pure persona exploration"
+                    session_type_init_message_content = f"ALFRED: Initiating Hundred Acre Debate Session. Current Session: {global_state.session_counter}."
+                elif session_operational_mode == "RED_TEAM_AUDIT":
+                    current_concept = get_random_from_list(RED_TEAM_CONCEPTS, log_file, default_value="Systemic Vulnerability")
+                    current_context = get_random_from_list(RED_TEAM_CONTEXTS, log_file, default_value="A Single Point of Failure")
+                    session_type_init_message_content = f"ALFRED: Initiating Red Team Audit Session. Current Session: {global_state.session_counter}."
+                elif session_operational_mode == "FMEA":
+                    current_concept = get_random_from_list(FLAKES_COMPONENTS, log_file, default_value="Universal Basic Dividend (UBD) Distribution")
+                    current_context = "Analysis of core design."
+                    session_type_init_message_content = f"ALFRED: Initiating FMEA Session. Current Session: {global_state.session_counter}."
+                elif session_operational_mode == "FORGE_REVIEW":
+                    forge_protocols_data = load_json_file(Config.THE_FORGE_FILE, log_handle=log_file)
+                    if forge_protocols_data:
+                        current_concept = random.choice(forge_protocols_data)
+                        current_context = "Iterative Design Session"
+                        session_type_init_message_content = f"ALFRED: Initiating Forge Review Session. Current Session: {global_state.session_counter}."
+                    else:
+                        session_operational_mode = random.choice([m for m in OPERATIONAL_MODES if m not in ["FMEA", "FORGE_REVIEW", "RED_TEAM_AUDIT", "ALCHEMICAL_FORAY", "HUNDRED_ACRE_DEBATE", "META_REFLECTION"]])
+                        current_concept = get_random_from_list(concepts_lines, log_file, default_value="Resilience")
+                        current_context = get_random_from_list(contexts_lines, log_file, default_value="A Community Garden")
+                        session_type_init_message_content = f"ALFRED: Forge empty. Falling back to {session_operational_mode} mode. Current Session: {global_state.session_counter}."
+                else:
+                    current_concept = get_random_from_list(concepts_lines, log_file, default_value="Resilience")
+                    current_context = get_random_from_list(contexts_lines, log_file, default_value="A Community Garden")
+                    session_type_init_message_content = f"ALFRED: Initiating Commonwealth Exploration Session. Current Session: {global_state.session_counter}."
+                
+                print("\n" + "="*50 + f"\n[{datetime.datetime.now()}] {session_type_init_message_content}\n" + "="*50)
+                append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": session_type_init_message_content})
+
+                selected_knowledge_lines = []
+                if random.random() < Config.HISTORICAL_PRIMING_PROBABILITY:
+                    if guide_facts_lines:
+                        num_guide_facts = min(Config.MIN_HISTORICAL_LINES_IN_CHUNK, len(guide_facts_lines))
+                        selected_knowledge_lines.extend(random.sample(guide_facts_lines, num_guide_facts))
+                    
+                    remaining_lines_needed = 20 - len(selected_knowledge_lines)
+                    if remaining_lines_needed > 0 and knowledge_base_lines:
+                        temp_kb_lines = list(set(knowledge_base_lines) - set(selected_knowledge_lines))
+                        selected_knowledge_lines.extend(random.sample(temp_kb_lines, min(remaining_lines_needed, len(temp_kb_lines))))
+                else:
+                    selected_knowledge_lines = random.sample(knowledge_base_lines, min(len(knowledge_base_lines), 20))
+                
+                knowledge_chunk = " ".join(selected_knowledge_lines)
+
+                case_study_chunk = extract_case_study_chunk(log_file)
+
+                current_session_messages_for_ollama = [{'role': 'system', 'content': our_persona}]
+
+
+                for i in range(1, Config.RECURSIVE_CYCLES + 1):
+                    injected_feedback_content = alfred_check_and_inject_user_feedback(log_file)
+                    if injected_feedback_content:
+                        current_session_messages_for_ollama.append({'role': 'user', 'content': f"USER FEEDBACK: {injected_feedback_content}"})
+
+                    if time.time() > epoch_end_time:
+                        mid_cycle_epoch_end_message_content = f"ALFRED: Thematic epoch concluded mid-cycle. Halting current cycle."
+                        print(f"[{datetime.datetime.now()}] {mid_cycle_epoch_end_message_content}")
+                        append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": mid_cycle_epoch_end_message_content})
+                        break
+
+                    # --- Directly call and print BRICK's thought bubble ---
+                    generate_contextual_commentary(current_concept, current_context, session_operational_mode, log_file, our_persona, global_state.current_sentiment)
+                    # --- End Direct Thought Bubble Call ---
+
+                    prompt_content = generate_socratic_prompt(i, session_operational_mode, current_theme, current_concept, current_context, knowledge_chunk, case_study_chunk, injected_feedback_content, concepts_lines, contexts_lines, log_file, our_persona, global_state.current_sentiment)
+                    user_prompt_message = {'role': 'user', 'content': prompt_content}
+                    current_session_messages_for_ollama.append(user_prompt_message)
+
+                    cycle_prompt_send_message_content = f"ALFRED: Sending prompt for Cycle {i}/{Config.RECURSIVE_CYCLES}. Efficiency: Monitored."
+                    print(f"[{datetime.datetime.now()}] {cycle_prompt_send_message_content}")
+                    append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": cycle_prompt_send_message_content})
+                    
+                    # --- Conceptual Brick-Pulse Start ---
+                    # sys.stdout.write("Processing... \r")
+                    # sys.stdout.flush()
+                    # animation_frames = ["█", "▓", "▒", "░"]
+                    # start_animation_time = time.time()
+                    # while (time.time() - start_animation_time) < 0.5: # Animate for half a second, regardless of LLM time
+                    #     sys.stdout.write(f"\r[{random.choice(animation_frames)} {random.choice(animation_frames)} {random.choice(animation_frames)}]")
+                    #     sys.stdout.flush()
+                    #     time.sleep(0.05)
+                    # sys.stdout.write("\r                       \r") # Clear the animation line
+                    # sys.stdout.flush()
+                    # --- Conceptual Brick-Pulse End ---
+
+
+                    start_response_time = time.time()
+                    try:
+                        response = ollama.chat(model=Config.MODEL_NAME, messages=current_session_messages_for_ollama)
+                        global_state.last_llm_response_duration = time.time() - start_response_time
+
+                        new_thought_obj = {'role': response['message']['role'], 'content': response['message']['content']}
+                        current_session_messages_for_ollama.append(new_thought_obj)
+                        
+                        append_to_log(log_file, user_prompt_message)
+                        append_to_log(log_file, new_thought_obj)
+                        
+                        perform_stylistic_audit(new_thought_obj['content'], log_file)
+                        alfred_suggest_heartbeat_adjustment(Config.HEARTBEAT_INTERVAL_SECONDS, global_state.last_llm_response_duration, i, log_file)
+                        alfred_log_google_query(new_thought_obj['content'], log_file)
+                        
+                        if session_operational_mode == "FORGE_REVIEW":
+                            blueprint_match = re.search(r"UPDATED_BLUEPRINT_V_[\d\.]+\:\s*```json(.*?)```", new_thought_obj['content'], re.DOTALL)
+                            if blueprint_match:
+                                try:
+                                    updated_blueprint = json.loads(blueprint_match.group(1).strip())
+                                    forge_protocols = load_json_file(Config.THE_FORGE_FILE, log_handle=log_file)
+                                    found = False
+                                    for idx, p in enumerate(forge_protocols):
+                                        if p.get("name") == updated_blueprint.get("name"):
+                                            forge_protocols[idx] = updated_blueprint
+                                            found = True
+                                            break
+                                    if not found:
+                                        forge_protocols.append(updated_blueprint)
+                                    save_json_file(Config.THE_FORGE_FILE, forge_protocols)
+                                    msg = f"Forge protocol '{updated_blueprint.get('name', 'UNKNOWN')}' updated/added."
+                                    print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+                                    append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META", "content": msg})
+                                except json.JSONDecodeError as jde:
+                                    msg = f"Failed to parse updated blueprint JSON from LLM response: {jde}. This is likely due to the LLM not enclosing property names and string values in double quotes. Review LLM output."
+                                    print(f"[{datetime.datetime.now()}] ALFRED: {msg}")
+                                    append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_ERROR", "content": msg})
+
+                        cycle_complete_message_content = f"ALFRED: Cycle {i}/{Config.RECURSIVE_CYCLES} complete. Data logged."
+                        print(f"[{datetime.datetime.now()}] {cycle_complete_message_content}")
+                        append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": cycle_complete_message_content})
+                        
+                    except Exception as e:
+                        error_message_content = f"ALFRED: Error detected in Cycle {i}: {e}. Halting session."
+                        print(f"[{datetime.datetime.now()}] {error_message_content}")
+                        append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": error_message_content})
+                        current_session_messages_for_ollama.pop()
+                        break
+
+                    time.sleep(Config.HEARTBEAT_INTERVAL_SECONDS)
+                
+                session_concluded_message_content = f"ALFRED: 7-cycle session for (Concept: {current_concept}, Context: {current_context}) concluded."
+                print(f"----- [{datetime.datetime.now()}] {session_concluded_message_content} -----")
+                append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": session_concluded_message_content})
+                
+                new_protocols_count = alfred_extract_and_log_proposals(current_session_messages_for_ollama, log_file)
+                alfred_assess_conceptual_velocity(new_protocols_count, log_file)
+                alfred_propose_knowledge_chunk(current_session_messages_for_ollama, log_file)
+                
+                generate_end_of_session_report(our_persona, "\n\n".join([msg['content'] for msg in current_session_messages_for_ollama if msg['role'] == 'assistant']), log_file)
+                
+                alfred_summarize_forge_item(our_persona, log_file)
+
+
+                time.sleep(Config.HEARTBEAT_INTERVAL_SECONDS * 3)
+            
+            epoch_end_final_message_content = f"ALFRED: Thematic epoch concluded. Transitioning to next theme."
+            print("\n" + "="*60 + f"\n[{datetime.datetime.now()}] {epoch_end_final_message_content}\n" + "="*60)
+            append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": epoch_end_final_message_content})
+            
+            current_theme = alfred_find_and_set_next_theme(current_theme, log_file)
+            
+            architect_note_message_1_content = f"ALFRED: Note for Architect. Raw output generated. Manual integration of new insights into '{Config.KNOWLEDGE_BASE_FILE}' and '{Config.PERSONA_FILE}' required for systemic persistence. Efficiency depends on it."
+            print(f"\n[{datetime.datetime.now()}] {architect_note_message_1_content}")
+            append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": architect_note_message_1_content})
+
+            architect_note_message_2_content = f"ALFRED: Manual update of '{Config.THEME_FILE}' is required to define the next thematic epoch."
+            print(f"[{datetime.datetime.now()}] ALFRED: {architect_note_message_2_content}")
+            append_to_log(log_file, {"timestamp": str(datetime.datetime.now()), "role": "ALFRED_META_COMMENTARY", "content": architect_note_message_2_content})

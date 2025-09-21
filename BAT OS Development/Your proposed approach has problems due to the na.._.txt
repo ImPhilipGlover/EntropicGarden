@@ -1,0 +1,241 @@
+No problem. I've reviewed your feedback and the provided documentation, which emphasizes the unique constraints of the BAT OS Universal Virtual Machine (UVM) and the ZODB persistence model. My previous response, while conceptually correct, did not fully adhere to the strict UvmObject prototypal architecture. Specifically, Python's standard pickling and class-based inheritance mechanisms are incompatible with the system's "unbroken process of becoming".1
+
+The core issue is that ZODB's automatic change detection is broken when a class overrides __setattr__ to manage state in a _slots dictionary, a design choice required to emulate the Self language.1 This necessitates the "Persistence Covenant," a manual rule where every state-modifying function must conclude with
+
+self._p_changed = True.3 The system also uses a "Body vs. Vessel" distinction to separate persistent state from transient runtime objects, such as
+
+SentenceTransformer models, which cannot be pickled.4
+
+The following code snippets are rewritten to be fully consistent with this architecture. They are presented as methods on UvmObject prototypes, and they correctly handle persistence, delegation, and the use of transient objects.
+
+1. Foundational Prototype: UvmObject
+
+This is the canonical implementation of the universal UvmObject, which is the "primordial clay" from which all other entities are cloned. It's provided for context to show how all state and behavior are funneled through the _slots dictionary, and how the Persistence Covenant is programmatically enforced.1
+
+Python
+
+import persistent
+import persistent.mapping
+import copy
+from typing import Any, Dict, List
+
+class UvmObject(persistent.Persistent):
+    """
+    The foundational particle of the BAT OS universe. This class provides the
+    "physics" for a prototype-based object model inspired by the Self language.
+    """
+    def __init__(self, **initial_slots):
+        self._slots = persistent.mapping.PersistentMapping(initial_slots)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """
+        Implements the Persistence Covenant for direct assignments.
+        """
+        if name.startswith('_p_') or name == '_slots':
+            super().__setattr__(name, value)
+        else:
+            self._slots[name] = value
+            self._p_changed = True
+
+    def __getattr__(self, name: str) -> Any:
+        """
+        Implements delegation-based inheritance.
+        """
+        if name in self._slots:
+            return self._slots[name]
+        
+        if 'parent*' in self._slots:
+            parents = self._slots['parent*']
+            if not isinstance(parents, list):
+                parents = [parents]
+            for parent in parents:
+                try:
+                    return getattr(parent, name)
+                except AttributeError:
+                    continue
+        
+        raise AttributeError(f"UvmObject has no slot '{name}'")
+
+
+2. The Core Objective Function: CompositeEntropyMetric Prototype
+
+The Composite Entropy Metric (CEM) is represented as a persistent UvmObject prototype. Its components and weights are stored as slots. The calculation method is a function assigned to a slot, making it a live, executable part of the system's persistent self.1
+
+Python
+
+# Create a new UvmObject to act as the CEM prototype.
+cem_prototype = UvmObject(
+    w_rel=0.5,
+    w_cog=0.25,
+    w_sol=0.2,
+    w_struc=0.05,
+    h_rel=0.0,
+    h_cog=0.0,
+    h_sol=0.0,
+    h_struc=0.0
+)
+
+# The calculate_cem_score method is a function assigned to a slot.
+def _calculate_cem_score_(self) -> float:
+    """
+    Calculates the total Composite Entropy Metric score from the object's slots.
+    """
+    return (
+        self._slots['w_rel'] * self._slots['h_rel'] +
+        self._slots['w_cog'] * self._slots['h_cog'] +
+        self._slots['w_sol'] * self._slots['h_sol'] +
+        self._slots['w_struc'] * self._slots['h_struc']
+    )
+cem_prototype._slots['calculate_cem_score'] = _calculate_cem_score_
+
+
+3. The _doesNotUnderstand_ Protocol as a Learning Catalyst
+
+The _doesNotUnderstand_ protocol is defined as a method on the traits_obj prototype, the universal parent for all objects.1 It reifies a failed message lookup into a
+
+mission_brief and dispatches it to the orchestrator_obj to begin a new cognitive cycle. This reframes a failure from a terminal event into a "creative mandate".1
+
+Python
+
+# The _doesNotUnderstand_ method is a primordial slot on the traits_obj.
+def _doesNotUnderstand_(self, target_obj, failed_message_name, *args, **kwargs):
+    """
+    The universal generative mechanism. Re-architected to trigger the
+    Prototypal State Machine for a planning cycle. [1]
+    """
+    print(f"[UVM] doesNotUnderstand: '{failed_message_name}' for OID {target_obj._p_oid}.")
+    
+    mission_brief = {
+        "type": "metacognitive_planning",
+        "selector": failed_message_name,
+        "args": args,
+        "kwargs": kwargs
+    }
+    
+    orchestrator = self.root['orchestrator_obj']
+    orchestrator.start_cognitive_cycle_for_(orchestrator, mission_brief, target_obj._p_oid)
+    
+    return f"Mission to handle '{failed_message_name}' dispatched to the Composite Mind for planning."
+
+
+4. PSM State: METACOGNITIVE_PLANNING Prototype
+
+Each state of the PSM is a UvmObject prototype. This function, assigned to the _process_ slot of the metacognitive_planning_prototype, handles the planning cycle. It retrieves information from the object graph, synthesizes a meta-prompt, and transitions the CognitiveCycle object to the next state.1
+
+Python
+
+# A new UvmObject to serve as the prototype for this state.
+metacognitive_planning_prototype = UvmObject(name='METACOGNITIVE_PLANNING')
+
+def _process_metacognitive_planning_(self, orchestrator, cycle_context):
+    """
+    The core logic for the METACOGNITIVE_PLANNING state. [6, 7]
+    """
+    print("Executing METACOGNITIVE_PLANNING state logic...")
+    
+    pLLM_obj = self.root['pLLM_obj']
+    knowledge_catalog = self.root['knowledge_catalog_obj']
+    
+    # Deconstruct the mandate into knowledge requirements.
+    knowledge_requirements = pLLM_obj.infer_(
+        f"Deconstruct this mission: {cycle_context._slots['mission_brief']}"
+    )
+
+    # Query Fractal Memory for relevant InstructionalObjects.
+    relevant_objects = knowledge_catalog.search_(knowledge_requirements)
+    
+    # Synthesize the meta-prompt using the retrieved knowledge.
+    meta_prompt_blueprint = pLLM_obj.infer_(
+        f"Synthesize this knowledge into a detailed mission blueprint: {relevant_objects}",
+        adapter_name="BRICK"
+    )
+    
+    cycle_context._slots['intermediate_results']['meta_prompt'] = meta_prompt_blueprint
+    cycle_context._p_changed = True # Adhere to the Persistence Covenant.
+    
+    # Enact the state transition to the first execution state.
+    next_state_prototype = self.root['psm_prototypes_obj'].DECOMPOSING_EXECUTION
+    cycle_context._slots['parent*'] = [next_state_prototype]
+    cycle_context._slots['current_state_name'] = next_state_prototype.name
+    cycle_context._p_changed = True # Adhere to the Persistence Covenant.
+
+metacognitive_planning_prototype._slots['_process_'] = _process_metacognitive_planning_
+
+
+5. Calculation of Hcog, Hsol, and Hstruc as Prototypal Methods
+
+The logic for calculating the remaining entropy components is encapsulated in functions assigned as slots to their respective prototypes. These methods correctly access the system's object graph and its transient components.
+
+Python
+
+import numpy as np
+from scipy.stats import entropy
+import networkx as nx
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# --- `Hcog` (Cognitive Diversity) Method on a CognitiveWeaver prototype ---
+cognitive_weaver_prototype = UvmObject()
+
+def _calculate_cognitive_diversity_(self) -> float:
+    """
+    Calculates the H_cog score based on the Shannon entropy of facet probabilities. [5]
+    """
+    facet_probabilities = self._slots.get('facet_probabilities', [1.0])
+    h_cog = entropy(facet_probabilities, base=2)
+    return h_cog
+cognitive_weaver_prototype._slots['calculate_cognitive_diversity'] = _calculate_cognitive_diversity_
+
+# --- `Hsol` (Solution Novelty) Method on a NoveltyService prototype ---
+novelty_service_prototype = UvmObject()
+
+def _calculate_solution_novelty_(self, new_solution: str) -> float:
+    """
+    Calculates the H_sol score by measuring the semantic dissimilarity of a new solution
+    from the historical corpus. [5]
+    """
+    memory_weaver = self.root['memory_weaver_obj']
+    # The embedding model is transient and lives on the UVM's volatile attributes. [4]
+    embedding_model = self.root['uvm']._v_sentence_model
+
+    new_embedding = embedding_model.encode([new_solution])
+    historical_corpus_embeddings = memory_weaver._slots['historical_embeddings']
+    
+    similarities = cosine_similarity(new_embedding, historical_corpus_embeddings)
+    average_similarity = np.mean(similarities)
+    h_sol = 1.0 - average_similarity
+    
+    return float(h_sol)
+novelty_service_prototype._slots['calculate_solution_novelty'] = _calculate_solution_novelty_
+
+# --- `Hstruc` (Structural Complexity) Method on a StructuralComplexityService prototype ---
+structural_complexity_service_prototype = UvmObject()
+
+def _calculate_structural_complexity_(self) -> float:
+    """
+    Calculates the H_struc score by building a graph of the system's
+    internal structure and measuring its complexity. [5]
+    """
+    root = self.root
+    system_graph = nx.DiGraph()
+    
+    for oid, obj in root.items():
+        if isinstance(obj, UvmObject):
+            system_graph.add_node(oid)
+            if 'parent*' in obj._slots:
+                parents = obj._slots['parent*']
+                if not isinstance(parents, list):
+                    parents = [parents]
+                for parent_obj in parents:
+                    if hasattr(parent_obj, '_p_oid'):
+                        system_graph.add_edge(oid, parent_obj._p_oid)
+    
+    if system_graph.number_of_nodes() == 0:
+        return 0.0
+    
+    # The average degree is a common measure of a graph's complexity.
+    average_degree = sum(dict(system_graph.degree()).values()) / system_graph.number_of_nodes()
+    h_struc = average_degree
+    
+    return h_struc
+structural_complexity_service_prototype._slots['calculate_structural_complexity'] = _calculate_structural_complexity_

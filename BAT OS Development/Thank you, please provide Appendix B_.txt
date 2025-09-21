@@ -1,0 +1,424 @@
+Acknowledged. Proceeding with the generation of Appendix B as per the protocol. This appendix contains the code for the system's memory, configuration management, and dynamic capabilities.
+
+Appendix B: Persistence & Tooling
+
+This appendix details the code for the system's memory, state persistence, and the core components of the tactical autopoietic loop.
+
+File: a4ps/config_loader.py
+
+This module implements the watchdog-based file system monitor. It observes codex.toml and settings.toml for changes and triggers a hot-reload of the configuration in the live system, a critical component for preserving the "Living Image" paradigm.1
+
+Python
+
+# a4ps/config_loader.py
+import logging
+import toml
+import threading
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+# These will be initialized in main.py to avoid circular imports
+proto_manager = None
+SETTINGS_PATH = "config/settings.toml"
+CODEX_PATH = "config/codex.toml"
+config_lock = threading.Lock()
+
+# Global config objects that components can import
+# They will be updated by the watcher
+SETTINGS = {}
+CODEX = {}
+
+class ConfigChangeHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if event.src_path.endswith(SETTINGS_PATH) or event.src_path.endswith(CODEX_PATH):
+            logging.warning(f"Configuration file {event.src_path} modified. Reloading...")
+            with config_lock:
+                global SETTINGS, CODEX
+                try:
+                    SETTINGS.update(toml.load(SETTINGS_PATH))
+                    CODEX.update(toml.load(CODEX_PATH))
+                    if proto_manager:
+                        proto_manager.reload_codex(CODEX)
+                    logging.info("Configuration hot-reloaded successfully.")
+                except Exception as e:
+                    logging.error(f"Failed to reload configuration: {e}")
+
+def start_config_watcher(stop_event: threading.Event):
+    # Initial load
+    with config_lock:
+        SETTINGS.update(toml.load(SETTINGS_PATH))
+        CODEX.update(toml.load(CODEX_PATH))
+
+    event_handler = ConfigChangeHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path='./config', recursive=False)
+    observer.start()
+    logging.info("Configuration file watcher started.")
+
+    def watcher_thread_target():
+        try:
+            while not stop_event.is_set():
+                time.sleep(1)
+        finally:
+            observer.stop()
+            observer.join()
+            logging.info("Configuration file watcher stopped.")
+
+    watcher_thread = threading.Thread(target=watcher_thread_target, name="ConfigWatcher", daemon=True)
+    watcher_thread.start()
+    return watcher_thread
+
+
+1. Persistence Sub-System (a4ps/persistence/)
+
+These modules manage the "Living Image" and the system's long-term memory.
+
+File: a4ps/persistence/__init__.py
+
+An empty file to designate the directory as a Python package.
+
+Python
+
+# This file can be empty
+
+
+File: a4ps/persistence/image_manager.py
+
+This module handles the serialization and deserialization of the entire ProtoManager state, enabling the "Living Image" to be suspended and resumed without losing its identity or accumulated wisdom.2
+
+Python
+
+# a4ps/persistence/image_manager.py
+import logging
+import dill
+import os
+from threading import Lock
+
+# This lock should be shared with the ProtoManager to ensure safe access
+image_lock = Lock()
+
+def save_image(manager_instance, path: str):
+    """
+    Serializes the entire ProtoManager state to a single image file using dill.
+    This is a thread-safe operation.
+    """
+    with image_lock:
+        logging.info(f"Saving live image to {path}...")
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                dill.dump(manager_instance, f)
+            logging.info("Live image saved successfully.")
+        except Exception as e:
+            logging.error(f"Failed to save live image: {e}")
+
+def load_image(path: str, manager_class):
+    """
+    Loads a ProtoManager instance from an image file.
+    If the file doesn't exist, it returns a new instance.
+    This is a thread-safe operation.
+    """
+    with image_lock:
+        if os.path.exists(path):
+            logging.info(f"Loading live image from {path}...")
+            try:
+                with open(path, "rb") as f:
+                    manager = dill.load(f)
+                logging.info("Live image loaded successfully.")
+                return manager
+            except Exception as e:
+                logging.error(f"Failed to load live image: {e}. Creating new instance.")
+                return manager_class()
+        else:
+            logging.info("No live image found. Creating new instance.")
+            return manager_class()
+
+
+File: a4ps/persistence/memory_manager.py
+
+This file contains the MemoryManager, which provides a stable interface to the LanceDB vector database. It implements the Hierarchical Memory (H-MEM) architecture with a VRAM-efficient IVF-PQ index to support complex reasoning under hardware constraints.1
+
+Python
+
+# a4ps/persistence/memory_manager.py
+import logging
+import lancedb
+import pyarrow as pa
+import time
+import uuid
+from..models import model_manager
+from..config_loader import SETTINGS
+
+class MemoryManager:
+    """Manages H-MEM ('Sidekick's Scrapbook') using LanceDB with IVF-PQ index."""
+
+    def __init__(self, db_path, table_name):
+        self.db = lancedb.connect(db_path)
+        self.table_name = table_name
+        self.embedding_model = SETTINGS['models']['embedding']
+        self.table = self._initialize_table()
+        logging.info(f"MemoryManager initialized for table: {table_name}")
+
+    def _initialize_table(self):
+        try:
+            if self.table_name in self.db.table_names():
+                return self.db.open_table(self.table_name)
+            else:
+                dummy_embedding = model_manager.get_embedding("init", self.embedding_model)
+                dim = len(dummy_embedding)
+                # H-MEM Schema with parent_id and summary fields
+                schema = pa.schema([
+                    pa.field("id", pa.string()),
+                    pa.field("vector", pa.list_(pa.float32(), dim)),
+                    pa.field("text", pa.string()),
+                    pa.field("summary", pa.string()),
+                    pa.field("parent_id", pa.string()),
+                    pa.field("timestamp", pa.timestamp('s'))
+                ])
+                logging.info(f"Creating new LanceDB table '{self.table_name}'")
+                return self.db.create_table(self.table_name, schema=schema, mode="overwrite")
+        except Exception as e:
+            logging.error(f"Failed to initialize LanceDB table: {e}")
+            return None
+
+    def create_index(self):
+        """Creates a VRAM-efficient IVF-PQ index."""
+        if self.table:
+            logging.info("Creating IVF_PQ index...")
+            # These parameters are a starting point and should be tuned [4, 5]
+            self.table.create_index(
+                num_partitions=256,  # For IVF
+                num_sub_vectors=96   # For PQ
+            )
+            logging.info("Index creation complete.")
+
+    def add_memory_summary(self, summary_text: str) -> str:
+        """Adds a high-level summary (Level 1 memory) and returns its ID."""
+        summary_id = str(uuid.uuid4())
+        dummy_embedding = model_manager.get_embedding("init", self.embedding_model)
+        data = [{
+            "id": summary_id,
+            "vector": [0.0] * len(dummy_embedding),
+            "text": summary_text,
+            "summary": summary_text,
+            "parent_id": None,
+            "timestamp": int(time.time())
+        }]
+        self.table.add(data)
+        return summary_id
+
+    def add_episodic_memory(self, text: str, parent_id: str):
+        """Adds a detailed memory chunk (Level 3) linked to a summary."""
+        embedding = model_manager.get_embedding(text, self.embedding_model)
+        data = [{
+            "id": str(uuid.uuid4()),
+            "vector": embedding,
+            "text": text,
+            "summary": text[:100] + "...", # Abridged summary for episodic chunks
+            "parent_id": parent_id,
+            "timestamp": int(time.time())
+        }]
+        self.table.add(data)
+
+    def search_hierarchical(self, query: str, limit: int = 5) -> list:
+        """Performs a two-stage hierarchical search."""
+        if not self.table:
+            return
+        try:
+            # Stage 1: Full-text search on summaries to find relevant concepts
+            summary_results = self.table.search(query).where("parent_id IS NULL").limit(3).to_list()
+            parent_ids = [res['id'] for res in summary_results]
+            if not parent_ids:
+                return
+
+            # Stage 2: Vector search pre-filtered by the parent_ids of relevant summaries
+            query_embedding = model_manager.get_embedding(query, self.embedding_model)
+            parent_id_filter = " OR ".join([f"parent_id = '{pid}'" for pid in parent_ids])
+            detail_results = self.table.search(query_embedding)\
+               .where(parent_id_filter, prefilter=True)\
+               .limit(limit)\
+               .to_list()
+            return detail_results
+        except Exception as e:
+            logging.error(f"Hierarchical search failed: {e}")
+            return
+
+
+
+2. Tooling Sub-System (a4ps/tools/)
+
+These modules provide the system with its tactical autopoietic loop, enabling the safe, runtime creation of new capabilities.
+
+File: a4ps/tools/__init__.py
+
+An empty file to designate the directory as a Python package.
+
+Python
+
+# This file can be empty
+
+
+File: a4ps/tools/dynamic_tools/__init__.py
+
+This file initializes the global tool registry, a central dictionary where newly created tools are stored to be made available to the live agent.6
+
+Python
+
+# a4ps/tools/dynamic_tools/__init__.py
+
+# This registry will be populated at runtime by the ToolForge
+tool_registry = {}
+
+
+File: a4ps/tools/secure_executor.py
+
+This module defines the SecureCodeExecutor, which provides a hardened, least-privilege gVisor sandbox to execute and validate all endogenously generated code, ensuring the host system remains isolated and secure.6
+
+Python
+
+# a4ps/tools/secure_executor.py
+import subprocess
+import tempfile
+import os
+import logging
+
+class SecureCodeExecutor:
+    """Executes Python code in a secure, isolated gVisor sandbox."""
+
+    def __init__(self, runtime: str, image: str):
+        self.runtime = runtime
+        self.image = image
+        logging.info(f"SecureCodeExecutor initialized with runtime '{self.runtime}'")
+
+    def execute(self, code: str, timeout: int = 15) -> subprocess.CompletedProcess:
+        """
+        Executes a given Python code string in a hardened Docker container.
+        Args:
+            code: The Python code to execute.
+            timeout: The maximum execution time in seconds.
+        Returns:
+            A CompletedProcess object containing the returncode, stdout, and stderr.
+        """
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.py', delete=False) as tmp_code_file:
+            tmp_code_file.write(code)
+            host_path = tmp_code_file.name
+            container_path = "/app/script.py"
+
+        # HARDENED DOCKER COMMAND [1, 7]
+        command =
+
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=timeout
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            logging.warning("Code execution timed out in sandbox.")
+            return subprocess.CompletedProcess(command, 1, "", "Execution timed out.")
+        finally:
+            os.unlink(host_path)
+
+
+File: a4ps/tools/tool_forge.py
+
+This module contains the ToolForge, the autopoietic engine for creating, debugging, and integrating new capabilities. It orchestrates the "closed-loop self-correction cycle" and uses ast parsing and dynamic loading to safely integrate new tools into the live system.6
+
+Python
+
+# a4ps/tools/tool_forge.py
+import logging
+import os
+import importlib.util
+import ast
+from.secure_executor import SecureCodeExecutor
+from.dynamic_tools import tool_registry
+from..proto import proto_manager
+from..services.motivator_service import event_bus
+
+class ToolForge:
+    """The autopoietic engine for creating, debugging, and integrating new capabilities."""
+
+    def __init__(self, sandbox_image: str, runtime: str, dynamic_tools_path="a4ps/tools/dynamic_tools"):
+        self.executor = SecureCodeExecutor(runtime, sandbox_image)
+        self.dynamic_tools_path = dynamic_tools_path
+        os.makedirs(self.dynamic_tools_path, exist_ok=True)
+        logging.info(f"ToolForge initialized. Dynamic tool path: {self.dynamic_tools_path}")
+
+    def create_tool(self, tool_spec: str, max_retries: int = 3) -> str:
+        """
+        Orchestrates the end-to-end process of tool creation and validation.
+        This is the closed-loop self-correction cycle. [7, 8]
+        """
+        brick = proto_manager.get_proto("BRICK")
+        if not brick:
+            return "Error: BRICK persona not found."
+
+        current_spec = tool_spec
+        for i in range(max_retries):
+            logging.info(f"ToolForge Attempt {i+1}/{max_retries} for spec: '{current_spec[:100]}...'")
+
+            # Step 1: Generate code with embedded unit tests
+            code_gen_prompt = f"""Generate a complete, self-contained Python script for a new tool based on this spec: "{current_spec}".
+The script MUST define a single function with a descriptive, snake_case name.
+The script MUST include a docstring.
+The script MUST include a suite of unit tests within an `if __name__ == '__main__':` block to validate its correctness.
+Respond ONLY with the Python code inside a single ```python block."""
+            response_text = brick.invoke_llm(code_gen_prompt)
+            generated_script = response_text.strip().replace("```python", "").replace("```", "")
+
+            # Step 2: Execute the script in the secure sandbox to run the tests
+            result = self.executor.execute(generated_script)
+
+            if result.returncode == 0:
+                logging.info(f"Tool validation successful. STDOUT: {result.stdout}")
+                try:
+                    tool_name = self._save_and_register_tool(generated_script)
+                    return f"Successfully created and registered tool: {tool_name}"
+                except Exception as e:
+                    logging.error(f"Failed to save/register tool: {e}")
+                    current_spec = f"The tool script was valid, but failed during registration with error: {e}. Please regenerate the script."
+            else:
+                error_log = result.stderr
+                logging.warning(f"Tool validation failed. Error: {error_log}")
+                current_spec = f"""The previous attempt failed with a validation error.
+Original Spec: '{tool_spec}'
+--- FAILED CODE ---
+{generated_script}
+--- VALIDATION ERROR (STDERR) ---
+{error_log}
+---
+Analyze the error and provide a corrected, complete Python script that fixes the issue. Ensure the tests are also correct."""
+
+        return f"Failed to create a valid tool after {max_retries} attempts."
+
+    def _save_and_register_tool(self, validated_script: str) -> str:
+        """Parses the validated script, saves the function to a file, and registers it."""
+        # Use AST to reliably find the function definition [8, 9]
+        tree = ast.parse(validated_script)
+        func_node = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                func_node = node
+                break  # Assume first function is the tool
+
+        if not func_node:
+            raise ValueError("No function definition found in the validated script.")
+
+        func_name = func_node.name
+        function_code = ast.unparse(func_node)
+
+        # Save the isolated function to a new file
+        file_path = os.path.join(self.dynamic_tools_path, f"{func_name}.py")
+        with open(file_path, "w") as f:
+            f.write(function_code)
+
+        # Dynamically load and register the new tool [7]
+        spec = importlib.util.spec_from_file_location(func_name, file_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        tool_func = getattr(module, func_name)
+
+        tool_registry[func_name] = tool_func
+        logging.info(f"Successfully registered new tool '{func_name}' to the live tool registry.")
+        event_bus.publish("tool_created", {"tool_name": func_name})
+        return func_name

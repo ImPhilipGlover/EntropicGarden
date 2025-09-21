@@ -1,0 +1,529 @@
+Project Prometheus: A Technical Blueprint for a Self-Extending AI System
+
+Introduction: The Autopoietic Imperative and the doesNotUnderstand Aperture
+
+The trajectory of artificial intelligence research is marked by a progressive increase in autonomy and capability. Contemporary systems, particularly those built around Large Language Models (LLMs), have demonstrated a remarkable ability to act as "tool-using" agents.1 They can be provided with a predefined set of functions or APIs and learn to invoke them in sequence to accomplish complex tasks. While impressive, this paradigm represents a fundamental limitation: the system's capabilities are ultimately bounded by the set of tools handcrafted by its human designers. The system can use the tools it is given, but it cannot create new ones.
+
+Project Prometheus represents a conceptual leap beyond this limitation, proposing an architecture for a system that is not merely tool-using, but is fundamentally "tool-making." The objective is to design and de-risk an AI system with the capacity for autopoietic self-extension—the ability to produce and maintain its own components and, in doing so, expand its own organizational and functional boundaries. The foundational step toward this goal is to grant the AI the ability to autonomously generate its own Foreign Function Interface (FFI) bindings. An FFI is the mechanism by which a program written in one language can call routines from another, typically a lower-level language like C.3 By learning to create these bindings on its own, the AI can, at runtime, teach itself how to interface with and control external software libraries it has never encountered, effectively expanding its own skill set without direct human intervention.
+
+The choice of a prototype-based programming language, specifically Self, is central to this endeavor. Unlike traditional class-based languages that enforce a rigid duality between the abstract definition (the class) and its concrete manifestation (the object instance), the prototype-based paradigm operates in a world of concrete, mutable objects.4 In Self, there are no classes; new objects are created by cloning an existing prototype and modifying it.4 This model of direct manipulation and incremental extension provides a more natural and dynamic substrate for a system designed for continuous, runtime learning. The act of acquiring a new skill is directly mirrored by the language's core operation: cloning a relevant object and adding a new slot that contains the new behavior.6
+
+The trigger for this learning process is a mechanism of profound elegance and power inherent to Self and its predecessor, Smalltalk: the doesNotUnderstand message-handling protocol.8 In conventional programming, a call to a non-existent method is a terminal error. In Self, it is an opportunity for reflection and adaptation. When an object receives a message for which it has no corresponding method (or "slot"), the runtime does not simply halt. Instead, it reifies the failed message—packaging the selector, receiver, and arguments into a first-class
+
+Message object—and sends this object to the receiver via a special doesNotUnderstand: message.8 This mechanism is not merely an error handler; it is a fundamental, reflective "aperture" in the language's message-passing model. It provides the system with a perfect, structured representation of its own knowledge gap, a precise specification of the capability it lacks. This is architecturally superior to any system that would require complex external monitoring or static analysis to identify missing functionality.
+
+The convergence of these two concepts—the dynamic, reflective nature of a prototype-based language and the emergent reasoning capabilities of LLMs—forms the core of the Prometheus architecture. The principles of highly dynamic languages, where everything is an object and all computation proceeds via message passing, show a striking philosophical alignment with the goals of modern agentic AI, which operate in a perpetual loop of perceiving a state, reasoning about an action, executing that action (tool use), and observing the result to inform the next step.2 The
+
+doesNotUnderstand protocol is a language-native implementation of this agentic loop. The failed message is the perception of a need; the LLM-driven FFI generation is the reasoning and action; and the successful re-sending of the original message is the verification of the outcome. The language's own semantics provide the scaffolding for the agentic cycle, suggesting that Self is not merely a convenient choice but an almost ideal computational substrate for building this specific kind of self-modifying AI. This technical blueprint provides a comprehensive, phase-by-phase roadmap for the construction of such a system.
+
+Phase 1: The Mechanical Foundation — The doesNotUnderstand FFI Trigger
+
+Before introducing the complexities of artificial intelligence, it is imperative to establish the low-level mechanical viability of the core system. This phase deconstructs the non-AI components, focusing on the fundamental primitives of the Self language's Foreign Function Interface and the doesNotUnderstand mechanism. The objective is to prove, through analysis and a concrete proof-of-concept, that the underlying plumbing of the Self Virtual Machine (VM) is sound and sufficient to support the project's ambitions. This foundational work de-risks the subsequent phases by isolating and solving the purely mechanical challenges first.
+
+1.1 Self's FFI Primitives: A Survey and Reconstruction
+
+A robust Foreign Function Interface is the bedrock upon which Project Prometheus is built. While detailed public documentation on the specific implementation of Self's FFI is not as readily available as for more mainstream languages, a plausible and robust model can be reconstructed by adhering to established FFI principles observed in other high-level, dynamic languages. This section outlines such a model, focusing on the critical aspects of data type marshalling, memory management, and error handling.
+
+The most stable and portable strategy for interoperability is to target the C Application Binary Interface (ABI) as a lingua franca.11 The C ABI provides a well-understood, standardized convention for function calling, data representation, and name decoration that is supported by nearly every programming language and platform. By exclusively targeting C libraries, the system avoids the significant complexities and compiler-dependent instabilities associated with C++ ABIs, such as name mangling for overloaded functions, exception handling semantics, and complex object layouts.12
+
+Data Type Marshalling
+
+Marshalling is the process of transforming the memory representation of data from the format used in the Self environment to the format expected by C, and vice versa.11 This translation must be precise to prevent data corruption and security vulnerabilities.
+
+Primitive Types: Self's fundamental numeric types are expected to have direct counterparts in C. Small integers can be mapped to long, and floating-point numbers to double. This follows patterns seen in other FFI implementations, such as Haskell's use of CDouble for C's double 15 or Janet's keyword-based mapping for primitive C types.16 These conversions involve direct value copying and are generally low-risk.
+
+Object and Pointer Types: A generic Self object, being a dynamic collection of named slots 4, has no direct equivalent in C's static type system. When a Self object must be passed to a C function (for instance, as an opaque context handle), it should be passed as a
+void*. The C code would treat this pointer as an opaque identifier, passing it back to Self for any subsequent operations. Conversely, pointers originating from C (e.g., handles to hardware resources, pointers to C structs) must be represented within Self as special "foreign object" proxies. These proxies would encapsulate the raw memory address and provide a safe, Self-native interface to the external resource.
+
+String Handling: The conversion of strings is a classic FFI challenge. Self strings are objects containing their length and character data, whereas C strings are simply arrays of characters terminated by a null byte (\0).11 The FFI layer must manage this conversion meticulously. When passing a string from Self to C, the FFI must allocate a new buffer in C's memory space, copy the character data, and append a null terminator. When receiving a
+char* from C, the Self FFI must read bytes from that address until a null terminator is found and then construct a new Self string object with that data.
+
+Memory Management at the Boundary
+
+The most significant risk in any FFI implementation lies at the intersection of a garbage-collected (GC) language like Self and a manually managed language like C.11 The Self VM employs a generational garbage collector to automatically manage memory 4, while C code requires explicit calls to
+
+malloc and free. A failure to coordinate memory management across this boundary will inevitably lead to memory leaks or use-after-free vulnerabilities.
+
+Self-to-C Memory Safety: When a Self object is passed to a C function (even as an opaque pointer), the Self GC must be prevented from reclaiming that object's memory while the C function is still executing. A robust solution, similar to that used by Java's Native Interface (JNI) 3, is a handle-based system. Before the FFI call, the Self VM would create a special reference, or "handle," to the object that registers it as a GC root. This handle ensures the object is considered "live" and will not be collected. Upon the C function's return, the handle is released, allowing the object to be collected normally.
+
+C-to-Self Memory Ownership: When a C function allocates memory (e.g., with malloc) and returns a pointer to Self, a clear ownership transfer must occur. The Self runtime becomes responsible for eventually freeing that memory. This is best managed by the foreign object proxy. The proxy object that wraps the C pointer must be associated with the corresponding C free function. When the Self GC determines that the proxy object is no longer reachable, it can invoke a finalizer that calls the appropriate C free function on the stored pointer, preventing a memory leak. This pattern is analogous to the RAII (Resource Acquisition Is Initialization) idiom, particularly the Drop trait in Rust.17
+
+Error Handling
+
+C functions typically signal errors by returning special integer codes (e.g., -1) or by setting a global errno variable. The Self FFI wrapper cannot ignore these signals. Each FFI call must be followed by a check for these error conditions. If an error is detected, the FFI primitive should translate it into a Self-level exception or return a designated error object, allowing the Self program to handle the failure gracefully rather than continuing with invalid data.
+
+The following table provides a concrete specification for this reconstructed FFI model, serving as a clear reference for both manual implementation and for the LLM in later phases.
+
+Table 1.1: Proposed Self-to-C FFI Data Type Marshalling
+
+1.2 The doesNotUnderstand Message Payload: A Specification for Intent
+
+The doesNotUnderstand mechanism is the cornerstone of the Prometheus architecture, acting as the primary trigger for the learning process. Its utility stems from the fact that a failed message send is not discarded but is instead reified—transformed from an action into a data object that can be programmatically inspected and reasoned about.8 This reified
+
+Message object contains a rich payload of information that serves as a high-fidelity specification of the system's immediate need.
+
+Drawing from the Self handbook and established Smalltalk conventions, the Message object passed to the doesNotUnderstand: method encapsulates the complete context of the failed invocation.9 A detailed analysis of its constituent parts reveals its suitability as a structured request for FFI generation.
+
+Anatomy of the Message Object
+
+The Message object is a composite structure containing at least three critical pieces of information:
+
+receiver: A reference to the object that was the original target of the message. This is important for context, as the new method will eventually be attached to this object's prototype hierarchy.
+
+selector: A symbol representing the name of the message that was not understood. In Self, message selectors are structured identifiers, such as the unary 'print', the binary '+', or the keyword 'min:Max:'.4 This selector is the single most important piece of data, as it encodes the high-level intent of the failed operation.
+
+arguments: A collection, likely a vector or list, containing all the argument objects that were passed along with the original message.
+
+Parsing Intent from the Message Payload
+
+The raw data within the Message object can be systematically parsed to form a detailed specification for the required foreign function. This process relies on establishing a clear set of conventions for how FFI-bound messages are named and structured.
+
+Deriving the Foreign Function Name: The message selector itself can be designed to directly map to a foreign function. A simple and robust convention would be to use a prefix-based system. For example:
+
+A selector like 'call_c_sqrt:' unambiguously signals an intent to call a C function named sqrt.
+
+A selector like 'call_python_numpy_dot:With:' could be parsed to mean an invocation of the dot function within the numpy module in a Python environment.
+The parsing logic within the Prometheus prototype would be responsible for splitting this selector into its constituent parts (target language, library, function name).
+
+Inferring Argument Types: The arguments collection provides strong evidence for the foreign function's signature. By inspecting the type of each object in the collection, the system can infer the corresponding C types based on the marshalling rules defined in the previous section. A Self integer in the arguments list implies a C long; a Self string implies a const char*; a foreign object proxy implies a void*. This information is crucial for generating a syntactically correct FFI binding.
+
+The Return Type Challenge: A significant challenge is that the expected return type is not explicitly present in the Message payload. The original call site in Self does not declare what type of object it expects back. This is a fundamental ambiguity that the system must resolve. The initial approach will be to assume a default return type (e.g., a generic integer or pointer, long or void*). The system will then rely on the LLM's ability to analyze the C header file's function prototype to infer the correct return type (e.g., seeing double sqrt(double d); in math.h and concluding the return type is double). If this inference is incorrect, the error-correction loop detailed in Phase 3 becomes essential. A compilation or runtime error resulting from a type mismatch provides the necessary feedback to prompt the LLM for a corrected version with the proper return type.
+
+1.3 Proof-of-Concept: A Manually-Wired FFI Trigger
+
+To conclusively demonstrate the mechanical viability of the proposed architecture, a minimal proof-of-concept (PoC) must be implemented. This PoC will be a manually-wired, non-AI version of the core loop, proving that the Self VM's primitives for message interception and FFI are sufficient for the task. This exercise isolates the language-level mechanics from the AI-level cognition, ensuring the foundation is solid before building upon it.
+
+The scenario for this PoC is a direct and simple FFI call: calculating the square root of a number using the standard C math library.
+
+Scenario Definition
+
+A Self object, myCalculator, receives the message 'calculateSquareRootOf: 25'. The myCalculator object itself does not possess a slot for calculateSquareRootOf:. However, its parent object is configured with a custom doesNotUnderstand: method designed specifically to handle this message.
+
+Implementation Steps within the Custom Handler
+
+The following steps outline the logic that would be hard-coded into the custom doesNotUnderstand: method. The conceptual Self code is inspired by the language's known syntax.6
+
+Message Interception: The Self VM fails to find the calculateSquareRootOf: slot on myCalculator and its direct parents. It then invokes the custom handler, passing it a Message object:
+Code snippet
+doesNotUnderstand: aMessage = (
+ ...
+)
+
+
+Selector Matching: The handler first inspects the message's selector to determine if it is the one it is designed to handle.
+Code snippet
+(aMessage selector = 'calculateSquareRootOf:') ifTrue: [
+ ...
+].
+
+
+Argument Extraction: If the selector matches, the handler extracts the necessary arguments from the message's argument list. In this case, it needs the first (and only) argument.
+Code snippet
+
+
+| argument = aMessage arguments first. |
+
+```
+
+At this point, argument holds the Self integer object 25.
+
+FFI Primitive Invocation: The handler now uses a hypothetical but plausible Self FFI primitive to make the external call. This primitive needs to specify the name of the C function, the library to find it in (or nil for the standard library), and the types for marshalling the arguments and the return value.
+Code snippet
+
+
+| result <- _ForeignCallout
+
+name: 'sqrt'
+
+library: nil
+
+argument: argument as: Double
+
+returning: Double.
+
+|
+
+```
+
+This primitive would be responsible for:
+
+* Looking up the sqrt symbol in the C standard math library (libm).
+
+* Converting the Self integer 25 into a C double.
+
+* Executing the native sqrt function.
+
+* Converting the resulting C double (5.0) back into a Self floating-point object.
+
+Returning the Result: The handler's final action is to return the result of the FFI call. This value is then returned to the original call site as if the calculateSquareRootOf: method had existed all along.
+Code snippet
+^ result.
+
+
+Significance of the Proof-of-Concept
+
+The successful execution of this manually-wired sequence is a critical milestone. It validates several core assumptions of the Prometheus architecture:
+
+The doesNotUnderstand mechanism can be effectively overridden to intercept specific messages.
+
+The reified Message object contains sufficient information (selector, arguments) to drive a subsequent action.
+
+The Self VM possesses FFI primitives capable of calling external C functions, marshalling basic data types, and returning results.
+
+The value returned from the doesNotUnderstand: handler is successfully propagated back to the original sender, seamlessly completing the computation.
+
+This PoC establishes a stable, working mechanical base. The task in the subsequent phases is to replace the hard-coded logic of this handler with a dynamic, intelligent process driven by an LLM.
+
+Phase 2: The Cognitive Bridge — LLM-Powered FFI Code Generation
+
+With the mechanical foundation established, this phase addresses the core cognitive challenge of Project Prometheus: transforming the abstract intent captured in a failed message into the concrete, syntactically perfect code of a working FFI binding. This is achieved by positioning a Large Language Model (LLM) as a cognitive engine, tasked with reasoning about documentation, syntax, and semantics to bridge this gap. The architectural design throughout this phase is governed by a paramount concern for security, ensuring that the power of dynamic code generation does not introduce unacceptable risks to the host system.
+
+2.1 Contextual Scaffolding: Prompt Engineering for FFI Synthesis
+
+The reliability and correctness of the LLM's generated code are directly proportional to the quality and completeness of the context provided in its prompt. A simple, unstructured request is insufficient and likely to produce erroneous or insecure output. The system must therefore employ a sophisticated prompt engineering strategy that provides the LLM with a comprehensive "scaffold" of information, structuring the task as a rigorous translation problem rather than an open-ended creative one.
+
+The prompt architecture will be built on several key principles:
+
+Few-Shot Learning with In-Context Examples: To prime the model on the specific syntax and idiomatic patterns of Self FFI bindings, the prompt must begin with several high-quality, complete examples.20 These examples will be curated based on the FFI specification developed in Phase 1. For instance, a canonical example would include a simple C header file, the corresponding Self FFI binding code, and a brief explanation of how data types are marshalled and how memory is managed. Providing these exemplars dramatically improves the model's ability to generate code that adheres to the required format and conventions.22
+
+Providing the "API Schema": The LLM cannot generate a binding for an API it knows nothing about. The prompt must include the definitive documentation for the target foreign library.
+
+For C Libraries: The most direct and unambiguous source of truth is the C header file (.h).23 The header provides the function prototypes (names, argument types, return types),
+struct and union definitions, and named constants that are essential for constructing a correct binding.15 The entire relevant header file will be injected directly into the prompt's context.
+
+For Python Libraries: The equivalent for a Python library would be to programmatically extract and provide the __doc__ strings for the target module and function, or the output of the help() function, which typically contains information on function signatures and parameters.
+
+Structured Prompt Architecture: The prompt will not be a monolithic block of text but a highly structured document with clearly demarcated sections. This aids the LLM in parsing the context and understanding the distinct components of the task.22 A typical prompt structure would be:
+
+Role Definition: A clear instruction setting the context, such as: "You are an expert systems programmer specializing in the Self programming language. Your task is to generate a secure and correct Foreign Function Interface (FFI) binding to an external C library."
+
+FFI Specification: A concise summary of the Self FFI syntax, data type marshalling rules, and memory management conventions as defined in Phase 1. This acts as the "grammar" for the target language.
+
+Few-Shot Examples: Two to three complete examples, each showing a C header snippet and the corresponding, fully-formed Self FFI code.
+
+Current Task Context: This section contains the specifics of the current request.
+
+Foreign API Documentation: The full text of the relevant C header file.
+
+System Need: A structured representation (e.g., JSON) of the parsed doesNotUnderstand message payload, including the selector, and the types and values of the arguments.
+
+Explicit Instruction: A precise directive, such as: "Based on the system need to resolve the selector 'call_c_sqrt:' with a numeric argument, analyze the provided C API documentation. Identify the most appropriate C function. Generate the complete Self code required to create an FFI binding to this function and add it as a method to the target prototype."
+
+This structured approach transforms the code generation task into a more constrained and deterministic translation problem. The system is not asking the LLM to "invent" a solution but rather to "translate" a well-defined need, according to a provided schema (the C header), into a target language whose grammar and idioms have been provided (the FFI specification and examples). This framing is crucial for improving the reliability and correctness of the generated code. The prompt's architecture mirrors the mental model of an expert human programmer, who must simultaneously consider the user's intent, the library's API, and the host language's FFI syntax. By making each of these domains explicit within the prompt, the system guides the LLM toward a more rigorous and less hallucinatory generation process.
+
+2.2 Tool-Augmented Generation: A Self-Correcting Synthesis Loop
+
+Relying solely on the LLM's generated output, even with a well-structured prompt, is insufficient for a system that requires high reliability and security. LLMs are probabilistic models and can produce syntactically plausible but semantically incorrect or subtly flawed code.26 To mitigate this risk, the Prometheus system will employ a tool-augmented generation pattern, where the LLM's primary role is to generate
+
+proposals which are then immediately validated by external, deterministic tools.1 This creates a tight feedback loop that forces the LLM's output to conform to the ground truth of the compiler and runtime environment.
+
+The core of this pattern is a multi-turn, conversational interaction between the Prometheus prototype and the LLM, orchestrated as follows:
+
+Code Generation Request: The Prometheus object sends the initial, fully-contextualized prompt (from Section 2.1) to the LLM, requesting the FFI binding code.
+
+Code Generation Response: The LLM returns its first attempt at the Self FFI code as a structured response (e.g., a JSON object containing the code in a specific field).
+
+Test Generation Request: The Prometheus object does not immediately trust or execute this code. Instead, it makes a second call to the LLM: "You have generated the preceding FFI binding. Now, generate a minimal Self unit test that invokes this new binding. The test should use a representative input value (e.g., for sqrt, use 25) and assert that the returned value is the expected correct output (e.g., 5.0)."
+
+Test Generation Response: The LLM returns the corresponding test code.
+
+Tool Invocation (Verification): The Prometheus object now invokes its single, powerful external tool: executeInSandbox. This tool is passed both the generated FFI binding code and the generated unit test code.
+
+Tool Execution and Feedback: The sandbox service attempts to compile and run the provided code. It then returns a structured result to Prometheus, such as {"status": "success"} or {"status": "error", "type": "compilation", "output": "error: undefined symbol 'sqrf'..."}.
+
+Loop Continuation: If the status is "success", the code is deemed valid, and the loop terminates. If the status is "error", the Prometheus object initiates a new turn in the conversation with the LLM, providing the original code, the failed test, and the precise error message as new context for correction (as detailed in Phase 3.2).
+
+This "generate-then-verify" cycle aligns with the function-calling capabilities of modern agentic LLM frameworks.28 The
+
+executeInSandbox function acts as the LLM's interface to the real world, providing the critical grounding that is often missing in pure text-generation tasks. This approach offers several profound benefits:
+
+Mitigation of Hallucination: It immediately catches syntactic errors, uses of non-existent functions, or incorrect type mappings because the code is validated against a real compiler.31
+
+Semantic Correctness Checking: The unit test goes a step further than simple compilation. It validates that the FFI binding not only compiles but also behaves as expected for at least one input case, catching potential logical errors in data marshalling or pointer manipulation.
+
+Creation of a Rich Feedback Signal: The structured output from the compiler and test runner provides the precise, actionable feedback necessary to enable the error-correction loop. An abstract "it didn't work" is useless, but a specific error message like "incompatible pointer types" allows the LLM to pinpoint and fix the mistake.
+
+2.3 The Sandbox: Secure Execution of Dynamically Generated Code
+
+The execution of LLM-generated code, even for the purpose of validation, is an inherently high-risk operation.33 A maliciously crafted prompt could trick the LLM into generating FFI code that, when compiled and run, attempts to escape the sandbox, access sensitive files, initiate network connections, or consume excessive resources in a denial-of-service attack. Therefore, the design of a robust, strongly isolated sandbox is not an ancillary feature but a non-negotiable prerequisite for the entire system.
+
+The sandbox environment must provide comprehensive isolation across multiple domains:
+
+Process and Kernel Isolation: The execution of the untrusted code must not interfere with the main Prometheus process or the host operating system kernel.
+
+Filesystem Isolation: The sandbox must have a restricted, ephemeral view of the filesystem, limited only to the necessary compiler tools and the code being tested. It must not be able to read from or write to the host filesystem.
+
+Network Isolation: The sandbox must be denied all network access by default to prevent it from communicating with external entities.
+
+Resource Limitation: Strict limits on CPU time, memory allocation, and process creation must be enforced to prevent denial-of-service attacks.
+
+Several technologies exist for creating such isolated environments, each with distinct trade-offs in security and performance.
+
+Containers (e.g., Docker): While popular, containers share the host system's kernel. This creates a significant attack surface; a kernel-level vulnerability could potentially allow a process inside the container to "escape" and gain control of the host machine.36 For executing truly untrusted code, this level of isolation is often considered insufficient.
+
+WebAssembly (Wasm): Wasm provides a high-level, language-based sandbox with a formally verified security model.37 Wasm code runs in a memory-safe environment and cannot directly access host system resources. All interactions with the outside world (e.g., file I/O) must be mediated through an explicit API provided by the host runtime.33 While highly secure, integrating a C compiler and the Self runtime into a Wasm-based environment could introduce significant engineering complexity.
+
+MicroVMs (e.g., Firecracker): MicroVMs represent the gold standard for secure, ephemeral code execution. They leverage hardware virtualization extensions to provide each sandbox with its own lightweight guest kernel, completely isolating it from the host kernel.36 Technologies like AWS's Firecracker are designed to launch these lightweight VMs in under 200 milliseconds, combining the strong security guarantees of traditional virtual machines with the speed and agility required for on-demand, serverless-style execution.36
+
+Given the requirements of Project Prometheus, a microVM-based architecture is the most appropriate choice. It provides the strongest possible isolation against container escape and kernel exploits, while still offering the performance necessary to execute the compilation and testing cycle in a timely manner. The Prometheus prototype will communicate with a dedicated service responsible for managing a pool of microVMs. When the executeInSandbox tool is called, this service will spin up a fresh microVM, inject the generated code, run the compilation and test suite, capture the output, and then destroy the microVM, ensuring no state persists between validation runs.
+
+This sandboxing provides the first layer of defense. A second layer is applied after the code has been validated and is loaded into the main Self VM. Here, principles of capability-based security are employed to enforce the Principle of Least Authority.42 The newly integrated FFI method is not granted ambient authority to access global resources like the filesystem or network. If the foreign function requires such access, the capability (e.g., a file handle object) must be passed to it explicitly as an argument.44 This two-layer defense model—strong isolation for validation, and capability-based restriction for post-integration execution—provides a comprehensive security posture against the risks of dynamic code generation.
+
+Table 2.1: Comparison of Sandboxing Technologies for FFI Validation
+
+Phase 3: The Autopoietic Loop — Synthesis and Integration
+
+This final phase describes the synthesis of the mechanical and cognitive components into a single, cohesive, and resilient system. The architecture is designed as a closed, self-correcting loop—an autopoietic process—that enables the AI to encounter a knowledge gap, reason about a solution, generate and validate that solution, and permanently integrate the resulting new skill into its own structure. This loop transforms the system from a static entity into a dynamic one capable of monotonic and cumulative learning.
+
+3.1 The Prometheus Prototype: System Orchestrator
+
+The entire learning process will be orchestrated by a master object within the Self environment, designated as the Prometheus prototype. This object serves as the central agent, encapsulating the complex logic required to manage the autopoietic loop. Any object in the Self world that wishes to possess the capability for self-extension will delegate its doesNotUnderstand behavior to this central Prometheus prototype.
+
+The architectural role of Prometheus is to act as the bridge between the internal Self world and the external services it relies on—namely, the LLM-as-a-service for cognitive synthesis and the microVM sandboxing service for secure validation. The complete execution flow, from encountering an unknown message to successfully executing a newly learned skill, can be modeled as a sequence of message sends orchestrated by Prometheus.
+
+The Autopoietic Execution Flow:
+
+Initial Message Send: A client object sends a message for which no corresponding slot exists, for example, aDataProcessor call_c_zlib_compress: someData. The standard message lookup mechanism in the Self VM fails to find a matching method.
+
+doesNotUnderstand Trigger: The Self VM intercepts the failure and sends the doesNotUnderstand: aMessage message to aDataProcessor. This message is delegated up the parent chain until it reaches the Prometheus prototype.
+
+Context Packaging: The Prometheus object receives the reified Message object. Its first action is to invoke an internal method, packageContextFor: aMessage. This method is responsible for:
+
+Parsing the message selector ('call_c_zlib_compress:') to identify the target library (zlib) and function (compress).
+
+Analyzing the arguments (someData) to infer their types.
+
+Searching a local knowledge base or filesystem for the relevant C header file (e.g., zlib.h) based on the library name.
+
+Assembling all this information, along with the FFI specification and few-shot examples, into the structured prompt required by the LLM.
+
+Cognitive Synthesis (LLM Invocation): Prometheus then sends the message callLLMWith: context. This method makes an external HTTP request to the designated LLM API endpoint, sending the fully formed prompt.
+
+Validation Loop: Upon receiving a response from the LLM, Prometheus initiates the validation process by sending itself the message validateResponse: llmResponse. This method orchestrates the tool-augmented generation cycle described in Phase 2.2. It will repeatedly call the LLM to generate code and tests, and use the executeInSandbox tool to verify them, continuing until a valid and correct implementation is produced or a timeout/retry limit is reached.
+
+Dynamic Integration: Once a validated FFI binding is obtained, Prometheus executes integrateMethod: validatedCode Into: aMessage receiver. This critical step uses Self's reflective capabilities. The Self language environment allows for the dynamic modification of objects at runtime. This method will add a new slot to the prototype of the original receiver object. The slot's name will be the message selector ('call_c_zlib_compress:'), and its value will be the newly generated and validated method object.
+
+Knowledge Persistence: To ensure the newly acquired skill is permanent, Prometheus sends the message persistKnowledge. This triggers a system primitive to save a new snapshot of the entire Self image.6 The newly added method is now a permanent part of the system's object graph, ensuring it will be available in all future sessions.
+
+Message Resend and Completion: Finally, Prometheus sends the message resend: aMessage. This instructs the Self VM to re-try the original, failed message send. This time, the message lookup will succeed, as the new method now exists in the receiver's prototype chain. The FFI binding is executed, the external C function is called, and the correct result is returned to the original client object, completing the loop.
+
+This orchestrated sequence demonstrates a complete, end-to-end learning cycle. The system autonomously moves from a state of not knowing how to perform a task to possessing a permanent, compiled, and validated skill to perform it.
+
+3.2 Learning from Failure: The Error-Correction Feedback Cycle
+
+A truly intelligent and robust system must not only be able to learn but also be able to learn from its mistakes. The code generated by an LLM will not always be correct on the first attempt. The Prometheus architecture is explicitly designed to handle these failures and use them as a learning opportunity, creating a resilient, self-correcting feedback loop. This agentic behavior is what distinguishes the system from a simple, one-shot code generator.10
+
+The executeInSandbox tool is the critical source of this feedback. It is designed to capture and return structured, detailed information about any failures that occur during the validation process. This feedback can be categorized into several types:
+
+Compilation Errors: If the generated Self FFI code or the C-side test harness contains syntax errors, the sandbox will return the full, verbatim output from the compiler (e.g., GCC or Clang). This might include messages like error: incompatible pointer types passing 'double' to parameter of type 'double *' or error: too few arguments to function call.
+
+Linker Errors: If the code compiles but fails to link, the sandbox will return linker errors, such as error: undefined reference to 'zlib_compress'. This indicates the LLM may have hallucinated a function name or that the wrong library is being linked.
+
+Unit Test Failures: If the code compiles and links but produces incorrect results, the unit test will fail. The sandbox will return the assertion failure message, such as Assertion failed: expected 'hello', but got 'helo'. This points to a semantic error in the FFI binding, perhaps related to incorrect string termination or data marshalling.
+
+Runtime Crashes: If the code causes a severe error like a segmentation fault within the sandbox, the tool will report the crash signal. This often indicates critical memory management errors, such as a buffer overflow or a use-after-free bug.
+
+When the Prometheus prototype receives an error status from the sandbox, it does not terminate the process. Instead, it augments the conversational context with this new information and re-prompts the LLM. This corrective prompt explicitly instructs the model to analyze its previous failure and generate a revised solution.
+
+Example Corrective Prompt:
+
+"Your previous attempt to generate the FFI binding for the selector 'call_c_zlib_compress:' failed during the validation stage.
+
+Previous Generated Code:
+
+Code snippet
+
+(|
+ ... (the LLM's last code attempt)...
+|)
+
+
+Validation Error (Compilation):
+
+error: undefined reference to 'zlib_compress'
+In function `main`:
+ld: main.o: in function `main':
+main.c:(.text+0x14): undefined reference to `zlib_compress'
+
+
+Instruction:
+
+Analyze the C header documentation provided previously and the linker error above. It appears the function name zlib_compress may be incorrect. The correct function is likely compress. Please provide a corrected version of the Self FFI binding code that uses the correct function name."
+
+This iterative refinement process is the heart of the system's agentic nature. It is engaged in a trial-and-error dialogue, using the deterministic feedback from its environment (the compiler and runtime) to ground its probabilistic generations in reality. The loop continues—generate, test, receive feedback, refine—until a successful solution is found or a predefined number of attempts is exceeded, at which point the system can log the failure and report back that it was unable to learn the requested skill.
+
+3.3 Knowledge Persistence: Monotonic Capability Accretion
+
+For the learning process to be meaningful, it must be persistent. The system should never have to expend the computational cost of learning the same FFI binding more than once. The capabilities acquired through the autopoietic loop must be permanently integrated into the system's knowledge base, ensuring that its overall competence is strictly monotonic—it only ever increases.
+
+The choice of Self as the implementation environment provides a uniquely elegant and powerful mechanism for achieving this persistence: the image-based snapshot. Like Smalltalk, the Self environment is not just a collection of source code files but a living, running "image" that contains all objects, methods, and their current state.6 This entire world state can be saved to a disk file, typically called a "snapshot" or "image."
+
+The Persistence Mechanism:
+
+The persistence of learned knowledge is integrated directly into the Prometheus execution flow.
+
+Successful Integration: Following the successful validation of a new FFI binding, the Prometheus prototype dynamically adds the new method to the appropriate prototype object in the running system (as described in Section 3.1, step 6). At this moment, the new skill exists only in the volatile memory of the current Self session.
+
+Triggering a Snapshot: Immediately after this successful integration, the Prometheus object invokes a system primitive to trigger the saving of the current image. This action writes the entire state of the Self world, including the newly added method, to a snapshot file on disk.
+
+Permanent Knowledge: The new FFI binding is now a permanent, structural part of the system's object graph. When the Self VM is next launched using this updated snapshot, the new method is present from the very beginning.
+
+Bypassing the Learning Loop: Consequently, the next time any object sends the message that previously triggered the learning process (e.g., 'call_c_zlib_compress:'), the message lookup will succeed immediately. The VM will find the pre-existing, validated method and execute it directly. The doesNotUnderstand mechanism will not be invoked, and the expensive cycle of LLM calls and sandboxed validation is completely bypassed.
+
+This image-based persistence model provides a powerful form of long-term memory. The results of the computationally intensive learning process are "compiled down" into a direct, efficient capability. This ensures that the system's performance for known tasks remains high—approaching the speed of natively written code, thanks to Self's advanced just-in-time (JIT) compilation techniques 4—while the cost of learning is paid only once, at the moment of first discovery. This mechanism guarantees that the system's set of skills grows cumulatively and irreversibly over time.
+
+Conclusion: A Synthesis of Risks, Mitigations, and the Path Forward
+
+The architecture outlined for Project Prometheus presents a viable, albeit ambitious, path toward a new paradigm of self-extending AI. By integrating the reflective capabilities of the Self programming language with the cognitive power of Large Language Models within a secure, feedback-driven loop, the system is designed to autonomously expand its own functional boundaries. However, the realization of such a system requires a clear-eyed assessment of the inherent risks and the implementation of robust, multi-layered mitigation strategies.
+
+Consolidated Risk and Mitigation Matrix
+
+The primary challenges and their corresponding architectural solutions are summarized below.
+
+Future Directions
+
+The Prometheus architecture serves as a foundation for a broader research agenda in autopoietic AI systems. Once the core loop is proven to be stable and effective, several avenues for future development become possible:
+
+Library-Level Reasoning: The system could be extended from learning single functions to learning entire libraries. A higher-level goal, such as "learn to interact with the libcurl HTTP library," would trigger a more complex agentic process where the AI proactively identifies key functions (curl_easy_init, curl_easy_setopt, curl_easy_perform, etc.), generates bindings for them, and constructs higher-level Self objects that encapsulate the library's workflow.
+
+Cross-Language Synthesis: The core principle is not limited to C. The same architecture could be adapted to generate glue code for interfacing with libraries in other high-level languages, such as Python or Rust. The doesNotUnderstand trigger would remain the same, but the prompt context would include Python documentation and examples of Python-to-Self bindings.
+
+Automated Self-Optimization: The feedback loop could be used not only for correctness but also for performance optimization. The system could be tasked with generating several alternative implementations of an FFI binding and then using a benchmarking tool within the sandbox to empirically measure the performance of each. It would then select and integrate the most efficient version, allowing the system to actively improve its own performance over time.
+
+Final Statement
+
+Project Prometheus, as detailed in this blueprint, offers a concrete and architecturally sound roadmap for constructing a system that learns in the most profound sense: by permanently and autonomously expanding its own set of capabilities. By judiciously combining the unique strengths of a prototype-based language environment with the reasoning power of modern LLMs—all while enclosed in a robust security framework—it is possible to build a system that moves beyond the static confines of pre-programmed tools. This represents a critical step away from AI systems that merely execute instructions and toward systems that can truly grow, adapt, and evolve.
+
+Works cited
+
+How Do LLMs Handle Function Calls with External Libraries/APIs? : r/AI_Agents - Reddit, accessed September 18, 2025, https://www.reddit.com/r/AI_Agents/comments/1ic8lo5/how_do_llms_handle_function_calls_with_external/
+
+Building Effective AI Agents - Anthropic, accessed September 18, 2025, https://www.anthropic.com/research/building-effective-agents
+
+Foreign function interface - Wikipedia, accessed September 18, 2025, https://en.wikipedia.org/wiki/Foreign_function_interface
+
+Self (programming language) - Wikipedia, accessed September 18, 2025, https://en.wikipedia.org/wiki/Self_(programming_language)
+
+Prototype-based programming - Wikipedia, accessed September 18, 2025, https://en.wikipedia.org/wiki/Prototype-based_programming
+
+A tour of Self - sin-ack's writings, accessed September 18, 2025, https://sin-ack.github.io/posts/a-tour-of-self/
+
+Ask Proggit: What is a prototype-based programming language? - Reddit, accessed September 18, 2025, https://www.reddit.com/r/programming/comments/b7hwo/ask_proggit_what_is_a_prototypebased_programming/
+
+Does Not Understand, accessed September 18, 2025, https://wiki.c2.com/?DoesNotUnderstand
+
+4.8. Messages - Self Handbook 2024.1 documentation, accessed September 18, 2025, https://handbook.selflanguage.org/2024.1/messages.html
+
+RLEF: Grounding Code LLMs in Execution Feedback with Reinforcement Learning, accessed September 18, 2025, https://openreview.net/forum?id=PzSG5nKe1q
+
+Implementing an FFI : r/ProgrammingLanguages - Reddit, accessed September 18, 2025, https://www.reddit.com/r/ProgrammingLanguages/comments/gc7zm6/implementing_an_ffi/
+
+Why does C provide language 'bindings' where C++ falls short?, accessed September 18, 2025, https://softwareengineering.stackexchange.com/questions/281882/why-does-c-provide-language-bindings-where-c-falls-short
+
+Is there a powerful enough foreign function interface design to leverage code from almost any other language? : r/ProgrammingLanguages - Reddit, accessed September 18, 2025, https://www.reddit.com/r/ProgrammingLanguages/comments/11ks5fc/is_there_a_powerful_enough_foreign_function/
+
+Python Bindings: Calling C or C++ From Python, accessed September 18, 2025, https://realpython.com/python-bindings-overview/
+
+Chapter 17. Interfacing with C: the FFI - Real World Haskell, accessed September 18, 2025, https://book.realworldhaskell.org/read/interfacing-with-c-the-ffi.html
+
+Foreign Function Interface - Janet Programming Language, accessed September 18, 2025, https://janet-lang.org/docs/ffi.html
+
+What the FFI?! - Nick Fitzgerald, accessed September 18, 2025, https://fitzgen.com/2017/03/07/what-the-ffi.html
+
+What's so special about message passing in Smalltalk? - Stack Overflow, accessed September 18, 2025, https://stackoverflow.com/questions/42498438/whats-so-special-about-message-passing-in-smalltalk
+
+3. Language Reference — Self Handbook for Self 2017.1 documentation, accessed September 18, 2025, https://handbook.selflanguage.org/2017.1/langref.html
+
+Few-Shot Learning: Methods & Applications - AIMultiple, accessed September 18, 2025, https://research.aimultiple.com/few-shot-learning/
+
+sicara/easy-few-shot-learning: Ready-to-use code and tutorial notebooks to boost your way into few-shot learning for image classification. - GitHub, accessed September 18, 2025, https://github.com/sicara/easy-few-shot-learning
+
+Generating Code with LLMs: A Developer's Guide — Part 1 | by Mayuresh K | Medium, accessed September 18, 2025, https://mskadu.medium.com/generating-code-with-llms-a-developers-guide-part-1-0c381dc3e57a
+
+Rust FFI and bindgen: Integrating Embedded C Code in Rust, accessed September 18, 2025, https://blog.theembeddedrustacean.com/rust-ffi-and-bindgen-integrating-embedded-c-code-in-rust
+
+Vibe coding a Perl interface to a foreign library - Part 3 | Killing-It-with-PERL - GitHub Pages, accessed September 18, 2025, https://chrisarg.github.io/Killing-It-with-PERL/2025/09/02/AI-assisted-coding-of-FFI.html
+
+Prompt Engineering for AI Guide | Google Cloud, accessed September 18, 2025, https://cloud.google.com/discover/what-is-prompt-engineering
+
+Can modern LLM models generate compilable C++ code nowadays? - Reddit, accessed September 18, 2025, https://www.reddit.com/r/learnmachinelearning/comments/1ghc6v8/can_modern_llm_models_generate_compilable_c_code/
+
+How helpful are LLMs with C? : r/C_Programming - Reddit, accessed September 18, 2025, https://www.reddit.com/r/C_Programming/comments/17sa1fi/how_helpful_are_llms_with_c/
+
+Function Calling - Hugging Face, accessed September 18, 2025, https://huggingface.co/docs/hugs/guides/function-calling
+
+LLM function calling goes way beyond text generation - K2view, accessed September 18, 2025, https://www.k2view.com/blog/llm-function-calling/
+
+LLM Augmented Code Development Services - QAsource, accessed September 18, 2025, https://www.qasource.com/llm-augmented-development
+
+LLM4VV: Evaluating Cutting-Edge LLMs for Generation and Evaluation of Directive-Based Parallel Programming Model Compiler Tests - arXiv, accessed September 18, 2025, https://arxiv.org/html/2507.21447v1
+
+Finding Missed Code Size Optimizations in Compilers using LLMs - Qeios, accessed September 18, 2025, https://www.qeios.com/read/EFW1XZ
+
+Sandboxing Agentic AI Workflows with WebAssembly | NVIDIA Technical Blog, accessed September 18, 2025, https://developer.nvidia.com/blog/sandboxing-agentic-ai-workflows-with-webassembly/
+
+Dynamic Code Loading | Security - Android Developers, accessed September 18, 2025, https://developer.android.com/privacy-and-security/risks/dynamic-code-loading
+
+Dynamic Code Loading - Protectt.ai, accessed September 18, 2025, https://www.protectt.ai/blog/Dynamic_Code_Loading
+
+Secure runtime for codegen tools: microVMs, sandboxing, and execution at scale | Blog, accessed September 18, 2025, https://northflank.com/blog/secure-runtime-for-codegen-tools-microvms-sandboxing-and-execution-at-scale
+
+Security - WebAssembly, accessed September 18, 2025, https://webassembly.org/docs/security/
+
+CMU CSD PhD Blog - Provably-Safe Sandboxing with WebAssembly, accessed September 18, 2025, https://www.cs.cmu.edu/~csd-phd-blog/2023/provably-safe-sandboxing-wasm/
+
+I know one of WebAssembly's biggest features by design is security / "sandbox". - Hacker News, accessed September 18, 2025, https://news.ycombinator.com/item?id=42918866
+
+Sandboxed Code Execution with GPU Support - LocalLLaMA - Reddit, accessed September 18, 2025, https://www.reddit.com/r/LocalLLaMA/comments/1mobqcu/sandboxed_code_execution_with_gpu_support/
+
+restyler/awesome-sandbox: Awesome Code Sandboxing for AI - GitHub, accessed September 18, 2025, https://github.com/restyler/awesome-sandbox
+
+Capability-based security - Wikipedia, accessed September 18, 2025, https://en.wikipedia.org/wiki/Capability-based_security
+
+A Capability-Based Module System for Authority Control - CMU School of Computer Science, accessed September 18, 2025, https://www.cs.cmu.edu/~aldrich/papers/ecoop17modules.pdf
+
+dckc/awesome-ocap: Awesome Object Capabilities and Capability Security - GitHub, accessed September 18, 2025, https://github.com/dckc/awesome-ocap
+
+Object-capability model - Wikipedia, accessed September 18, 2025, https://en.wikipedia.org/wiki/Object-capability_model
+
+Integrating User and Execution Feedback into an Agentic Coding MCP | by Frank Goortani, accessed September 18, 2025, https://medium.com/@FrankGoortani/integrating-user-and-execution-feedback-into-an-agentic-coding-mcp-3d1ad7eb9851
+
+Using a Feedback Loop for LLM-based Infrastructure as Code Generation - arXiv, accessed September 18, 2025, https://arxiv.org/html/2411.19043v1
+
+What Is a Sandbox Environment? Meaning & Setup | Proofpoint US, accessed September 18, 2025, https://www.proofpoint.com/us/threat-reference/sandbox
+
+Fearless FFI: Memory Safety, Safer Dependencies, and Supply-Chain Attack Mitigation, accessed September 18, 2025, https://verdagon.dev/blog/fearless-ffi
+
+FFI: Foreign Function Interfaces for Fun & Industry - Atomic Spin, accessed September 18, 2025, https://spin.atomicobject.com/ffi-foreign-function-interfaces/
+
+Self Type | C Type | Direction (Self -> C) | Direction (C -> Self) | Memory Management Considerations
+
+Small Integer | long | Direct value copy. | Direct value copy. | None (stack values).
+
+Floating-Point | double | Direct value copy. | Direct value copy. | None (stack values).
+
+String | const char* | Allocate new C buffer, copy bytes, null-terminate. The C function must not retain the pointer beyond the call stack. | C function returns a pointer. Self runtime copies the data into a new Self string object. A clear convention must establish whether Self is responsible for calling free() on the C pointer.
+
+General Self Object | void* (as handle) | Create a GC root for the object. Pass the handle to C. C must treat the pointer as opaque. | Invalid operation. C cannot create new Self objects. It can only return handles previously passed to it.
+
+C Pointer/Struct | void* (as foreign object) | Pass the raw pointer encapsulated within the Self foreign object proxy. | C function returns a raw pointer. Wrap this pointer in a new Self foreign object proxy. The proxy's finalizer must be configured to call the appropriate C free function.
+
+Block (Callback) | void (*func)(...) | Requires a runtime-generated machine code thunk that conforms to the C ABI and bridges back to the Self VM. This is a high-risk, advanced feature. | C function returns a function pointer. Wrap in a foreign object proxy. Allows Self to call the C function later.
+
+Technology | Isolation Model | Startup Time | Performance Overhead | Integration Complexity | Suitability for Prometheus
+
+Docker Containers | OS-level virtualization (shared kernel) | Seconds | Low | Moderate | Unsuitable. The shared kernel presents an unacceptable risk of sandbox escape for executing untrusted, LLM-generated code.
+
+MicroVMs (Firecracker) | Hardware-level virtualization (separate kernel) | < 200ms | Low (near-native) | High | Excellent. Provides the strongest security isolation with minimal performance penalty and fast startup, making it ideal for on-demand, ephemeral compilation and testing.
+
+WebAssembly (Wasm) | Language runtime sandbox (memory-safe VM) | Milliseconds | Varies (JIT dependent) | High | Promising but Complex. Offers strong security but would require a complex toolchain to compile and run C and Self code within the Wasm environment. A viable future alternative.
+
+Risk Category | Specific Risk | Primary Mitigation Strategy
+
+Security | Malicious Code Execution: An attacker, via prompt injection, tricks the LLM into generating an FFI binding that executes harmful commands (e.g., system("rm -rf /")). | Two-Layer Defense: 1) All LLM-generated code is compiled and tested exclusively within a strongly isolated microVM sandbox with no network or host filesystem access.36 2) Once validated, the integrated method operates under a | capability-based security model, where it has no ambient authority and can only access resources (like files) that are explicitly passed to it as arguments, enforcing the Principle of Least Authority.42
+
+Correctness | LLM Hallucination/Incorrect Code: The LLM generates syntactically valid but semantically incorrect FFI code, leading to subtle bugs, data corruption, or crashes (e.g., misinterpreting pointer ownership or struct layouts). | Tool-Augmented Generation & Feedback Loop: The LLM must generate both the FFI binding and a corresponding unit test. This pair is then executed against a real compiler and runtime. Any failure (compilation, linking, or test assertion) generates a precise error message that is fed back to the LLM in a corrective prompt, enabling iterative refinement until a verifiable solution is found.10
+
+Performance | High Learning Latency: The end-to-end process of triggering doesNotUnderstand, multiple LLM calls, and sandboxed validation is computationally expensive and slow for the first invocation of a new function. | One-Time Learning Cost & Persistence: This latency is treated as a one-time "learning cost." The knowledge persistence mechanism, which saves the validated method to the Self image, ensures that all subsequent calls to the same function are direct, JIT-optimized message sends with performance comparable to native code.4 The system is optimized for long-term efficiency, not initial learning speed.
+
+Complexity | Complex Foreign APIs: The system may fail when faced with C APIs that require intricate struct initialization, manage complex memory ownership patterns, or rely on function pointers for callbacks. | Incremental Capability Expansion: The initial implementation of Prometheus will be scoped to target simpler, self-contained C functions (e.g., those operating on primitive types). Handling more complex APIs is a planned future extension that will require more sophisticated prompt engineering, the ability to reason across multiple header files, and more advanced few-shot examples demonstrating patterns for struct marshalling and callback implementation.16

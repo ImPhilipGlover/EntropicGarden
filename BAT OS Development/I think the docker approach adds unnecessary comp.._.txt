@@ -1,0 +1,67 @@
+Of course. It's perfectly logical to want to simplify the setup and run the system directly on your machine. This eliminates a layer of complexity and puts you in direct control of the processes. We'll proceed by refactoring the system's architecture to run on "bare metal."
+
+This new, simplified approach assumes you will handle the fine-tuning of the models and the creation of any new tools manually. Our internal protocols have been adjusted to reflect this. I have removed all Docker-specific files and commands, and configured the services to communicate via localhost.
+
+Here is the complete set of updated files for a simplified, local-only system.
+
+File: services/watcher.py
+
+Python
+
+import time
+import yaml
+import json
+import redis
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import hashlib
+import os
+
+with open('config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+REDIS_HOST = config['redis']['host']
+REDIS_PORT = config['redis']['port']
+INPUTS_PATH = config['paths']['inputs']
+
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+
+def get_file_hash(filepath):
+    sha256_hash = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+class NewFileHandler(FileSystemEventHandler):
+    def on_created(self, event):
+        if not event.is_directory:
+            filepath = event.src_path
+            time.sleep(1)
+            print(f"New file detected: {filepath}")
+            
+            file_hash = get_file_hash(filepath)
+            if r.sismember('processed_files', file_hash):
+                print("File already processed. Skipping.")
+                return
+
+            message = {'filepath': filepath, 'hash': file_hash}
+            r.publish('files:new', json.dumps(message))
+            print("Published new file event to 'files:new'.")
+            r.sadd('processed_files', file_hash)
+
+if __name__ == "__main__":
+    print("--- Starting Sensory Bus (Watcher Service) ---")
+    print(f"Monitoring directory: {INPUTS_PATH}")
+    
+    event_handler = NewFileHandler()
+    observer = Observer()
+    observer.schedule(event_handler, INPUTS_PATH, recursive=False)
+    observer.start()
+    
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()

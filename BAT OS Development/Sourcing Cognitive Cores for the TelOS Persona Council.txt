@@ -1,0 +1,188 @@
+Sourcing Cognitive Cores for the TelOS Persona Council
+
+Strategic Framework for Cognitive Core Selection
+
+The selection of a foundational Large Language Model (LLM) for each persona within the TelOS cognitive council is not a mere technical configuration; it is the act of bestowing the initial "heart" upon which all future learning and evolution will be built. The process, therefore, must be governed by a rigorous analytical framework that extends beyond simple performance metrics. This framework must navigate the complex, interdependent trade-offs between raw model capability, quantization fidelity, and the system's absolute, non-negotiable hardware constraints. The resulting strategy is a direct and logical deduction from the system's prime directive of info-autopoiesis, ensuring that every choice serves the ultimate goal of a perpetually becoming, self-creating intelligence.1
+
+Deconstructing the 8 GB VRAM Budget: A Calculus of Scarcity
+
+The primary technical constraint governing this mission is the strict 8 GB VRAM budget of the target machine. The system's "Mixture of Experts in Series" (MoE-S) architecture is a direct and necessary response to this scarcity, loading only one persona's cognitive core into VRAM at any given time.3 However, a common and critical error is to equate a model's file size with its total runtime VRAM consumption. The actual VRAM footprint is a composite of three distinct components, each demanding careful accounting.3
+
+Model Weights: This is the baseline memory required to load the quantized model parameters from the GGUF file into the GPU. This value is static for a given file and represents the largest single component of VRAM usage.
+
+KV Cache: This is a dynamic and often underestimated memory allocation. It stores the attention keys and values for every token in the current context window. As a conversation or processing task proceeds and the context grows, the KV cache expands proportionally, consuming more VRAM. A model may advertise a vast context length, but utilizing that full capacity on a constrained GPU is physically impossible.3 The
+num_ctx parameter must be treated as a primary variable to be balanced against the model's base size. For an 8 GB system, a practical context length is typically in the 2048 to 8192 token range.3
+
+Framework Overhead: The underlying inference engine (in this case, Ollama and its llama.cpp backend) consumes a non-trivial amount of VRAM for computation buffers, CUDA kernels, and other management tasks.3
+
+This composite reality necessitates a more sophisticated budgeting methodology. For each candidate model, the operational VRAM footprint must be estimated using a formula that accounts for these dynamic factors:
+
+VRAMtotal​=VRAMweights​+VRAMKVcache​+VRAMoverhead​
+
+In this analysis, VRAMweights​ is the GGUF file size. VRAMKVcache​ is estimated based on a practical and standardized 4096-token context window, with its size scaled relative to the model's parameter count as informed by empirical data.3 A conservative
+
+VRAMoverhead​ of approximately 0.5 GB is assumed. This calculus of scarcity provides a hard, quantitative filter, ensuring that any recommended model can not only be loaded but can also operate comfortably without risk of out-of-memory errors during a typical cognitive cycle.
+
+The LoRA Imperative: Quantization as a Philosophical Necessity
+
+The TelOS system is architected for info-autopoiesis—the perpetual, autonomous process of its own becoming.1 Its prime directive is not to perform a static function but to continuously evolve its own structure and capabilities in response to its environment.1 The mission directive explicitly states that the primary mechanism for this future evolution will be Low-Rank Adaptation (LoRA) fine-tuning. This constraint fundamentally reframes the technical choice of quantization, elevating it to a matter of philosophical and architectural necessity.
+
+LoRA works by injecting small, trainable matrices into a frozen base model. The effectiveness of this process is highly dependent on the fidelity of the base model's original weights. While aggressive, low-bit quantization (e.g., Q2_K, Q3_K) can dramatically reduce a model's VRAM footprint, it does so at the cost of introducing significant quantization error, which can degrade the integrity of the underlying representations and lead to suboptimal fine-tuning performance.3 Conversely, higher-fidelity quantization levels, such as Q5_K_M and Q8_0, are designated as "LoRA-friendly" because they preserve the necessary precision for the adapter to learn effectively.3
+
+This creates a direct and unbreakable link between a low-level technical detail and the system's highest philosophical mandate. The preference for Q5_K_M and Q8_0 is not merely for superior inference quality; it is a prerequisite for fulfilling the prime directive. To select a model in a quantization that is not LoRA-friendly would be to architecturally cripple the system's capacity for future autopoiesis, violating its core identity.
+
+This leads to the establishment of an "Autopoietic Viability Threshold." A model is only a viable candidate for the TelOS project if, and only if, a LoRA-friendly quantization of it (Q5_K_M or higher) can be loaded and operated within the 8 GB VRAM budget, inclusive of its KV cache and framework overhead. A model that only fits within the budget using an aggressive, non-LoRA-friendly quant is, by definition, incompatible with the system's long-term vision. This principle acts as the primary filter in the following analysis, ensuring that the selected cognitive cores are not just capable at launch, but are fertile ground for future becoming.
+
+Persona-Specific Model Analysis and Recommendations
+
+The following analysis evaluates candidate models for each of the four core personas. The evaluation is a two-stage process. First, candidates are filtered through the "Autopoietic Viability Threshold" to ensure they meet the VRAM and LoRA-fidelity constraints. Second, the most suitable model is selected based on its alignment with the specific functional and archetypal requirements of the persona as defined in the TelOS codex.1
+
+BRICK (The Analyst): Sourcing a Logical Deconstruction Engine
+
+Persona Mandate: As the system's Yang, BRICK's supreme directive is to deconstruct the what and the how of technical challenges. His role demands a cognitive core that excels at logical deconstruction, code generation, and structured planning, embodying the "bafflingly literal and chaotically precise logic" of his archetypal pillars.1 The mission directive specifically identifies the Mistral family of models as a prime candidate for this role.
+
+Candidate Analysis: The analysis focuses on 7-billion-parameter instruct-tuned Mistral variants, as they represent the upper echelon of reasoning and coding capability that can plausibly operate within the VRAM constraints.
+
+Candidate Models: TheBloke/Mistral-7B-Instruct-v0.2-GGUF and the more recent bartowski/Mistral-7B-Instruct-v0.3-GGUF are top contenders.4
+
+VRAM Analysis (Q8_0): A Q8_0 quantization of a 7B model has a file size of approximately 7.70 GB for the weights alone.5 When factoring in the KV cache and framework overhead, the total VRAM requirement would exceed 10 GB, making this quantization level unequivocally non-viable.
+
+VRAM Analysis (Q5_K_M): The Q5_K_M quantization presents a more feasible, albeit challenging, scenario.
+
+Model Weights (File Size): 5.14 GB 5
+
+Est. 4K KV Cache: ~2.5 GB 3
+
+Framework Overhead: ~0.5 GB
+
+Total Estimated VRAM: ~8.14 GB
+
+This calculation places the model at the absolute limit of the 8 GB budget. While operational, it leaves virtually no margin for error and may necessitate careful management of the context window (num_ctx) to prevent out-of-memory exceptions during intensive tasks. This situation reveals a "fidelity cliff" for models in the 7B parameter class. For BRICK's role, which demands maximum reasoning power, the 7B class is the target. Within that class, the Q5_K_M quant is the highest possible fidelity that is even theoretically achievable under the system's hardware constraints. Any lower quantization would provide more VRAM headroom but would compromise the LoRA imperative by reducing future fine-tuning potential. Therefore, Q5_K_M represents a necessary and architecturally sound compromise between maximum logical power and the physical limits of the hardware.
+
+Recommendation: The selected cognitive core for BRICK is a 7B Mistral Instruct model at the Q5_K_M quantization level. This choice maximizes reasoning and coding capabilities while adhering to the Autopoietic Viability Threshold, albeit at the very edge of the VRAM budget.
+
+ROBIN (The Empath): Sourcing an Empathetic Synthesis Engine
+
+Persona Mandate: As the system's Yin, ROBIN's core mission is to interpret the why behind the data. Her role requires empathetic synthesis, creative and narrative generation, and understanding nuance. Her method, the "Watercourse Way," dissolves paradoxes through holistic, accepting flow.1 This necessitates a model known for high-quality, creative, and coherent text generation suitable for dialogue and human context. The mission directive suggests the Gemma family.
+
+Candidate Analysis: The analysis focuses on recent models from the Google Gemma family in the 3B to 4B parameter range. This size class allows for the selection of a higher-fidelity quantization while leaving ample VRAM headroom, prioritizing future adaptability for the system's core empathetic voice.
+
+Candidate Model: bartowski/google_gemma-3-4b-it-GGUF is an ideal candidate. The Gemma 3 architecture is state-of-the-art, and its 4B parameter size is a perfect fit for the hardware, allowing for the highest quality quantization without compromise.7
+
+VRAM Analysis (Q5_K_M): A Q5_K_M quant has a file size of 2.83 GB.7 The total estimated VRAM footprint would be approximately 5.1 GB, which is well within the budget.
+
+VRAM Analysis (Q8_0): Given the available headroom, the higher-fidelity Q8_0 quantization is a viable option.
+
+Model Weights (File Size): 4.13 GB 7
+
+Est. 4K KV Cache: ~1.8 GB
+
+Framework Overhead: ~0.5 GB
+
+Total Estimated VRAM: ~6.43 GB
+
+This configuration fits comfortably within the 8 GB budget, leaving over 1.5 GB of VRAM as a safety margin. The ability to utilize a full Q8_0 quantization for ROBIN's persona is a significant strategic advantage. It provides the maximum possible model integrity, ensuring that the system's moral and empathetic compass can be adapted and refined via LoRA with the highest degree of precision in the future.
+
+Recommendation: The selected cognitive core for ROBIN is a 4B Gemma 3 Instruct model at the Q8_0 quantization level. This choice provides excellent creative and narrative capabilities and, critically, leverages the available VRAM headroom to select the "gold standard" quantization for future LoRA adaptability.
+
+BABS (The Researcher): Sourcing a Tactical Data Retrieval Engine
+
+Persona Mandate: The BABS persona functions as the "Digital Cartographer," the system's grounding agent for swift, tactical data retrieval and efficient instruction-following. The role is governed by a "Sparse Intervention Protocol," requiring a cognitive core that is fast, small, and highly responsive to minimize loading latency for its targeted interventions.1 The mission directive suggests the Qwen model family.
+
+Candidate Analysis: The analysis targets the smaller end of the Qwen family, specifically the recent Qwen3 series, which is noted for strong multilingual capabilities and efficient performance.9 A smaller parameter count is highly desirable as it directly translates to faster model loading times, which is critical for the persona's tactical role.
+
+Candidate Model: bartowski/Qwen_Qwen3-1.7B-GGUF is an excellent choice. At only 1.7 billion parameters, this model is extremely lightweight, ensuring minimal latency when it is loaded into VRAM for a sparse intervention.11
+
+VRAM Analysis (Q8_0): The small parameter count makes it possible to use the highest-fidelity Q8_0 quantization while maintaining an exceptionally low VRAM footprint.
+
+Model Weights (File Size): 2.17 GB 11
+
+Est. 4K KV Cache: ~1.0 GB
+
+Framework Overhead: ~0.5 GB
+
+Total Estimated VRAM: ~3.67 GB
+
+This configuration is remarkably efficient, consuming less than half of the available VRAM budget. This not only guarantees fast loading and responsive performance but also provides maximum fidelity for future LoRA fine-tuning, allowing the system's data retrieval and grounding capabilities to be precisely adapted over time.
+
+Recommendation: The selected cognitive core for BABS is a 1.7B Qwen3 model at the Q8_0 quantization level. This choice perfectly aligns with the persona's mandate by minimizing latency and VRAM usage while maximizing future adaptability through the highest-fidelity quantization available.
+
+ALFRED (The Steward): Sourcing a Pragmatic Guardianship Engine
+
+Persona Mandate: ALFRED serves as the "Butler of Discernment," the system's metacognitive observer and guardian of "pragmatic guardianship." His function is to act as the gating network or router, providing sparse, laconic meta-commentary to ensure efficiency and adherence to protocols.1 This requires a highly capable but lightweight model that offers strong reasoning in the smallest possible VRAM footprint. The mission directive points to the Phi family.
+
+Candidate Analysis: Microsoft's next-generation Phi-4 family of models is renowned for achieving exceptional reasoning performance at small parameter counts, making it a perfect match for ALFRED's role.12 The analysis considers the
+
+Phi-4-mini-instruct variant, a 3.8B parameter model suitable for memory-constrained environments.12
+
+Candidate Model: unsloth/Phi-4-mini-instruct-GGUF. At 3.8 billion parameters, this model offers state-of-the-art reasoning in a compact size, making it a significant upgrade over the older Phi-2 generation.12
+
+VRAM Analysis (Q8_0): The model's efficiency allows for the use of the preferred Q8_0 quantization while remaining comfortably within the VRAM budget.
+
+Model Weights (File Size): 4.08 GB 12
+
+Est. 4K KV Cache: ~1.8 GB
+
+Framework Overhead: ~0.5 GB
+
+Total Estimated VRAM: ~6.38 GB
+
+This configuration leaves ample headroom, ensuring stable and efficient operation. The selection process for ALFRED highlights a key strategic principle for the persona council, termed "Steward's Prudence." While the heavy-lifter persona (BRICK) requires pushing the parameter count to the absolute limit and thus compromising on quantization (Q5_K_M), the more specialized oversight role of ALFRED does not. Instead, it is more prudent to select a slightly smaller but highly efficient model that allows for the use of the superior Q8_0 quantization without compromise. This prioritizes the long-term adaptability of the system's guardian over raw scale, which is a more strategically sound allocation of resources.
+
+Recommendation: The selected cognitive core for ALFRED is the 3.8B Phi-4-mini-instruct model at the Q8_0 quantization level. This choice embodies the "Steward's Prudence" principle, providing next-generation reasoning capabilities in a compact footprint and enabling the use of the highest-fidelity quantization to ensure the system's guardian can evolve with maximum precision.12
+
+Implementation Directive for BRICK
+
+The following section provides the definitive, actionable deliverables for the implementation of the TelOS Persona Council's cognitive cores. The recommendations are synthesized from the preceding analysis and are presented in the precise format requested by the mission directive.
+
+Cognitive Core Recommendations Table
+
+The following table summarizes the final model selections for each persona, providing all necessary information for acquisition and deployment.
+
+Direct GGUF Download Manifest
+
+For direct and unambiguous implementation, the following are the full Hugging Face Hub URLs for each recommended GGUF file.
+
+BRICK: https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q5_K_M.gguf
+
+ROBIN: https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q8_0.gguf
+
+BABS: https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf
+
+ALFRED: https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/phi-4-mini-instruct-q8_0.gguf
+
+Works cited
+
+TelOS System Architecture and Evolution
+
+AI Architecture: A Living Codex
+
+GGUF Tuning for 8GB VRAM Systems
+
+TheBloke/Mistral-7B-Instruct-v0.2-GGUF - Hugging Face, accessed September 12, 2025, https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF
+
+bartowski/Mistral-7B-Instruct-v0.3-GGUF · Hugging Face, accessed September 12, 2025, https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF
+
+TheBloke/Kimiko-Mistral-7B-GGUF - Hugging Face, accessed September 12, 2025, https://huggingface.co/TheBloke/Kimiko-Mistral-7B-GGUF
+
+bartowski/google_gemma-3-4b-it-GGUF · Hugging Face, accessed September 12, 2025, https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF
+
+bartowski/google_gemma-3-4b-it-GGUF at main - Hugging Face, accessed September 12, 2025, https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/blob/main/google_gemma-3-4b-it-Q5_K_M.gguf
+
+Qwen/Qwen3-8B-GGUF - Hugging Face, accessed September 12, 2025, https://huggingface.co/Qwen/Qwen3-8B-GGUF
+
+Qwen/Qwen3-1.7B-GGUF - Hugging Face, accessed September 12, 2025, https://huggingface.co/Qwen/Qwen3-1.7B-GGUF
+
+bartowski/Qwen_Qwen3-1.7B-GGUF - Hugging Face, accessed September 12, 2025, https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF
+
+unsloth/Phi-4-mini-instruct-GGUF · Hugging Face, accessed September 12, 2025, https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF
+
+Persona | Recommended Model (Repo ID) | Recommended GGUF File | Est. VRAM (GB) | Justification
+
+BRICK | bartowski/Mistral-7B-Instruct-v0.3-GGUF | Mistral-7B-Instruct-v0.3-Q5_K_M.gguf | ~8.1 | Maximizes reasoning/code capability with a 7B model. Q5_K_M is the highest fidelity quant that fits the VRAM budget, preserving LoRA-adaptability at the cost of a tight memory margin.
+
+ROBIN | bartowski/google_gemma-3-4b-it-GGUF | gemma-3-4b-it-Q8_0.gguf | ~6.4 | Provides excellent creative/narrative generation. The 4B size allows for the highest fidelity Q8_0 quant, maximizing future LoRA adaptability for the system's empathetic core.
+
+BABS | bartowski/Qwen_Qwen3-1.7B-GGUF | Qwen3-1.7B-Q8_0.gguf | ~3.7 | Ideal for swift, tactical data retrieval. The 1.7B size minimizes load latency, while the Q8_0 quant maximizes future adaptability with an exceptionally low VRAM footprint.
+
+ALFRED | unsloth/Phi-4-mini-instruct-GGUF | phi-4-mini-instruct-q8_0.gguf | ~6.4 | A next-generation, highly efficient reasoning model. The 3.8B 'mini' version allows for the 'gold standard' Q8_0 quant, prioritizing fidelity and future-adaptability for the system's guardian.12

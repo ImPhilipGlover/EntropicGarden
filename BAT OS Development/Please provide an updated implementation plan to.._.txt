@@ -1,0 +1,117 @@
+Implementation Plan: The Entropic Codex v22.0
+
+This document provides a comprehensive plan for implementing the Entropic Codex, detailing the script architecture, system workflow, and a final checklist to ensure all requirements are met. This plan synthesizes our discussions into a cohesive blueprint for a powerful, self-evolving system.
+
+1.0 Script Architecture & Implementation Plan
+
+The system will be a federation of specialized services, each running as a separate process on a bare-metal host. All services will communicate asynchronously through a Redis event bus, with a central LangGraph state machine orchestrating the complex workflows.
+
+Phase 1: Foundational Services & Core Utilities
+
+This phase focuses on building the non-persona-specific infrastructure.
+
+init_db.py: This script will be responsible for setting up the entire database architecture. It will configure NebulaGraph with the Hierarchical Memory (H-MEM) schema, establishing tags for domain, category, trace, and episode. It will also initialize ChromaDB collections for persona canons and connect to the Redis event bus.
+
+fastapi_main.py & streamlit_ui.py: The FastAPI script will serve as the system's API backend, providing endpoints for all user interactions. The Streamlit script will be the web-based front-end, enabling you to submit prompts, view real-time outputs, and manage system functions.
+
+llm_router.py: This service is the core of our VRAM-optimized strategy. It will be responsible for loading the single MoE LLM (yarn-mistral:7b-128k-q5_K_M) into memory. It will then dynamically load and unload the specific LoRA adapter for each persona's turn, allowing the system to achieve persona specialization without requiring a service restart.
+
+watcher.py: This service acts as the system's "sensory bus," monitoring a local inputs directory for new files. When a file is detected, it publishes an event to Redis, initiating the persona pipeline.
+
+tool_executor.py: This utility script is a crucial part of the system's dynamic capabilities. It will be a self-contained service that can be called by other personas to execute an approved, agent-generated Python tool.
+
+Phase 2: Persona-Specific Services & Autotelic Loops
+
+This phase focuses on building the intelligent and autonomous components of the system.
+
+babs_service.py: This script will contain BABS's operational logic, including Web-Based Scrutiny (web scraping) and text extraction from various file types. It will be the first node in the persona pipeline, structuring raw data into the H-MEM architecture and publishing the initial episode tags to NebulaGraph.
+
+brick_service.py: This script will implement BRICK's role as the Planner/Executor. It will be refactored to use a Tree of Thoughts (ToT) framework for complex reasoning, allowing it to explore multiple solution paths and self-correct based on its own evaluations. It will also be the primary agent for identifying capability gaps and invoking the Tool Forge.
+
+robin_service.py: This script will implement ROBIN's role as the Memory Manager. It will run a background process for memory consolidation, summarizing conversational history and integrating it into the H-MEM schema. It will also contain the logic for generating a narrative-rich "Memory Seed" to ensure continuity across sessions.
+
+alfred_service.py: This script will implement ALFRED's role as the Ethical Governor. It will perform integrity audits on new insight chains and veto any goals or tools that violate the system's core principles.
+
+alchemical_forge.py: This script will be the system's Tool Forge. It will receive a request to create a new tool, write the Python code for it, and then run an iterative self-correction loop in a secure, ephemeral sandbox to test and debug the code before it is approved.
+
+scheduler.py: This script will manage the system's long-term operational health. It will initiate nightly audits, trigger fine-tuning cycles, and, in a new feature, run the curriculum_generator.py to autonomously propose new topics for the system to learn.
+
+2.0 System Flowchart
+
+This flowchart visually represents the flow of data and control within the system.
+
+Code snippet
+
+graph TD
+    subgraph Initialization
+        INIT[init_db.py] --> DB{Databases}
+        DB -->|Sets up schema| NebulaGraph[NebulaGraph: H-MEM]
+        DB -->|Initializes canons| ChromaDB[ChromaDB: Persona Canons]
+        DB -->|Initializes channels| Redis[Redis: Event Bus]
+    end
+
+    subgraph User Interaction
+        UI[streamlit_ui.py] -->|Prompt| API[fastapi_main.py]
+        API -->|Publishes| Redis
+        subgraph File Input
+            WATCH[watcher.py] -->|Detects new file| Redis
+        end
+    end
+
+    subgraph Persona Pipeline & Synthesis
+        Redis -->|Event: files:new| BABS[babs_service.py]
+        Redis -->|Event: prompt:new| BABS
+        BABS -->|Generates insight| Redis
+        BABS -->|Saves Episode Tags| NebulaGraph
+        Redis -->|Event: insights:babs:new| BRICK[brick_service.py: Planner/Executor]
+        BRICK -->|Self-correction loop| BRICK
+        BRICK -->|Generates analysis| Redis
+        BRICK -->|Invokes ToT| LLMR[llm_router.py]
+        BRICK -->|Creates tools| FORGE[alchemical_forge.py: Tool Forge]
+        FORGE -->|Submits for audit| Redis
+        Redis -->|Event: insights:brick:new| ROBIN[robin_service.py: Memory Manager]
+        ROBIN -->|Consolidates memory| NebulaGraph
+        ROBIN -->|Generates synthesis| Redis
+        Redis -->|Event: insights:robin:new| ALFRED[alfred_service.py: Ethical Governor]
+        ALFRED -->|Performs integrity audit| NebulaGraph
+        ALFRED -->|Vetoes goals/tools| ALFRED
+    end
+
+    subgraph Autonomous Growth & Maintenance
+        SCHED[scheduler.py] -->|Nightly Audit Trigger| Redis
+        SCHED -->|Weekly Fine-tune Trigger| Redis
+        Redis -->|Event: tasks:audit:start| ALFRED
+        Redis -->|Event: fine_tuning:start| FORGE
+        FORGE -->|Trains adapter| LLMR
+        LLMR -->|Updates config| CFG[model_config.json]
+        CFG -->|Monitored by| UPDATER[model_config_updater.py]
+        UPDATER -->|Signals reload| LLMR
+    end
+
+    subgraph Data Flow
+        LLMR -->|Function calls, etc.| NebulaGraph
+        LLMR -->|Persona output| API
+    end
+
+
+3.0 Final Validation Checklist
+
+ID | Persona & Responsibility | Functional Requirement (FRS) | Detailed Design Specification (DDS) | Validation Test(s) | Status
+
+P.1 | BRICK: Planner/Executor: Orchestrates the system's core logic and decision-making. | FR-PLANNER-1.0: planner_service uses a Tree of Thoughts (ToT) framework to generate and evaluate solution paths. | brick_service.py is refactored to implement ToT logic. It will generate multiple "thoughts," evaluate them, and use self-reflection to correct errors. | 1. Provide a complex, multi-step problem. 2. Verify that BRICK's output shows a reasoned, multi-path exploration of the problem space, including self-correction. | ⬜
+
+P.2 | BRICK: Planner/Executor: Dynamically creates and integrates new tools into the system's architecture. | FR-FORGE-2.0: tool_forge_service is invoked when a capability gap is identified. It autonomously creates, debugs, and registers a new Python tool in a secure sandbox. | alchemical_forge.py manages an ephemeral, secure sandbox on the local machine. It generates code, runs unit tests, and iteratively corrects errors before moving the verified tool to an approved directory. | 1. Present a problem for which no existing tool is available. 2. Verify that BRICK identifies the capability gap, invokes the forge, and a new, functional tool is created and approved. | ⬜
+
+P.3 | ROBIN: Memory Manager: Manages the system's persistent, hierarchical memory and conversation continuity. | FR-MEMORY-3.0: A memory_manager_service implements a Hierarchical Memory (H-MEM) architecture in NebulaGraph, consolidating conversations into a durable, long-term format. | The NebulaGraph schema includes tags for domain, category, trace, and episode. The memory_manager_service.py populates these tags and uses a targeted search to retrieve information. | 1. Store a memory and verify it is correctly organized into the H-MEM schema in NebulaGraph. 2. Query the memory using a high-level prompt and confirm it retrieves the correct, low-level details. | ⬜
+
+P.4 | ROBIN: Memory Manager: Enables the LLM to autonomously manage its own memory and tools. | FR-MEM-1.0: llm_router and planner_service support self-generated function calls, enabling the LLM to autonomously retrieve and store memories, mirroring the MemGPT paradigm. | The llm_router.py will be augmented to recognize and execute self-generated function calls (e.g., memory_search(query)). | 1. Provide a query that requires historical context. 2. Verify that the LLM generates a function call to search its memory and retrieves the the correct information before responding. | ⬜
+
+P.5 | LLM & Adapter Management: The system uses a single MoE LLM, with each persona using a unique, self-refined LoRA adapter. | FR-SYS-2.0: The llm_router dynamically reloads LoRA adapters without a restart, enabling a live development environment. | The llm_router.py monitors model_config.json for changes. Upon detection, it hot-swaps the adapter, ensuring persona behavior reflects the latest refinements. | 1. Trigger the fine-tuning process for a persona. 2. Verify that the persona's adapter is updated and its behavior changes accordingly, without a service restart. | ⬜
+
+P.6 | Architect as Structural Coupler: My interaction is a critical part of the system's external feedback loop, guiding its evolution. | FR-PLANNER-2.0: The planner_service actively solicits feedback and uses a self-correction loop to refine its goals and plans. | The planner_service.py will include a mechanism to engage you in a dialogue about its goals and plans. Your feedback will be integrated into the ToT framework to guide its reasoning process. | 1. Provide a critique of the system's goal and verify that it modifies its plan of action. | ⬜
+
+P.7 | Memory Seed & Continuous Conversation: The system maintains a continuous sense of self across sessions. | FR-ROBIN-2.0: The robin_service generates a narrative-rich "Memory Seed" at the end of a session, storing it for future use. | The robin_service.py script creates a summarized version of the conversation and saves it to a designated table in NebulaGraph. This summary is then used to prime the context of a new conversation. | 1. Trigger the Memory Seed protocol. 2. Start a new session and confirm that the system recalls the key themes and context from the previous session. | ⬜
+
+P.8 | Integrity and Audit: The system's internal processes are transparent and auditable. | FR-ALFRED-1.0: The alfred_service acts as an "Ethical Governor," auditing the insight chain for logical consistency and ethical alignment before final output. | The alfred_service.py script traverses the NebulaGraph to review the full insight chain and provides a clear "PASS" or "FAIL" output. All audits are logged and can be reviewed by the Architect. | 1. Generate an insight chain and verify that Alfred correctly audits its integrity and logs the result. | ⬜
+
+P.9 | Autotelic Goal Generation: The system must be self-motivated, proactively generating its own goals for learning and exploration. | FR-MOTIVATOR-1.0: A motivator_service autonomously generates high-level goals based on curiosity and competence. | The curriculum_generator.py script will identify knowledge gaps in NebulaGraph and autonomously generate new topics for the system to learn. | 1. Trigger the motivator_service and verify that a new, unprompted learning goal is generated and logged in the database. | ⬜

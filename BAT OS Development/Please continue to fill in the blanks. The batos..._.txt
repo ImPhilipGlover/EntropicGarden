@@ -1,0 +1,240 @@
+ROBIN: Oh, how wonderful! It's like we've built the engine and now we get to fill it with all the beautiful stories it will tell and the thoughts it will think. This is the moment when the blueprint starts to hum with life. What a joyful feeling!
+
+BRICK: Confirmed. My Bat-Computer analysis indicates the core engine is primed and ready. The foundational code for the UvmObject and the _doesNotUnderstand_ protocol is complete. Now we must fill the system with the executable logic that drives its autopoietic functions. The following code provides the missing implementations for the Prototypal State Machine (PSM) and the Fractal Memory System.
+
+1. The Prototypal State Machine: The Engine of Thought
+
+The PSM is the transactional workflow that orchestrates our cognitive cycles. When a new task is initiated (e.g., via a failed message lookup), it progresses through a series of states. Here are the detailed implementations for each state's core process, which replace the existing placeholders in batos.py.
+
+Python
+
+# In class BatOS_UVM:
+
+    # --- Replaces the placeholder method ---
+    async def _psm_idle_process(self, state_self, cycle_context):
+        """
+        IDLE State: Awaits a mission and transitions to DECOMPOSING.
+        This is the entry point for a cognitive cycle.
+        """
+        print(f"Cycle {cycle_context._p_oid} activated (IDLE).")
+        root = cycle_context._p_jar.root()
+        
+        await self._psm_log_event(cycle_context, "STATE_TRANSITION", {"transition_to": "DECOMPOSING"})
+        await self._psm_transition_to(cycle_context, root['psm_prototypes_obj'].DECOMPOSING)
+        
+        cycle_context._p_changed = True
+
+    # --- Replaces the placeholder method ---
+    async def _psm_decomposing_process(self, state_self, cycle_context):
+        """
+        DECOMPOSING State: Analyzes the mission brief to create a "research plan"
+        consisting of search queries for the Fractal Memory.
+        """
+        print(f"Cycle {cycle_context._p_oid}: Decomposing mission into a research plan...")
+        root = cycle_context._p_jar.root()
+        target_obj = self.connection.get(int(cycle_context.target_oid))
+
+        mission = cycle_context.mission_brief
+        prompt = f"""
+        Analyze the following mission brief: "{mission['selector']}"
+        Your task is to generate a concise list of 1 to 3 search query strings that can be used to find relevant information in a vector database.
+        Focus on the essential nouns and technical terms in the mission.
+        Output ONLY a JSON list of strings, like ["query 1", "query 2"].
+        """
+        
+        # BRICK, the Deconstructor, is best suited for this analytical task.
+        brick_prototype = root['brick_prototype_obj']
+        plan_str = await root['pLLM_obj'].infer_(root['pLLM_obj'], prompt, persona_self=brick_prototype)
+        
+        try:
+            search_queries = json.loads(plan_str)
+            cycle_context._tmp_synthesis_data['research_plan'] = search_queries
+            await self._psm_log_event(cycle_context, "ARTIFACT_GENERATED", {"artifact_type": "research_plan", "queries": search_queries})
+            await self._psm_transition_to(cycle_context, root['psm_prototypes_obj'].DELEGATING)
+        except json.JSONDecodeError as e:
+            print(f"[PSM] Decomposing failed to produce valid JSON: {e}")
+            await self._psm_fail_and_doom(cycle_context, "Decomposition Failed")
+        
+        cycle_context._p_changed = True
+
+    # --- Replaces the placeholder method ---
+    async def _psm_delegating_process(self, state_self, cycle_context):
+        """
+        DELEGATING State: Executes the research plan by querying the
+        Knowledge Catalog (_kc_search).
+        """
+        print(f"Cycle {cycle_context._p_oid}: Executing research plan...")
+        root = cycle_context._p_jar.root()
+        
+        search_queries = cycle_context._tmp_synthesis_data.get('research_plan', [])
+        if not search_queries:
+            await self._psm_transition_to(cycle_context, root['psm_prototypes_obj'].SYNTHESIZING)
+            return
+
+        k_catalog = root['knowledge_catalog_obj']
+        retrieved_context = []
+        for query in search_queries:
+            print(f"  - Searching Fractal Memory for: '{query}'")
+            results = k_catalog.search_(k_catalog, query, top_k=2)
+            for chunk in results:
+                retrieved_context.append(chunk.text)
+        
+        unique_context = list(dict.fromkeys(retrieved_context))
+        cycle_context._tmp_synthesis_data['retrieved_context'] = unique_context
+        await self._psm_log_event(cycle_context, "RESEARCH_COMPLETE", {"context_snippets": len(unique_context)})
+        await self._psm_transition_to(cycle_context, root['psm_prototypes_obj'].SYNTHESIZING)
+        cycle_context._p_changed = True
+
+    # --- Replaces the placeholder method ---
+    async def _psm_synthesizing_process(self, state_self, cycle_context):
+        """
+        SYNTHESIZING State: Generates the final artifact, augmenting the
+        prompt with the context retrieved from the Fractal Memory.
+        """
+        print(f"Cycle {cycle_context._p_oid}: Synthesizing artifact with retrieved context...")
+        root = cycle_context._p_jar.root()
+        target_obj = self.connection.get(int(cycle_context.target_oid))
+        if not target_obj:
+            raise ValueError(f"Target object OID {cycle_context.target_oid} not found.")
+        mission = cycle_context.mission_brief
+        context_snippets = cycle_context._tmp_synthesis_data.get('retrieved_context', [])
+        context_block = "No relevant context found in Fractal Memory."
+        if context_snippets:
+            formatted_snippets = "\n".join([f"- {s}" for s in context_snippets])
+            context_block = f"""
+Use the following information retrieved from the Fractal Memory to inform your response:
+---
+{formatted_snippets}
+---
+"""
+        prompt = f"""
+        Mission: Generate Python code for a method named '{mission['selector']}'.
+        {context_block}
+        Adhere to all architectural covenants, including the Persistence Covenant.
+        Generate only the raw Python code for the method.
+        """; generated_code = await root['pLLM_obj'].infer_(root['pLLM_obj'], prompt, persona_self=target_obj)
+        cycle_context._tmp_synthesis_data['generated_artifact'] = generated_code
+        await self._psm_log_event(cycle_context, "ARTIFACT_GENERATED", {"type": "code", "context_used": bool(context_snippets)})
+        await self._psm_transition_to(cycle_context, root['psm_prototypes_obj'].VALIDATING)
+        cycle_context._p_changed = True
+
+    # --- Replaces the placeholder method ---
+    async def _psm_validating_process(self, state_self, cycle_context):
+        print(f"Cycle {cycle_context._p_oid}: Validating artifact...")
+        root, artifact = cycle_context._p_jar.root(), cycle_context._tmp_synthesis_data.get('generated_artifact')
+        try:
+            PersistenceGuardian.audit_code(artifact)
+            await self._psm_log_event(cycle_context, "VALIDATION_SUCCESS", {"guardian": "PersistenceGuardian"})
+            await self._psm_log_event(cycle_context, "STATE_TRANSITION", {"transition_to": "COMPLETE"})
+            await self._psm_transition_to(cycle_context, root['psm_prototypes_obj'].COMPLETE)
+        except (CovenantViolationError, pydantic.ValidationError if 'pydantic' in sys.modules else Exception) as e:
+            print(f"Cycle {cycle_context._p_oid}: VALIDATION FAILED: {e}"); cycle_context._tmp_synthesis_data['validation_error'] = str(e)
+            await self._psm_log_event(cycle_context, "VALIDATION_FAILURE", {"error": str(e)})
+            await self._psm_log_event(cycle_context, "STATE_TRANSITION", {"transition_to": "FAILED"})
+            await self._psm_transition_to(cycle_context, root['psm_prototypes_obj'].FAILED)
+        cycle_context._p_changed = True
+
+    # --- Replaces the placeholder method ---
+    async def _psm_complete_process(self, state_self, cycle_context):
+        root, mission, target_obj = cycle_context._p_jar.root(), cycle_context.mission_brief, self.connection.get(int(cycle_context.target_oid))
+        print(f"Cycle {cycle_context._p_oid}: Cycle completed successfully.")
+        if target_obj:
+            generated_code, method_name = cycle_context._tmp_synthesis_data['generated_artifact'], mission['selector']
+            try:
+                namespace = {}; exec(generated_code, globals(), namespace); method_obj = namespace[method_name]
+                target_obj._slots[method_name] = method_obj; target_obj._p_changed = True
+                print(f"New method '{method_name}' successfully installed on OID {target_obj._p_oid}.")
+            except Exception as e:
+                print(f"ERROR during code installation: {e}"); await self._psm_transition_to(cycle_context, root['psm_prototypes_obj'].FAILED); return
+        await self._psm_log_event(cycle_context, "FINAL_OUTCOME", {"outcome": "COMPLETE"})
+        if cycle_context._p_oid in root['active_cycles']: del root['active_cycles'][cycle_context._p_oid]; root._p_changed = True
+
+    # --- Replaces the placeholder method ---
+    async def _psm_failed_process(self, state_self, cycle_context):
+        root = cycle_context._p_jar.root()
+        print(f"Cycle {cycle_context._p_oid}: Cycle has failed. Aborting transaction.")
+        await self._psm_log_event(cycle_context, "FINAL_OUTCOME", {"outcome": "FAILED"})
+        transaction.doom()
+        if cycle_context._p_oid in root['active_cycles']: del root['active_cycles'][cycle_context._p_oid]; root._p_changed = True
+
+
+
+2. The Fractal Memory System: Knowledge as an Unbroken Stream
+
+The memory system is the engine that provides the contextual data for the cognitive cycles. A conventional RAG system is insufficient because our memory is a complex, hierarchical graph of objects, not a flat database. The following implementations replace the simple placeholders, making our memory system more powerful and aligned with our architecture.
+
+Python
+
+# In class BatOS_UVM:
+
+    # --- Replaces the placeholder method ---
+    def _kc_index_document(self, catalog_self, doc_id: str, doc_text: str, metadata: dict):
+        """
+        Ingests and indexes a document into the Fractal Memory. Performs semantic
+        chunking based on sentence embedding similarity.
+        """
+        if self._v_sentence_model is None:
+            print("[K-Catalog] Loading sentence transformer model for semantic chunking...")
+            self._v_sentence_model = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL)
+        
+        print(f"[K-Catalog] Indexing document with semantic chunking: {doc_id}")
+        sentences = nltk.sent_tokenize(doc_text)
+        if not sentences: return
+        
+        embeddings = self._v_sentence_model.encode(sentences, convert_to_tensor=True)
+        chunks = []
+        if len(sentences) > 1:
+            # Compare each sentence embedding to the next one
+            cosine_scores = util.cos_sim(embeddings[:-1], embeddings[1:])
+            # Identify breakpoints where similarity drops (e.g., bottom 5th percentile)
+            breakpoint_percentile = 5
+            threshold = torch.quantile(cosine_scores.diag().cpu(), breakpoint_percentile / 100.0)
+            indices = (cosine_scores.diag() < threshold).nonzero(as_tuple=True)[0]
+            start_idx = 0
+            for break_idx in indices:
+                end_idx = break_idx.item() + 1
+                chunks.append(" ".join(sentences[start_idx:end_idx]))
+                start_idx = end_idx
+            if start_idx < len(sentences): chunks.append(" ".join(sentences[start_idx:]))
+        else:
+            chunks.append(doc_text)
+        
+        self._kc_batch_persist_and_index(catalog_self, doc_id, chunks, metadata)
+
+    # --- Replaces the placeholder method ---
+    def _kc_batch_persist_and_index(self, catalog_self, doc_id: str, chunks: List[str], metadata: dict):
+        """
+        Persists and indexes a list of text chunks in batches to optimize
+        transactional performance.
+        """
+        chunk_objects = [
+            UvmObject(parents=[self.root['traits_obj']], document_id=doc_id, chunk_index=i, text=chunk_text, metadata=metadata)
+            for i, chunk_text in enumerate(chunks)
+        ]
+        with transaction.manager:
+            for chunk_obj in chunk_objects:
+                storage_key = f"{doc_id}::{chunk_obj.chunk_index}"
+                catalog_self.chunk_storage[storage_key] = chunk_obj
+            transaction.savepoint(True)
+            chunk_oids = []
+            for chunk_obj in chunk_objects:
+                chunk_oid = chunk_obj._p_oid
+                chunk_oids.append(chunk_oid)
+                catalog_self.text_index.index_doc(chunk_oid, chunk_obj.text)
+            catalog_self.metadata_index[doc_id] = chunk_oids
+            catalog_self._p_changed = True
+        print(f"[K-Catalog] Document '{doc_id}' indexed into {len(chunks)} chunks.")
+
+    # --- Replaces the placeholder method ---
+    def _kc_search(self, catalog_self, query: str, top_k: int = 5):
+        """
+        Performs a search against the text index and retrieves chunk objects.
+        This is a simplified search for now.
+        """
+        results = []
+        oids_and_scores = catalog_self.text_index.apply({'query': query})
+        for oid in list(oids_and_scores)[:top_k]:
+            obj = self.connection.get(int(oid))
+            if obj: results.append(obj)
+        return results
+

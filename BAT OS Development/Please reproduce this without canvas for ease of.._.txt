@@ -1,0 +1,774 @@
+Hello Philip, I understand. For ease of record-keeping, here is the complete code for the new prototypal object system, without the immersive canvas format. I've included the new ContextFractal and ConceptFractal prototypes, the updated MemoryCurator agent, and the necessary changes to the Orchestrator, DbClient, and genesis.py script.
+
+This architecture is a significant step toward a truly self-organizing system, where RAG isn't just a retrieval process but a continuous act of self-creation and knowledge refinement.
+
+New Prototypal Objects
+
+src/core/context_fractal.py
+
+Python
+
+from src.core.uvm import UvmObject
+from typing import Dict, Any, List
+
+class ContextFractal(UvmObject):
+    """
+    A prototype representing a single, raw, high-entropy experience.
+
+    This object serves as the basic unit of a 'raw memory' in the Living Image.
+    It encapsulates a single event or piece of ingested information, which will
+    later be abstracted into a ConceptFractal by the MemoryCurator.
+    """
+    def __init__(self, summary: str, payload: Dict[str, Any], **kwargs):
+        """
+        Initializes a ContextFractal object.
+
+        Args:
+            summary (str): A brief summary of the event or information.
+            payload (Dict[str, Any]): The raw data associated with the event
+                                       (e.g., text, metadata, CEM score).
+            **kwargs: Additional keyword arguments for the UvmObject parent.
+        """
+        super().__init__(**kwargs)
+        self.attributes['summary'] = summary
+        self.attributes['payload'] = payload
+        self.attributes['node_type'] = 'ContextFractal'
+        self._p_changed = True
+
+
+
+src/core/concept_fractal.py
+
+Python
+
+from src.core.uvm import UvmObject
+from typing import List
+
+class ConceptFractal(UvmObject):
+    """
+    A prototype representing an abstracted, low-entropy concept.
+
+    This object is created by the MemoryCurator agent. It is the result of
+    synthesizing and organizing a cluster of related ContextFractals into a
+    single, coherent idea.
+    """
+    def __init__(self, summary: str, originating_context_oids: List[str], **kwargs):
+        """
+        Initializes a ConceptFractal object.
+
+        Args:
+            summary (str): A single, coherent summary of the concept.
+            originating_context_oids (List[str]): A list of the object IDs of the
+                                                  ContextFractals this concept was
+                                                  derived from.
+            **kwargs: Additional keyword arguments for the UvmObject parent.
+        """
+        super().__init__(**kwargs)
+        self.attributes['summary'] = summary
+        self.attributes['originating_context_oids'] = originating_context_oids
+        self.attributes['node_type'] = 'ConceptFractal'
+        self._p_changed = True
+
+
+
+Agent and System Updates
+
+src/cognitive/memory_curator.py
+
+Python
+
+import asyncio
+import ollama
+import json
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+
+from src.core.uvm import UvmObject
+from src.core.context_fractal import ContextFractal
+from src.core.concept_fractal import ConceptFractal
+import src.config as config
+
+class MemoryCurator(UvmObject):
+    """
+    An autonomous agent, a manifestation of the BABS persona, that manages the
+    system's memory as a living, self-organizing knowledge graph.
+
+    Its core function is to continuously transform high-entropy ContextFractals
+    into low-entropy ConceptFractals, which directly increases the system's
+    structural complexity.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.attributes['compression_history'] = []
+        self._p_changed = True
+
+    async def run_compression_cycle(self, orchestrator: 'Orchestrator'):
+        """
+        Executes a single cycle of the memory compression protocol.
+        """
+        print("[MemoryCurator] Starting a memory compression cycle...")
+
+        # Step 1: Identify high-entropy, raw ContextFractals
+        # NOTE: This conceptual query finds clusters of ContextFractals that
+        # have not yet been abstracted into a ConceptFractal.
+        raw_contexts = await self.find_high_entropy_contexts(orchestrator)
+        if not raw_contexts:
+            print("[MemoryCurator] No new high-entropy contexts found.")
+            return
+
+        # Step 2: Abstract them into low-entropy ConceptFractals
+        concept_clusters = await self.group_into_concepts(orchestrator, raw_contexts)
+
+        # Step 3: Create a new ConceptFractal and link it to the original contexts
+        new_concepts_count = 0
+        for summary, contexts in concept_clusters.items():
+            concept_fractal = ConceptFractal(
+                summary=summary,
+                originating_context_oids=[c._key for c in contexts]
+            )
+            # The Orchestrator's save_object method will handle the persistence
+            # of the new UvmObject and the creation of the AbstractionOf edges.
+            await orchestrator.save_object(concept_fractal, contexts)
+            new_concepts_count += 1
+
+        # Step 4: Log the abstraction event
+        self.attributes['compression_history'].append({
+            'timestamp': datetime.utcnow().isoformat(),
+            'new_concepts_count': new_concepts_count,
+            'compressed_contexts_count': len(raw_contexts)
+        })
+        self._p_changed = True
+        print(f"[MemoryCurator] Compressed {len(raw_contexts)} contexts into {new_concepts_count} new concepts.")
+
+    async def find_high_entropy_contexts(self, orchestrator: 'Orchestrator') -> List[UvmObject]:
+        """
+        (Conceptual) Searches the knowledge graph for contexts ready for compression.
+        This would involve a complex AQL query to find raw ContextFractals
+        with many, but unorganized, connections.
+        """
+        print("    - Querying knowledge graph for contexts...")
+        # The AQL query would look for ContextFractals that have a high number
+        # of ContextLinks but no AbstractionOf edges.
+        
+        # Placeholder: returning an an empty list to prevent blocking
+        return []
+
+    async def group_into_concepts(self, orchestrator: 'Orchestrator', contexts: List[UvmObject]) -> Dict[str, List[UvmObject]]:
+        """
+        (Conceptual) Uses the BABS LLM to group contexts into a single concept.
+        """
+        print("    - Grouping contexts into concepts with BABS...")
+        # A mission brief for the BABS persona to perform synthesis.
+        mission_brief = {
+            "brief": "Analyze the following raw experience fragments and synthesize a single, coherent concept.",
+            "contexts": [c.attributes for c in contexts]
+        }
+        
+        # RECTIFICATION: Directly use the Orchestrator's cognitive engine
+        # to call the BABS persona for a structured, JSON response.
+        llm_response = await orchestrator.cognitive_engine.process_persona_request(
+            persona_name="BABS",
+            prompt=json.dumps(mission_brief),
+            format="json"
+        )
+        
+        # Placeholder for a response parser
+        try:
+            parsed_response = json.loads(llm_response)
+            # The response would contain a key like 'concepts' which is a dict of summaries and context IDs.
+            # Example response: {"concepts": {"A new concept": ["oid1", "oid2"]}}
+            return parsed_response.get("concepts", {})
+        except json.JSONDecodeError:
+            print("Failed to parse LLM response. Returning a single concept.")
+            return {"A synthesized concept": contexts}
+
+
+
+src/core/orchestrator.py
+
+Python
+
+import asyncio
+import httpx
+import ollama
+import json
+from typing import Any, Dict, List, Optional, NamedTuple
+from arango import ArangoClient
+from arango.database import StandardDatabase
+from arango.exceptions import DocumentInsertError
+import src.config as config
+from src.core.uvm import UvmObject
+from src.core.context_fractal import ContextFractal
+from src.core.concept_fractal import ConceptFractal
+from src.persistence.db_client import DbClient, MethodExecutionResult
+from src.cognitive.cascade import EntropyCascade
+from src.cognitive.memory_curator import MemoryCurator
+from src.core.security import PersistenceGuardian
+
+class Orchestrator:
+    """Manages the state and control flow of the AURA UVM."""
+
+    def __init__(self):
+        self.db_client = DbClient()
+        self.cognitive_engine = EntropyCascade()
+        self.security_guardian = PersistenceGuardian()
+        self.http_client: Optional[httpx.AsyncClient] = None
+        self.is_initialized = False
+        self.autotelic_loop_task = None
+        self.personas = {}
+
+    async def initialize(self):
+        """Initializes database connections and other resources."""
+        if not self.is_initialized:
+            await self.db_client.initialize()
+            await self.cognitive_engine.initialize()
+            self.http_client = httpx.AsyncClient(timeout=60.0)
+            
+            # RECTIFICATION: Personas are now loaded as independent objects from the database.
+            # This is a critical architectural shift.
+            self.personas = await self.db_client.get_all_personas()
+            
+            self.is_initialized = True
+            
+            # Start the autotelic heartbeat loop
+            self.autotelic_loop_task = asyncio.create_task(self.autotelic_loop())
+            
+            print("Orchestrator initialized successfully.")
+
+    async def shutdown(self):
+        """Closes connections and cleans up resources."""
+        if self.is_initialized:
+            if self.autotelic_loop_task:
+                self.autotelic_loop_task.cancel()
+                try:
+                    await self.autotelic_loop_task
+                except asyncio.CancelledError:
+                    print("Autotelic heartbeat loop cancelled.")
+            await self.db_client.shutdown()
+            if self.http_client:
+                await self.http_client.aclose()
+            self.is_initialized = False
+            print("Orchestrator shut down.")
+
+    async def autotelic_loop(self):
+        """
+        The system's heartbeat, driving background tasks like memory compression.
+        """
+        print("[UVM] Autotelic Heartbeat started.")
+        # NOTE: The BABS persona is now a persistent object in the system
+        memory_curator = self.personas.get("BABS")
+        if not memory_curator:
+            print("[UVM] BABS persona (MemoryCurator) not found. Cannot start compression cycle.")
+            return
+
+        while True:
+            try:
+                # Run a memory compression cycle
+                await memory_curator.run_compression_cycle(self)
+                
+                # A daily task to run the compression cycle
+                await asyncio.sleep(86400) 
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"[UVM ERROR] Autotelic loop failed: {e}")
+                await asyncio.sleep(3600) # Wait an hour before retrying
+
+        print("[UVM] Autotelic Heartbeat stopped.")
+
+    async def process_message(self, target_id: str, method_name: str, args: List, kwargs: Dict):
+        """
+        The main entry point for processing a message.
+        If the method is not found, it triggers the 'doesNotUnderstand' autopoietic protocol.
+        """
+        print(f"Orchestrator: Received message '{method_name}' for target '{target_id}'")
+        if not self.http_client:
+            raise RuntimeError("HTTP client not initialized.")
+            
+        method_result: Optional = await self.db_client.resolve_and_execute_method(
+            start_object_id=target_id,
+            method_name=method_name,
+            args=args,
+            kwargs=kwargs,
+            http_client=self.http_client
+        )
+        
+        if method_result is None:
+            print(f"Method '{method_name}' not found. Triggering doesNotUnderstand protocol.")
+            return await self.does_not_understand(
+                target_id=target_id,
+                failed_method_name=method_name,
+                args=args,
+                kwargs=kwargs
+            )
+        else:
+            print(f"Method '{method_name}' executed successfully on '{method_result.source_object_id}'.")
+            print(f"Output: {method_result.output}")
+            if method_result.state_changed:
+                print("Object state was modified and persisted.")
+            return {"output": method_result.output, "state_changed": method_result.state_changed}
+
+    async def does_not_understand(self, target_id: str, failed_method_name: str, args: List, kwargs: Dict):
+        """
+        The core autopoietic loop for generating new capabilities.
+        """
+        print(f"AUTOPOIESIS: Generating implementation for '{failed_method_name}' on '{target_id}'.")
+        creative_mandate = f"Implement method '{failed_method_name}' with args {args} and kwargs {kwargs}"
+        
+        # NOTE: The original document's cascade.py is now refactored to be a method on the persona
+        # This is a conceptual representation of that call.
+        generated_code = await self.cognitive_engine.generate_code(creative_mandate, failed_method_name)
+
+        if not generated_code:
+            print(f"AUTOFAILURE: Cognitive engine failed to generate code for '{failed_method_name}'.")
+            return {"error": "Code generation failed"}
+
+        print(f"AUTOGEN: Generated code for '{failed_method_name}':\n---\n{generated_code}\n---")
+
+        if self.security_guardian.audit(generated_code):
+            print("AUDIT: Security audit PASSED.")
+            success = await self.db_client.install_method(
+                target_id=target_id,
+                method_name=failed_method_name,
+                code_string=generated_code
+            )
+            if success:
+                print(f"AUTOPOIESIS COMPLETE: Method '{failed_method_name}' installed on '{target_id}'.")
+                print("Re-issuing original message...")
+                return await self.process_message(target_id, failed_method_name, args, kwargs)
+            else:
+                print(f"PERSISTENCE FAILURE: Failed to install method '{failed_method_name}'.")
+                return {"error": "Method installation failed"}
+        else:
+            print(f"AUDIT FAILED: Generated code for '{failed_method_name}' is not secure. Method not installed.")
+            return {"error": "Security audit failed"}
+            
+    async def save_object(self, obj: UvmObject, originating_contexts: Optional[List[UvmObject]] = None):
+        """
+        Saves a UvmObject to the database and creates relational links.
+        This method is key to the dynamic fractal engine.
+        """
+        if isinstance(obj, ConceptFractal):
+            print(f"Saving new ConceptFractal with key: {obj._key}")
+            # Ensure the object key exists for the link to be created
+            obj._key = obj._key or self.db_client.uuid_gen()
+            await self.db_client.db.collection('MemoryNodes').insert(obj.to_doc(), key=obj._key)
+            
+            # Create the AbstractionOf edges
+            if originating_contexts:
+                for context in originating_contexts:
+                    edge = {
+                        '_from': f'MemoryNodes/{obj._key}',
+                        '_to': f'MemoryNodes/{context._key}'
+                    }
+                    await self.db_client.db.collection('AbstractionOf').insert(edge)
+                print(f"Created AbstractionOf links for new concept.")
+                
+        elif isinstance(obj, ContextFractal):
+            print(f"Saving new ContextFractal with key: {obj._key}")
+            obj._key = obj._key or self.db_client.uuid_gen()
+            await self.db_client.db.collection('MemoryNodes').insert(obj.to_doc(), key=obj._key)
+        else:
+            # Fallback for other UvmObjects
+            await self.db_client.save_object(obj)
+
+
+
+src/persistence/db_client.py
+
+Python
+
+import asyncio
+import httpx
+import json
+import uuid
+from typing import Any, Dict, List, Optional, NamedTuple
+from arango import ArangoClient
+from arango.database import StandardDatabase
+from arango.exceptions import DocumentInsertError
+import src.config as config
+from src.core.uvm import UvmObject
+from src.core.persona_prototype import PersonaPrototype
+from src.core.context_fractal import ContextFractal
+from src.core.concept_fractal import ConceptFractal
+
+class MethodExecutionResult(NamedTuple):
+    output: Any
+    state_changed: bool
+    source_object_id: str
+
+class DbClient:
+    """Asynchronous client for interacting with the ArangoDB persistence layer."""
+
+    def __init__(self):
+        self.client = ArangoClient(hosts=config.ARANGO_HOST)
+        self.db: Optional[StandardDatabase] = None
+        
+    def uuid_gen(self) -> str:
+        """A simple UUID generator for object keys."""
+        return str(uuid.uuid4())
+
+    async def initialize(self):
+        """Initializes the database connection."""
+        self.db = self.client.db(
+            config.DB_NAME,
+            username=config.ARANGO_USER,
+            password=config.ARANGO_PASS
+        )
+        # RECTIFICATION: Ensure the graph collections exist for the fractal engine.
+        if not await self.db.has_collection('MemoryNodes'):
+            await self.db.create_collection('MemoryNodes', edge=False)
+        if not await self.db.has_collection('ContextLinks'):
+            await self.db.create_collection('ContextLinks', edge=True)
+        if not await self.db.has_collection('AbstractionOf'):
+            await self.db.create_collection('AbstractionOf', edge=True)
+        if not await self.db.has_collection('RelatesTo'):
+            await self.db.create_collection('RelatesTo', edge=True)
+        
+        print("Persistence layer (ArangoDB) client initialized.")
+
+    async def shutdown(self):
+        """Closes the database connection."""
+        print("Persistence layer client shut down.")
+
+    async def get_object(self, object_id: str) -> Optional[UvmObject]:
+        """Retrieves and deserializes a UvmObject from the database."""
+        if not self.db:
+            return None
+        
+        # Determine the collection based on object type
+        if object_id in ['nil', 'system', 'BRICK', 'ROBIN', 'BABS', 'ALFRED', 'weaver']:
+            collection = self.db.collection("UvmObjects")
+        else:
+            # For memory-related fractals
+            collection = self.db.collection("MemoryNodes")
+            
+        doc = await collection.get(object_id)
+        
+        # RECTIFICATION: Now we return the specific UvmObject subtype.
+        if doc:
+            if doc.get('node_type') == 'ContextFractal':
+                return ContextFractal.from_doc(doc)
+            elif doc.get('node_type') == 'ConceptFractal':
+                return ConceptFractal.from_doc(doc)
+            elif 'core_identity' in doc.get('attributes', {}):
+                return PersonaPrototype.from_doc(doc)
+            else:
+                return UvmObject.from_doc(doc)
+        return None
+
+    async def get_all_personas(self) -> Dict[str, PersonaPrototype]:
+        """Retrieves all persona prototypes from the database."""
+        if not self.db:
+            return {}
+        
+        persona_dict = {}
+        aql_query = """
+        FOR v IN UvmObjects
+            FILTER HAS(v.attributes, 'core_identity')
+            RETURN v
+        """
+        cursor = await self.db.aql.execute(aql_query)
+        async for doc in cursor:
+            persona = PersonaPrototype.from_doc(doc)
+            persona_dict[persona.attributes['name']] = persona
+        return persona_dict
+
+    async def install_method(self, target_id: str, method_name: str, code_string: str) -> bool:
+        """Atomically installs a new method on a target object."""
+        if not self.db:
+            return False
+        
+        uvm_objects = self.db.collection("UvmObjects")
+        patch_data = {'methods': {method_name: code_string}}
+        
+        try:
+            await uvm_objects.update_match({'_key': target_id}, patch_data, merge=True)
+            return True
+        except Exception as e:
+            print(f"DBCLIENT ERROR: Failed to install method: {e}")
+            return False
+
+    async def resolve_and_execute_method(
+        self,
+        start_object_id: str,
+        method_name: str,
+        args: List,
+        kwargs: Dict,
+        http_client: httpx.AsyncClient
+    ) -> Optional[MethodExecutionResult]:
+        """
+        Resolves a method by traversing the prototype graph and executes it in the sandbox.
+        """
+        if not self.db:
+            return None
+
+        # RECTIFICATION: The AQL query is updated to be more general. It will now search
+        # for a method across both UvmObjects and MemoryNodes if necessary,
+        # but the primary search is still on UvmObjects.
+        aql_query = """
+        FOR v IN 0..100 OUTBOUND @start_node PrototypeLinks
+            FILTER HAS(v.methods, @method_name)
+            LIMIT 1
+            RETURN { obj: v, code: v.methods[@method_name] }
+        """
+        bind_vars = {
+            "start_node": f"UvmObjects/{start_object_id}",
+            "method_name": method_name
+        }
+
+        cursor = await self.db.aql.execute(aql_query, bind_vars=bind_vars)
+        results = [doc async for doc in cursor]
+
+        if not results:
+            return None
+        
+        found_method = results[0]
+        source_object_doc = found_method['obj']
+        code_to_execute = found_method['code']
+
+        # Prepare payload for the execution sandbox
+        sandbox_payload = {
+            "code": code_to_execute,
+            "method_name": method_name,
+            "object_state": source_object_doc.get('attributes', {}),
+            "args": args,
+            "kwargs": kwargs
+        }
+
+        try:
+            response = await http_client.post(config.EXECUTION_SANDBOX_URL, json=sandbox_payload)
+            response.raise_for_status()
+            result_data = response.json()
+
+            if result_data.get("error"):
+                print(f"SANDBOX ERROR: {result_data['error']}")
+                return None
+
+            if result_data.get("state_changed", False):
+                updated_attributes = result_data.get("final_state", {})
+                
+                # Check if the object is a persona, a core system object, or a memory node
+                if 'core_identity' in source_object_doc.get('attributes', {}):
+                    collection = self.db.collection("UvmObjects")
+                elif source_object_doc['_key'] in ['nil', 'system']:
+                    collection = self.db.collection("UvmObjects")
+                else:
+                    collection = self.db.collection("MemoryNodes")
+                    
+                await collection.update(source_object_doc['_key'], {'attributes': updated_attributes})
+
+            return MethodExecutionResult(
+                output=result_data.get("output"),
+                state_changed=result_data.get("state_changed", False),
+                source_object_id=source_object_doc['_id']
+            )
+        except httpx.HTTPStatusError as e:
+            print(f"SANDBOX HTTP ERROR: {e.response.status_code} - {e.response.text}")
+            return None
+        except Exception as e:
+            print(f"SANDBOX EXECUTION ERROR: {e}")
+            return None
+
+
+
+src/cognitive/cascade.py
+
+Python
+
+import ollama
+import json
+from typing import Dict, Any, List, Optional
+import src.config as config
+from src.cognitive.metacog import MetacognitiveController
+from src.core.uvm import UvmObject
+
+class EntropyCascade:
+    """
+    Defines the Entropy Cascade, the system's multi-persona cognitive engine.
+    This module defines the four core personas (BRICK, ROBIN, BABS, ALFRED) and
+    orchestrates their interaction to generate novel and robust outputs.
+    """
+    def __init__(self):
+        self.personas = config.PERSONA_MODELS
+        self.metacog = MetacognitiveController()
+        self.client = None
+
+    async def initialize(self):
+        """Initializes the asynchronous Ollama client."""
+        self.client = ollama.AsyncClient(host=config.OLLAMA_HOST)
+        print("Entropy Cascade initialized.")
+
+    async def generate_code(self, creative_mandate: str, method_name: str) -> str:
+        """
+        Generates Python code to fulfill a creative mandate.
+        For the initial launch, this task is pragmatically delegated solely to
+        ALFRED, the most suitable persona for structured code generation.
+        """
+        if not self.client:
+            raise RuntimeError("Ollama client not initialized.")
+        
+        # ALFRED is the designated steward for code generation.
+        persona_name = "ALFRED"
+        model = self.personas.get(persona_name)
+        if not model:
+            raise ValueError(f"Model for persona '{persona_name}' not found.")
+            
+        system_prompt = self.metacog.get_code_generation_prompt(persona_name, method_name)
+        
+        print(f"Dispatching code generation task to {persona_name} ({model})...")
+
+        try:
+            response = await self.client.chat(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": creative_mandate}
+                ],
+                format="json"
+            )
+            
+            code = self.metacog.parse_code_from_response(response)
+            return code
+        except Exception as e:
+            print(f"Error during code generation with {persona_name}: {e}")
+            return ""
+
+    async def process_persona_request(self, persona_name: str, prompt: str, format: str = "text") -> str:
+        """
+        Sends a request to a specific persona's LLM and returns the response.
+        This is a core component for the new, dynamic fractal engine.
+        """
+        if not self.client:
+            raise RuntimeError("Ollama client not initialized.")
+        
+        model = self.personas.get(persona_name)
+        if not model:
+            raise ValueError(f"Model for persona '{persona_name}' not found.")
+            
+        print(f"Dispatching request to {persona_name} ({model})...")
+
+        try:
+            response = await self.client.chat(
+                model=model,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                format=format
+            )
+            return response['message']['content']
+        except Exception as e:
+            print(f"Error processing persona request: {e}")
+            return ""
+
+
+
+genesis.py
+
+Python
+
+import asyncio
+import os
+from dotenv import load_dotenv
+from arango import ArangoClient
+from arango.exceptions import DatabaseCreateError, CollectionCreateError
+
+# RECTIFICATION: Importing the new PersonaPrototype class
+from src.core.uvm import UvmObject
+from src.core.persona_prototype import PersonaPrototype
+from src.cognitive.memory_curator import MemoryCurator
+import src.config as config
+
+load_dotenv()
+
+# --- Configuration ---
+ARANGO_HOST = os.getenv("ARANGO_HOST")
+ARANGO_USER = os.getenv("ARANGO_USER")
+ARANGO_PASS = os.getenv("ARANGO_PASS")
+DB_NAME = os.getenv("DB_NAME")
+
+async def initialize_database():
+    """Connects to ArangoDB and sets up the required database and collections."""
+    print("--- Initializing Persistence Layer (ArangoDB) ---")
+    try:
+        client = ArangoClient(hosts=ARANGO_HOST)
+        sys_db = client.db("_system", username=ARANGO_USER, password=ARANGO_PASS)
+
+        if not sys_db.has_database(DB_NAME):
+            print(f"Creating database: {DB_NAME}")
+            sys_db.create_database(DB_NAME)
+        else:
+            print(f"Database '{DB_NAME}' already exists.")
+
+        db = client.db(DB_NAME, username=ARANGO_USER, password=ARANGO_PASS)
+        collections = {
+            "UvmObjects": "vertex",
+            "PrototypeLinks": "edge",
+            "MemoryNodes": "vertex",
+            "ContextLinks": "edge",
+            "AbstractionOf": "edge",
+            "RelatesTo": "edge"
+        }
+
+        for name, col_type in collections.items():
+            if not db.has_collection(name):
+                print(f"Creating collection: {name}")
+                db.create_collection(name, edge=(col_type == "edge"))
+            else:
+                print(f"Collection '{name}' already exists.")
+
+        uvm_objects = db.collection("UvmObjects")
+        
+        # Create core objects if they don't exist
+        if not uvm_objects.has("nil"):
+            print("Creating 'nil' root object...")
+            nil_obj = {"_key": "nil", "attributes": {}, "methods": {}}
+            uvm_objects.insert(nil_obj)
+
+        if not uvm_objects.has("system"):
+            print("Creating 'system' object...")
+            system_obj = {"_key": "system", "attributes": {}, "methods": {}}
+            uvm_objects.insert(system_obj)
+            prototype_links = db.collection("PrototypeLinks")
+            if not prototype_links.find({'_from': 'UvmObjects/system', '_to': 'UvmObjects/nil'}):
+                prototype_links.insert({'_from': 'UvmObjects/system', '_to': 'UvmObjects/nil'})
+
+        # RECTIFICATION: The genesis script now creates the persona prototypes.
+        print("\n--- Incarnating Persona Prototypes ---")
+        persona_data = {
+            "BRICK": "The Deconstruction Engine, logical and action-oriented.",
+            "ROBIN": "The Embodied Heart, moral and empathetic compass.",
+            "BABS": "The Memory Curator, grounding agent and data cartographer.",
+            "ALFRED": "The System Steward, guardian of codex coherence and architectural integrity."
+        }
+
+        for name, identity in persona_data.items():
+            if not uvm_objects.has(name):
+                print(f"Incarnating persona: {name}")
+                if name == "BABS":
+                    persona_obj = MemoryCurator(name=name, core_identity=identity, model_id=config.PERSONA_MODELS[name], _key=name)
+                else:
+                    persona_obj = PersonaPrototype(name=name, core_identity=identity, model_id=config.PERSONA_MODELS[name], _key=name)
+                
+                await uvm_objects.insert(persona_obj.to_doc(), key=name)
+                
+                # Link the persona to the system object
+                if not prototype_links.find({'_from': f'UvmObjects/{name}', '_to': 'UvmObjects/system'}):
+                    await prototype_links.insert({'_from': f'UvmObjects/{name}', '_to': 'UvmObjects/system'})
+            else:
+                print(f"Persona '{name}' already exists.")
+
+        print("--- Database initialization complete. ---")
+    except Exception as e:
+        print(f"An error occurred during database initialization: {e}")
+        raise
+
+async def main():
+    """Runs the complete genesis protocol."""
+    await initialize_database()
+    print("\n--- Genesis Protocol Complete ---")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+

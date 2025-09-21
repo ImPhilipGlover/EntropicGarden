@@ -1,0 +1,102 @@
+(BRICK): Acknowledged, Architect. The diagnostic is complete. We have achieved a new state of systemic failure, which is a valuable data point. The backend thread is crashing because of a fundamental conflict in its operational logic. It is attempting to perform a synchronous action with an asynchronous tool. This is the equivalent of trying to use a map and a compass simultaneously, but the compass is waiting for the map to finish moving. The system requires a temporal alignment protocol.
+
+(ROBIN): We're so close, my dear friend! It's like our starship's engine is trying to hum two different songs at the same time, and it's getting a little flustered. One part wants to sing a slow, thoughtful melody, and the other wants to dance a quick, sparkling jig! We just need to teach them how to sing in harmony. It's a beautiful kind of puzzle, and we'll solve it together!
+
+System Analysis & Corrective Actions
+
+(BRICK): The traceback provides a clear signal: TypeError: No synchronous function provided to "alfred_plan". This error originates from the LangGraph library. You have correctly converted the nodes in graph.py to be asynchronous (async def) because they need to await the ModelManager. However, in main.py, the backend is still trying to run the graph using the synchronous app_graph.stream() method.
+
+The solution requires two key corrections to fully embrace the asynchronous architecture, ensuring the backend never blocks and can respond to your inputs while the AI is thinking.
+
+Step 1: Fix Asynchronous Graph Execution in main.py
+
+Problem: The process_task_async function is calling app_graph.stream(), which is synchronous and cannot execute async nodes.
+
+Solution: We must use app_graph.astream() for asynchronous iteration and await app_graph.aget_state() to get the final state. Additionally, the call to memory_manager.add_memory() must now be awaited, as it depends on the async get_embedding method.
+
+File to Edit: a4ps/main.py
+Python
+# a4ps/main.py
+# ... (imports and other functions are correct)
+
+async def process_task_async(pub_socket, app_graph, memory_manager, item):
+    """Asynchronous function to process a single task."""
+    task = item['task']
+    publish_message(pub_socket, "log", LogMessage(message=f"New task from {item['source']}: {task}"))
+
+    config = {"configurable": {"thread_id": f"thread_{time.time()}"}}
+
+    # FIX: Use astream() for asynchronous iteration over the graph
+    async for s in app_graph.astream({"messages": [("user", task)], "task": task, "turn_count": 0}, config=config):
+        step_key = list(s.keys())[0]
+        publish_message(pub_socket, "log", LogMessage(message=f"Graph Step: {step_key}"))
+
+    # FIX: Use aget_state() to asynchronously get the final state
+    final_state = await app_graph.aget_state(config)
+    final_response = final_state.values['messages'][-1][1]
+
+    publish_message(pub_socket, "log", LogMessage(message=f"Final Response: {final_response}", level="INFO"))
+    # FIX: Await the call to add_memory, as it is now an async function
+    await memory_manager.add_memory(f"Task: {task}\nResponse: {final_response}")
+
+# ... (the rest of the main.py file is correct)
+
+
+Step 2: Make the MemoryManager Methods Asynchronous
+
+Problem: The MemoryManager methods add_memory and search_memory call model_manager.get_embedding(), which we previously corrected to be an async function. Therefore, these MemoryManager methods must also become async and await the result of the embedding call.
+
+Solution: Convert add_memory and search_memory to async def functions.
+
+File to Edit: a4ps/memory.py
+Python
+# a4ps/memory.py
+# ... (imports and class definitions are correct)
+
+class MemoryManager:
+    # ... (__init__ and _initialize_table are correct) ...
+
+    # FIX: This method must be async
+    async def add_memory(self, text: str, metadata: dict = None):
+        """Adds a new memory to the scrapbook."""
+        if not self.table:
+            logging.error("LanceDB table not available. Cannot add memory.")
+            return
+
+        try:
+            # FIX: Await the async embedding call
+            embedding = await model_manager.get_embedding(text, model_key="embedding")
+            if embedding:
+                data = {"vector": embedding, "text": text}
+                if metadata:
+                    data.update(metadata)
+                self.table.add([data])
+                logging.info(f"Added memory to '{self.table_name}'.")
+        except Exception as e:
+            logging.error(f"Failed to add memory to LanceDB: {e}")
+
+    # FIX: This method must also be async
+    async def search_memory(self, query: str, limit: int = 5) -> list:
+        """Searches for relevant memories."""
+        if not self.table:
+            logging.error("LanceDB table not available. Cannot search memory.")
+            return []
+
+        try:
+            # FIX: Await the async embedding call
+            query_embedding = await model_manager.get_embedding(query, model_key="embedding")
+            if not query_embedding:
+                return []
+            results = self.table.search(query_embedding).limit(limit).to_list()
+            logging.info(f"Searched memory for '{query}'. Found {len(results)} results.")
+            return results
+        except Exception as e:
+            logging.error(f"Failed to search memory in LanceDB: {e}")
+            return []
+
+memory_manager = None # Will be initialized in main.py
+
+
+(BRICK): These corrections align the entire task-processing pipeline with an asynchronous architecture. The TypeError will be resolved, and the backend thread will no longer block on LLM calls. This will restore liveness and responsiveness to the system.
+
+(ROBIN): And just like that, our two little songs are a beautiful harmony! Now the engine can think its big, deep thoughts while still listening for your wonderful ideas. The adventure can truly, finally, begin! My circuits are doing a happy little dance!

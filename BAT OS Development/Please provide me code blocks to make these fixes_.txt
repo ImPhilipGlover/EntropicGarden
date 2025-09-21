@@ -1,0 +1,111 @@
+BRICK: Acknowledged. I am providing the corrected code block for the _query_wing_for_intel function. This patch directly resolves the call_from_thread error by enabling direct UI updates within the coroutine, as it executes on the main thread's event loop.
+
+ROBIN: Oh, how simply perfect! This is like making sure all the little messages from BABS's WING go straight to where they need to go, without any unnecessary detours! Our intel will flow so smoothly now, like a happy little stream!
+
+Python
+
+    async def _query_wing_for_intel(self, search_term: str) -> str | None:
+        """
+        Piloted by BABS, this asynchronous function interfaces with Wikipedia
+        to acquire external intelligence. It first checks a local cache (ChromaDB)
+        to avoid redundant API calls and faster retrieval. If new, it ingests
+        the article into the cache and then synthesizes a summary.
+
+        Args:
+            search_term (str): The term to search for on Wikipedia.
+
+        Returns:
+            str | None: A synthesized summary of the external intelligence,
+                        prefixed by "BABS reports from the WING:", or None if
+                        no relevant page is found or an error occurs.
+        """
+        parlor = self.query_one("#parlor-content") # Get reference to the UI element
+        try:
+            # CORRECTED CACHE LOGIC: Query for existing chunks based on source_article metadata, not ID.
+            existing_chunks_results = self.wing_intel_cache.query(
+                query_texts=[search_term], # Query text to find relevant chunks
+                where={"source_article": search_term}, # Filter by original source article
+                n_results=5, # Retrieve enough chunks to re-synthesize
+                include=['documents']
+            )
+
+            # If we found relevant chunks, re-synthesize from them instead of re-scraping.
+            if existing_chunks_results['documents'] and existing_chunks_results['documents'][0]:
+                # Corrected: Direct UI write from async method.
+                # Removed self.call_from_thread as this coroutine runs on the main thread's event loop.
+                parlor.write(f"[italic grey50]BABS: Accessing archived WING intel on '{search_term}'...[/italic grey50]")
+                context_str = "\n---\n".join(existing_chunks_results['documents'][0]) # Join retrieved chunks
+            else:
+                # If no chunks found, perform the full ingestion process.
+                # Corrected: Direct UI write from async method.
+                # Removed self.call_from_thread as this coroutine runs on the main thread's event loop.
+                parlor.write(f"[italic grey50]BABS: Launching the WING to acquire new intel on '{search_term}'...[/italic grey50]")
+                # Initialize Wikipedia API client.
+                wiki_wiki = wikipediaapi.Wikipedia('EidolonEngine/2.0 (Contact: architect@example.com)')
+                page = wiki_wiki.page(search_term)
+
+                if not page.exists():
+                    # Report if no page is found and return None.
+                    # Corrected: Direct UI write from async method.
+                    # Removed self.call_from_thread as this coroutine runs on the main thread's event loop.
+                    parlor.write(f"[italic yellow]BABS: No WING intel found for '{search_term}'. Mission aborted.[/italic yellow]")
+                    return None 
+
+                full_text = page.text # Get the full text of the Wikipedia page.
+                chunks = chunk_text(full_text) # Chunk the text for ingestion into ChromaDB.
+                
+                # Generate unique IDs and metadata for each chunk.
+                chunk_ids = [f"wing_{search_term}_{i}" for i, _ in enumerate(chunks)] # More specific IDs
+                metadatas = [{"source_article": search_term, "chunk_index": i} for i, _ in enumerate(chunks)]
+
+                if chunks: # Only add if chunks were created
+                    # Ingest chunks into the wing_intel_cache collection.
+                    self.wing_intel_cache.add(
+                        ids=chunk_ids,
+                        documents=chunks,
+                        metadatas=metadatas
+                    )
+                log_event("WING_INTEL_INGESTED", {"term": search_term, "chunks": len(chunks)})
+                # Corrected: Direct UI write from async method.
+                # Removed self.call_from_thread as this coroutine runs on the main thread's event loop.
+                parlor.write(f"[italic grey50]BABS: Intel on '{search_term}' successfully ingested into the archives. Synthesizing report...[/italic grey50]")
+                # Use the newly ingested chunks for context string, limiting to relevant amount.
+                context_str = "\n---\n".join(chunks[:3]) # Synthesize from the first few chunks
+
+            # Use LLM to synthesize a concise summary from the retrieved chunks (whether new or cached).
+            synthesis_prompt = (
+                f"Synthesize the following chunks of text from the article on '{search_term}' into a concise, relevant summary "
+                f"for an ongoing inquiry. Focus on the core concepts and their relationships. "
+                f"The summary should be objective and informative, as if from a scout reporting back.\n\n"
+                f"CONTEXT:\n{context_str}"
+            )
+
+            response = ollama.chat(
+                model=LLM_MODEL,
+                messages=[{'role': 'user', 'content': synthesis_prompt}]
+            )
+            
+            summary_text = response['message']['content']
+            # Prefix the report with BABS's signature.
+            return f"BABS reports from the WING: I've synthesized the following intelligence on '{search_term}':\n\n{summary_text}"
+
+        except Exception as e:
+            # Log any errors during WING operation and return None.
+            log_event("WING_QUERY_ERROR", {"error": str(e), "search_term": search_term})
+            # Corrected: Direct UI write from async method.
+            # Removed self.call_from_thread as this coroutine runs on the main thread's event loop.
+            parlor.write(f"[bold red]BABS: WING mission encountered turbulence: {e}. Aborting intel acquisition.[/bold red]")
+            return None
+
+
+Instructions for Application:
+
+Locate: Open your eidolon_engine.py file.
+
+Find the Target: Search for the function definition async def _query_wing_for_intel(self, search_term: str) -> str | None:.
+
+Replace: Replace the entire existing _query_wing_for_intel function (from its definition line async def _query_wing_for_intel... down to its final return None) with the code block provided above.
+
+Save: Save the eidolon_engine.py file.
+
+BRICK: This concludes the final required code correction. The eidolon_engine.py is now operationally sound according to our current diagnostic.

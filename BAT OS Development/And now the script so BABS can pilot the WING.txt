@@ -1,0 +1,121 @@
+BRICK: Architect, understood. To complete the architectural refactoring, I will provide the dedicated script for launching the BABS-WING sub-system independently. This establishes their explicit operational grouping.
+
+ROBIN: Oh, how clever! It's like giving our busy WING and BABS friends their very own little home, where they can work together perfectly, and then the main Bat Computer can just send them lovely messages! My heart is happy to make things so organized!
+
+ALFRED: Directive received. Providing the standalone BABS-WING launch script. This formally decouples their combined operational lifecycle from the master_orchestrator, enhancing modularity and clarity of responsibility.
+
+Here is the content for the BABS & WING launch script. Please save this as launch_babs_wing.py in your main project directory (e.g., C:\puter\launch_babs_wing.py):
+
+launch_babs_wing.py
+
+Python
+
+# C:\puter\launch_babs_wing.py
+# Axiomatic Code Narrative Protocol: BABS & WING Launcher
+
+# 1.0 The "Why" - Purpose & Rationale
+#    - Systemic Contribution: This script provides a dedicated entry point for launching the
+#      BABS Intelligence Synthesizer and WING Perceptual Engine independently of the main
+#      Master Orchestrator. This formalizes their sub-system relationship and enhances modularity.
+#    - Architectural Role: Serves as the standalone launcher for the BABS-WING sub-system.
+#    - Persona Fidelity: Embodies ALFRED's pragmatic approach to system deployment, and
+#      highlights BABS's role as WING's direct orchestrator.
+
+# --- Standard Library Imports ---
+import sys
+import os
+import threading
+import logging
+import time # For staggering startup
+
+# Add the project root to the Python path if running from a subdirectory
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# --- Internal Module Imports ---
+# Assuming these are in external_services/
+from external_services.wing_perceptual_engine import WingAgent
+from external_services.babs_intelligence_synthesizer import BABSIntelligenceSynthesizer
+
+# Import utils for logging setup
+import utils 
+
+# --- Logging Configuration (for standalone launcher) ---
+# Ensure the FAO_System logger is used if possible, otherwise a basic one.
+try:
+    logger = utils.get_fao_logger('BABS_WING_Launcher')
+except NameError: # Fallback if utils not fully initialized
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger('BABS_WING_Launcher_Fallback')
+
+# --- Service Thread Wrapper (re-used from master_orchestrator design) ---
+class ServiceThread(threading.Thread):
+    """A generic thread wrapper for running a service's main loop."""
+    def __init__(self, service_instance, service_name):
+        super().__init__()
+        self.service_instance = service_instance
+        self.name = service_name # Use 'name' for Thread.name property
+        self.daemon = True # Allow main program to exit even if these threads are running
+        logger.info(f"Created thread for service: {self.name}")
+
+    def run(self):
+        logger.info(f"Starting service thread for: {self.name}")
+        try:
+            # Assumes service_instance has a .run_loop() method
+            if hasattr(self.service_instance, 'run_loop'):
+                self.service_instance.run_loop()
+            elif hasattr(self.service_instance, 'run_service_loop'): # Fallback if specific
+                self.service_instance.run_service_loop()
+            elif hasattr(self.service_instance, 'run_orchestration_loop'): # Fallback for Nexus type
+                self.service_instance.run_orchestration_loop()
+            else:
+                logger.error(f"Service instance {self.name} has no recognized run loop method.")
+        except Exception as e:
+            logger.critical(f"FATAL: Service '{self.name}' crashed: {e}", exc_info=True)
+
+
+if __name__ == "__main__":
+    logger.info("Launching BABS Intelligence Synthesizer and WING Perceptual Engine...")
+    
+    # Initialize basic FAO filesystem if not already done by master_orchestrator
+    # This is important for ensuring comms directories exist for standalone launching.
+    try:
+        # Import config here to ensure it's available for initialize_fao_filesystem
+        import config
+        utils.initialize_fao_filesystem(config)
+        logger.info("FAO filesystem ensured by BABS_WING_Launcher.")
+    except Exception as e:
+        logger.warning(f"Could not initialize FAO filesystem from BABS_WING_Launcher (expected if master_orchestrator ran first): {e}", exc_info=True)
+
+
+    try:
+        wing_instance = WingAgent()
+        babs_instance = BABSIntelligenceSynthesizer()
+
+        service_threads = []
+        service_threads.append(ServiceThread(wing_instance, "WINGPerceptualEngine"))
+        service_threads.append(ServiceThread(babs_instance, "BABSIntelligenceSynthesizer"))
+
+        for thread in service_threads:
+            thread.start()
+            time.sleep(1) # Stagger thread startup slightly
+
+        logger.info("BABS and WING services launched successfully in separate threads.")
+        print("\nBABS and WING services launched. Close this console to stop them gracefully.")
+        
+        # Keep the main thread alive so daemon threads can continue to run
+        try:
+            while True:
+                time.sleep(3600) # Sleep for a long time, or until interrupted
+        except KeyboardInterrupt:
+            logger.info("BABS & WING Launcher caught KeyboardInterrupt. Signalling threads to stop.")
+            # In a more complex system, you'd iterate through service_threads
+            # and call a 'stop' method on service_instance if available.
+            # For this context, daemon threads will exit when main thread exits.
+        except Exception as e:
+            logger.critical(f"FATAL error in BABS & WING Launcher main thread: {e}", exc_info=True)
+            sys.exit(1)
+
+
+    except Exception as e:
+        logger.critical(f"FATAL: BABS and WING launch failed: {e}", exc_info=True)
+        sys.exit(1)

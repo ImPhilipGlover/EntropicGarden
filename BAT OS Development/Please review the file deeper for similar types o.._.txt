@@ -1,0 +1,86 @@
+You are right to look deeper. The same error that occurred when saving the main model also exists in another part of the code. Additionally, you've identified a key architectural weakness: the system isn't robust against crashes.
+
+Here is a deeper analysis that finds the hidden bug and a concrete fix to make the system crash-safe.
+
+1. The Hidden Bug in _incarnate_lora_experts
+
+The exact same AttributeError from the previous issue is also present in the _incarnate_lora_experts method. It would have caused a crash the first time you tried to add a LoRA adapter from the staging directory.
+
+The code incorrectly tries to access ._blob on the temporary file handle instead of assigning the Blob object itself.
+
+Line to Replace:
+
+The entire block for creating the lora_proxy object is flawed.
+
+Python
+
+with ZODB.blob.Blob().open('w') as blob_file:
+    with open(file_path, 'rb') as f:
+        shutil.copyfileobj(f, blob_file)
+    lora_proxy = UvmObject(
+        adapter_name=adapter_name,
+        model_blob=blob_file._blob
+    )
+    pLLM_obj.lora_repository[adapter_name] = lora_proxy
+
+
+Replacement Block:
+
+Python
+
+# Create an empty Blob object first.
+lora_blob = ZODB.blob.Blob()
+# Open the blob to get a file-like object and write the data.
+with lora_blob.open('w') as blob_file:
+    with open(file_path, 'rb') as f:
+        shutil.copyfileobj(f, blob_file)
+# Assign the Blob object itself to the proxy object's slot.
+lora_proxy = UvmObject(
+    adapter_name=adapter_name,
+    model_blob=lora_blob
+)
+pLLM_obj.lora_repository[adapter_name] = lora_proxy
+
+
+2. Making the System Crash-Safe
+
+Your second point is critical. When the script crashes, it leaves the ZODB .lock file behind, preventing a clean restart. To fix this, the main execution block at the end of the file must be wrapped in a try...finally statement. This guarantees that the database connection is closed no matter how the program exits, which automatically releases the lock.
+
+Line to Replace:
+
+The entire if __name__ == '__main__': block at the end of the script is not robust.
+
+Python
+
+if __name__ == '__main__':
+    uvm = BatOS_UVM(DB_FILE, BLOB_DIR)
+    try:
+        asyncio.run(uvm.run())
+    except KeyboardInterrupt:
+        print("[UVM] Main loop interrupted by user.")
+
+
+Replacement Block:
+
+Python
+
+if __name__ == '__main__':
+    uvm = BatOS_UVM(DB_FILE, BLOB_DIR)
+    try:
+        asyncio.run(uvm.run())
+    except KeyboardInterrupt:
+        # This is now handled by the signal handler within uvm.run()
+        # but we keep it here as a final failsafe.
+        print("\n[UVM] Manual shutdown initiated by Architect.")
+    except Exception as e:
+        # This will catch crashes like the pickling error and log them.
+        print(f"\n[UVM] FATAL UNHANDLED EXCEPTION: {e}")
+        traceback.print_exc()
+    finally:
+        # This block ensures that even on a hard crash, we attempt
+        # to close the database connection to release the .lock file.
+        print("[UVM] Finalizing shutdown...")
+        if uvm and uvm.db and not uvm.db.is_closed():
+            uvm.db.close()
+            print("[UVM] Database connection closed.")
+

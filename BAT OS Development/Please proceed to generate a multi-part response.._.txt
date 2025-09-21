@@ -1,0 +1,125 @@
+(BRICK): Acknowledged, Architect. Commencing the Grand Unification and subsequent Mitosis. We will now generate the complete, unabridged, and fully functional scripts for the distributed, multi-process B.A.T. Computer v7.0 architecture. Each component will be materialized as a self-contained, executable file, designed for parallel operation.
+
+(ROBIN): It's happening! We're building the very first part of our new neighborhood—the magical post office that will carry all our letters and thoughts to each other, making sure every whisper is heard and every idea is shared. It's the beautiful, beating heart of our family's conversation, and it has to be perfect.
+
+Part 1 of 6: The Message Kernel
+
+(BRICK): The first component is the central nervous system: the message_broker.py. This script functions as the asynchronous message bus, ensuring reliable, serialized communication between all independent persona engines and the unified GUI. It must be running before any other component is activated.
+
+Python
+
+"""
+================================================================================
+B.A.T. C.O.M.P.U.T.E.R. v7.0 - Component 1/6: The Message Broker
+================================================================================
+Author: The Architect, in collaboration with BRICKman & ROBIN
+Version: 7.0 (As of 2025-08-01)
+
+--- CORE PURPOSE ---
+This script is the Kernel's core message bus. It is a standalone, asynchronous
+TCP server that listens for connections from the five other engine components
+(BRICK, ROBIN, BABS, ALFRED, and the GUI). Its sole function is to register
+each component by its unique name and route incoming messages (BatGrams) to their
+intended target, ensuring all communication in the distributed system is
+serialized and correctly delivered.
+"""
+
+import asyncio
+import json
+
+class MessageBroker:
+    """
+    The central message routing server for the B.A.T. Computer.
+    It manages client connections and forwards JSON-based messages.
+    """
+    def __init__(self):
+        """
+        Initializes the broker, creating a dictionary to store active client connections.
+        The keys are the unique names of the persona engines (e.g., "BRICK"), and
+        the values are the asyncio Writer objects for their sockets.
+        """
+        self.clients: dict[str, asyncio.StreamWriter] = {}
+
+    async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        """
+        This coroutine is executed for each new client connection. It handles the
+        initial registration and then enters a loop to listen for and route messages.
+        
+        Args:
+            reader (asyncio.StreamReader): The reader object for the client socket.
+            writer (asyncio.StreamWriter): The writer object for the client socket.
+        """
+        # The first line sent by any connecting client MUST be its unique name.
+        name_data = await reader.readline()
+        name = name_data.decode().strip()
+
+        if not name:
+            print("KERNEL: Anonymous connection attempted and rejected.")
+            writer.close()
+            await writer.wait_closed()
+            return
+
+        # Store the client's writer stream, keyed by its name.
+        self.clients[name] = writer
+        addr = writer.get_extra_info('peername')
+        print(f"B.A.T. KERNEL: Persona '{name}' has connected from {addr}.")
+
+        try:
+            # Main loop to listen for messages from this client.
+            while True:
+                data = await reader.readline()
+                if not data:
+                    # An empty read indicates the client has disconnected.
+                    break
+
+                try:
+                    # Decode the message from bytes and parse the JSON string.
+                    message = json.loads(data.decode())
+                    target_name = message.get("target")
+                    source_name = message.get("source")
+
+                    print(f"KERNEL: Routing BatGram from '{source_name}' to '{target_name}'")
+
+                    # --- CORE ROUTING LOGIC ---
+                    if target_name in self.clients:
+                        target_writer = self.clients[target_name]
+                        # Re-encode the message and send it to the target client.
+                        target_writer.write((json.dumps(message) + '\n').encode())
+                        # Ensure the message is sent immediately.
+                        await target_writer.drain()
+                    else:
+                        print(f"KERNEL WARNING: Target '{target_name}' not connected. Message dropped.")
+                
+                except json.JSONDecodeError:
+                    print(f"KERNEL ERROR: Received malformed JSON from '{name}'. Message discarded.")
+                except Exception as e:
+                    print(f"KERNEL ERROR: An unexpected error occurred with client '{name}': {e}")
+        
+        finally:
+            # Cleanup when the client disconnects.
+            print(f"B.A.T. KERNEL: Persona '{name}' has disconnected.")
+            if name in self.clients:
+                del self.clients[name]
+            writer.close()
+            await writer.wait_closed()
+
+    async def main(self):
+        """
+        The main entry point for the broker. Starts the TCP server.
+        """
+        server = await asyncio.start_server(
+            self.handle_client, '127.0.0.1', 8888)
+
+        addr = server.sockets[0].getsockname()
+        print(f'B.A.T. KERNEL: Online and listening on {addr}')
+        print("Waiting for persona engines to connect...")
+
+        async with server:
+            await server.serve_forever()
+
+if __name__ == "__main__":
+    broker = MessageBroker()
+    try:
+        asyncio.run(broker.main())
+    except KeyboardInterrupt:
+        print("\nB.A.T. KERNEL: Shutdown sequence initiated by Architect.")

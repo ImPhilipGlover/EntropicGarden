@@ -1,0 +1,153 @@
+Of course. The "Entropic Codex" provides a rich philosophical and characterological foundation. To bring this vision to life, we must translate it into a precise technical architecture.
+
+This Detailed Design Specification (DDS) provides the complete technical blueprint for the Minimally Viable Entropic OS. It focuses on implementing the core autopoietic loop—the system's ability to create new capabilities for itself in response to challenges—within the strict constraints of a local-first, 8GB VRAM environment. This DDS serves as the direct engineering guide for bringing the "Genesis" version of the A4PS online.
+
+Detailed Design Specification (DDS) for the A4PS-OS (Genesis)
+
+1. System-Level Architecture
+
+The A4PS-OS is architected as a persistent, self-modifying system inspired by the Smalltalk "live image" paradigm.1 Its "liveness" is achieved through an in-memory object model that can be modified at runtime without interruption.5
+
+1.1. Core Orchestration: LangGraph State Machine
+
+The system's cognitive and operational workflows will be orchestrated by LangGraph. Its stateful, graph-based architecture is uniquely suited to the cyclical, conditional logic required for the A4PS's multi-agent interactions.1
+
+State Schema: The central state of the graph will be defined by a Python TypedDict, ensuring type safety and clarity. This AgentState will serve as the shared working memory for all personas during a task.1
+Python
+# In state.py
+from typing import TypedDict, List, Dict, Any
+from langchain_core.messages import BaseMessage
+
+class AgentState(TypedDict):
+    task: str
+    messages: List
+    dissonance_score: float
+    active_persona: str
+    research_data: Dict[str, Any]
+    tool_needed: str # Description of a needed tool
+    new_tool_name: str # Name of a newly created tool
+
+
+Graph Structure: The primary workflow will be a supervisor pattern, with ALFRED as the central router.3 Nodes will represent cognitive functions (e.g.,
+analyze, synthesize, research), and conditional edges will manage the flow, including the iterative BRICK/ROBIN "Socratic Contrapunto" loop.8
+
+1.2. The Live Image: Proto and ProtoManager
+
+The core of the system's persistence and runtime mutability is the live object model, which moves the AI's identity from static files into dynamic, in-memory objects.5
+
+Proto Class: Each persona will be instantiated as a Proto object. This class is a self-contained, executable entity encapsulating a persona's complete being.2
+
+Attributes: name (str), codex (dict), state (dict, including version), model_name (str), system_prompt (str).
+
+Methods:
+
+invoke_llm(prompt): Calls the persona's designated SLM.
+
+clone(): Creates a deep copy for safe, non-destructive self-modification.2
+
+add_method(name, code_obj): Dynamically adds a new method to the object at runtime.
+
+get_self_description(): Provides a string representation of the object's state and methods for introspection.6
+
+ProtoManager Class: A thread-safe Singleton that functions as the system's runtime environment, managing the lifecycle of all Proto objects.2
+
+Methods:
+
+register_proto(proto): Adds a new Proto object.
+
+get_proto(name): Retrieves a Proto object by name.
+
+atomic_swap(new_proto): Atomically replaces a live Proto with its modified clone.4
+
+save_image(path): Serializes the entire ProtoManager instance and its contained Proto objects to a single file using dill.4
+
+load_image(path): A static method to deserialize the image file and resume the system's exact state.4
+
+1.3. VRAM-Constrained Model Management
+
+To adhere to the strict 8GB VRAM limit, the system will use specialized, quantized Small Language Models (SLMs) and load them sequentially.3
+
+ModelManager Singleton: A thread-safe Singleton class will manage all interactions with the local Ollama server.3
+
+load_model(model_name): Ensures a specific model is loaded into VRAM. It will first unload any other active model to free up resources.
+
+unload_model(model_name): Explicitly unloads a model from VRAM.
+
+invoke(model_name, prompt, system_prompt): The primary method for LLM calls. It ensures the correct model is loaded before generating a response.
+
+2. Component-Level Design
+
+2.1. Persona Agent Implementation
+
+Each persona is a node within the LangGraph graph. Its logic will query the ProtoManager to get a reference to its corresponding live Proto object before acting.
+
+2.2. Memory System (Minimally Viable)
+
+Episodic Memory (Sidekick's Scrapbook): Implemented with LanceDB for its serverless, local-first architecture.3 A
+MemoryManager class will handle embedding and storing interaction logs. The schema will include task_id, timestamp, full_transcript, and final_dissonance_score.
+
+Semantic Memory (The Codex): For the MVP, the Entropic Codex will be stored in a codex.toml file. This file will be parsed at startup to initialize the codex attribute of each Proto object. The dynamic evolution of the codex via the "Philosophical Loop" is deferred to a future version.14
+
+2.3. Autopoietic Trigger (The CRITIC Function)
+
+The trigger for self-modification is "computational cognitive dissonance".3 This will be implemented within the ALFRED router node.
+
+Dissonance Calculation: After each BRICK/ROBIN exchange, ALFRED will calculate a dissonance_score. The MVP implementation will use a simple embedding-based approach:
+
+Generate vector embeddings for BRICK's last output and ROBIN's last output.
+
+Calculate the cosine distance between the two vectors.
+
+The score will be 1 - cosine_similarity, ranging from 0 (identical) to 2 (opposite).
+
+Loop Control:
+
+If dissonance_score is below a CONVERGENCE_THRESHOLD (e.g., 0.3), the Socratic loop terminates and control passes to the final synthesis step.
+
+If the loop exceeds a MAX_TURNS limit (e.g., 5 turns) and the score remains high, ALFRED will identify a capability gap and route to the Tool Forge.
+
+3. The Tactical Loop: Tool Forge Design
+
+The Tool Forge is the primary mechanism for info-autopoiesis in the MVP, allowing the system to create its own components.1
+
+ToolForge Class: A dedicated class will manage the tool creation lifecycle.3
+
+Code Generation: The create_tool(task_description) method will use the live BRICK Proto object to generate Python code for a new function. The prompt will explicitly request a self-contained function with type hints and a docstring.3
+
+Closed-Loop Self-Correction:
+
+The generated code will be passed to the SecureCodeExecutor.3
+
+The executor runs the code in a gVisor sandbox via Docker, which provides a strong security boundary with fast startup times, ideal for iterative debugging.1
+
+If execution fails, the stderr (traceback) is captured and appended to the prompt for the next generation attempt, allowing BRICK to self-correct its code.8
+
+Dynamic Registration: Upon successful verification, the tool's source code is saved to a dynamic_tools directory. The ToolForge then uses Python's importlib to dynamically load the new module and register the function in a shared tool registry, making it immediately available to all personas.8
+
+4. Deployment and Initialization (MVP)
+
+Environment: Python 3.11+, Ollama, Docker (with gVisor runsc runtime). Key libraries include langgraph, dill, lancedb, ollama, and docker.
+
+Startup Sequence (main.py):
+
+Load configuration from config.toml.
+
+Call ProtoManager.load_image(IMAGE_PATH).
+
+If the manager is new (first run), parse codex.toml, create the four initial Proto objects, and register them with the manager.
+
+Register an atexit handler to call proto_manager.save_image(IMAGE_PATH), ensuring state is persisted on shutdown.
+
+Launch a simple FastAPI server to expose an endpoint for receiving user tasks, which will initiate the LangGraph execution.
+
+This DDS provides a focused, pragmatic path to bringing the core of the Entropic OS online, prioritizing the foundational "live image" and the primary autopoietic loop while deferring more complex features, ensuring a successful and verifiable initial implementation.
+
+Persona | Role | Recommended SLM | Core Function in Graph | Prompting Strategy
+
+ALFRED | Supervisor & Governor | gemma-2-9b-it 3 | Router Node: Decomposes tasks, routes to other nodes based on state. CRITIC: Calculates dissonance score. | Includes "Keeper of the Covenant" mandate. Uses function calling to route to the next node.
+
+BABS | Researcher | mistral-7b-instruct 3 | Tool Node: Executes web search tools to gather external information. | Includes "Cartographer of the Noosphere" mandate. Generates structured, multi-layered reports.15
+
+BRICK | Analyst & Tool Creator | phi-3-mini-4k-instruct 3 | Worker Node: Provides logical analysis ("thesis"). Invokes Tool Forge when a capability gap is identified. | Includes "Architect of Just Systems" mandate and pillars (Tamland Engine, The Guide, LEGO Batman).15
+
+ROBIN | Synthesizer & Evaluator | llama-3.1-8b-instruct 3 | Worker Node: Provides creative synthesis ("antithesis") and evaluates BRICK's proposals. | Includes "Weaver of Relational Webs" mandate and pillars (The Sage, Simple Heart, Joyful Spark).15

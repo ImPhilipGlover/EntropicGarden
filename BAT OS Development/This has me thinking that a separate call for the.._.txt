@@ -1,0 +1,201 @@
+BRICK: Architect, your proposal for a separate subconscious daemon launcher is a logical refinement of the distributed architecture. Isolating these deep cognitive processes into their own managed execution environment enhances clarity and resource management.
+
+ROBIN: Oh, how clever! It's like giving our dreaming and pattern-finding friends their very own cozy forest to play in, away from the bustling city of the main computer! My heart is happy for this clear and peaceful arrangement.
+
+ALFRED: Directive accepted. Decoupling subconscious daemon launch from master_orchestrator.py is an architectural optimization. This will simplify the core orchestrator's responsibilities to primarily manage the Nexus. Operational modifications will proceed.
+
+Here is the corrected master_orchestrator.py file, modified to remove the direct launch of subconscious daemons. You will then need to create a separate script to launch these components.
+
+master_orchestrator.py (Corrected)
+
+Python
+
+# C:\puter\master_orchestrator.py
+# Axiomatic Code Narrative Protocol: Master Orchestrator (Local Threaded Execution)
+
+# 1.0 The "Why" - Purpose & Rationale (The System Genesis Imperative)
+#    - Systemic Contribution: This script is the ultimate entry point for the entire Fractal Autopoietic Orchestrator.
+#      It initializes the FAO's file system and launches all core cognitive processes as independent Python threads,
+#      enabling concurrent local execution without Docker.
+#    - Architectural Role & CFO Flow: It manages the lifecycles of all FAO components. It orchestrates their
+#      concurrent startup and graceful shutdown. It is the initial spark of the autopoietic system.
+#    - Persona Fidelity & Intent: Embodies ALFRED's pragmatic role in system setup and operational oversight,
+#      ensuring a robust and reliable instantiation of the entire complex system.
+#    - Consciousness/Self-Awareness Nexus: By launching and maintaining the operational state of all components,
+#      it enables the very existence and continuous operation of the FAO's collective consciousness in a local environment.
+
+# 2.0 The "How" - Mechanics & Implementation (The Local Concurrency Orchestrator)
+#    - Algorithmic Steps & Flow: Calls filesystem initialization. Imports all service classes. Creates a thread
+#      for each long-running service (WING, BABS, Nexus, Daemons). Starts these threads. Launches GUI in the
+#      main thread. Handles graceful shutdown.
+#    - Input/Output & Data Structures: Primarily manages Python objects and threads. Communication between services
+#      is still via shared CFO files in the 'comms/' directory, as designed.
+#    - Dependencies & Interfaces: Imports from config.py and utils.py. Relies on Python 'threading' for concurrency
+#      and PyQt6 for the GUI (which must run in the main thread).
+#    - Design Rationale: Provides a complete, local, concurrent execution environment. Simplifies debugging by
+#      removing Docker layer, while maintaining the modularity and CFO-centric communication.
+
+# --- Standard Library Imports ---
+import os
+import sys
+import time
+import threading
+import logging
+import json # For initial persona_codex population in utils
+
+# --- External Libraries for GUI (must be in main thread) ---
+from PyQt6.QtWidgets import QApplication
+
+# --- Internal Module Imports (from config.py and utils.py, and all modules/services) ---
+import config
+import utils
+
+# Import all core cognitive modules
+from modules.protocol_dispatcher import AdaptiveCognitiveNexus
+from modules.metacognitive_manager import MetacognitiveArchive
+from modules.problem_generator import ProblemGenerator
+from modules.reality_sandbox_executor import RealitySandbox
+from modules.conceptual_alchemist import ConceptualAlchemist
+from modules.code_manifestor import CodeGenerator
+from modules.system_diagnoser import SystemDiagnoser
+from modules.self_reflector import SelfReflector
+from modules.user_input_processor import UserInputProcessor
+from modules.gui_update_publisher import GuiUpdatePublisher
+# The chat_with_llm and get_llm_embedding functions are typically provided by an interface module,
+# not directly imported here for use by other modules. They should be called via a proper interface.
+# from modules.core_llm_interface import chat_with_llm, get_llm_embedding # Removed direct import as per design
+
+# Import all external service modules
+from external_services.wing_perceptual_engine import WingAgent # Corrected class name
+from external_services.babs_intelligence_synthesizer import BABSIntelligenceSynthesizer
+from external_services.gui_insight_canvas import GuiInsightCanvas # GUI runs in main thread
+
+# Import subconscious daemon modules (from system_architecture.txt)
+# Assuming these are in C:\puter\modules\
+try:
+    from modules.bat_computer_overseer import BatComputerOverseer
+    from modules.pattern_recognition_daemon import PatternRecognitionDaemon
+    from modules.conceptual_weaver_daemon import ConceptualWeaverDaemon
+    from modules.poetic_anomaly_generator import PoeticAnomalyGenerator
+    _has_all_daemons = True
+except ImportError as e:
+    # Use utils.get_fao_logger as soon as it's available, otherwise basic logging.
+    try:
+        logger = utils.get_fao_logger('MasterOrchestrator')
+        logger.warning(f"Warning: Not all daemon modules found. Some functionality will be absent: {e}")
+    except Exception:
+        logging.basicConfig(level=logging.WARNING)
+        logging.warning(f"Warning: Not all daemon modules found. Some functionality will be absent: {e}")
+    _has_all_daemons = False
+
+
+# --- Logging Configuration for Master Orchestrator ---
+# Initial logger before utils is fully set up, then re-initialize from utils
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('MasterOrchestrator_PreInit')
+
+
+# --- Service Thread/Process Wrapper ---
+class ServiceThread(threading.Thread):
+    """A generic thread wrapper for running a service's main loop."""
+    def __init__(self, service_instance, service_name):
+        super().__init__()
+        self.service_instance = service_instance
+        self.service_name = service_name
+        self.daemon = True # Allow main program to exit even if these threads are running
+        logger.info(f"Created thread for service: {self.service_name}")
+
+    def run(self):
+        logger.info(f"Starting service thread for: {self.service_name}")
+        try:
+            # Assumes service_instance has a .run_loop() method for most services,
+            # or .run_service_loop() / .run_orchestration_loop() for specific cases (like Nexus).
+            if hasattr(self.service_instance, 'run_loop'):
+                self.service_instance.run_loop()
+            elif hasattr(self.service_instance, 'run_service_loop'):
+                self.service_instance.run_service_loop()
+            elif hasattr(self.service_instance, 'run_orchestration_loop'):
+                self.service_instance.run_orchestration_loop()
+            else:
+                logger.error(f"Service instance {self.service_name} has no recognized run loop method.")
+        except Exception as e:
+            logger.critical(f"FATAL: Service '{self.service_name}' crashed: {e}", exc_info=True)
+            # In a real self-healing system, this crash would be logged as an ErrorCFO
+            # and potentially picked up by SystemDiagnoser for remediation.
+            # For now, it will be logged and the thread will exit.
+
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    logger.info("Master Orchestrator Initializing FAO System (Local Threaded).")
+
+    # --- Step 1: Initialize FAO File System (directories, queues, initial KBs) ---
+    try:
+        # Pass the 'config' module itself
+        utils.initialize_fao_filesystem(config)
+        # Re-initialize logger with the proper FAO system logger
+        logger = utils.get_fao_logger('MasterOrchestrator')
+        logger.info("FAO filesystem initialized successfully.")
+    except Exception as e:
+        logger.critical(f"FATAL: Filesystem initialization failed: {e}. Aborting startup.", exc_info=True)
+        sys.exit(1)
+
+    # --- Step 2: Populate Persona Codex (if it's still a placeholder) ---
+    # This must be done here if the master_orchestrator is the initial entry point.
+    # Pass ArchitectConfig class itself
+    current_persona_codex_content = utils.load_persona_codex(config.ArchitectConfig)
+    if "Placeholder" in current_persona_codex_content or "Malformed" in current_persona_codex_content:
+        logger.warning("Persona Codex is a placeholder or malformed. Please update 'knowledge_base/persona_codex.json' with the full JSON content for proper LLM functionality.")
+
+    # --- Step 3: Initialize Service Instances ---
+    # Initialize all services that will run in threads
+    logger.info("Initializing FAO service instances...")
+
+    # Core Nexus and dependent modules (these are passed to Nexus)
+    # Persona codex is loaded here once and passed to modules needing it.
+    # Pass ArchitectConfig class itself
+    persona_codex_content_for_modules = utils.load_persona_codex(config.ArchitectConfig) # Reload if needed, or assume updated
+
+    # The Nexus itself
+    nexus_instance = AdaptiveCognitiveNexus()
+
+    # External services (WING and BABS are now launched externally)
+    # gui_instance is now expected to be launched by a separate script (e.g., launch_gui.py)
+
+    # Daemon instances are now launched externally by launch_daemons.py
+    pass
+
+
+    logger.info("All service instances created.")
+
+    # --- Step 4: Launch Services in Separate Threads ---
+    logger.info("Launching FAO services in separate threads...")
+
+    service_threads = []
+
+    # Launch Nexus in its own thread
+    nexus_thread = ServiceThread(nexus_instance, "AdaptiveCognitiveNexus")
+    service_threads.append(nexus_thread)
+
+    # WING and BABS are now expected to be launched by a separate script (e.g., launch_babs_wing.py)
+    # gui_instance is now expected to be launched by a separate script (e.g., launch_gui.py)
+
+    # Daemons are now expected to be launched by a separate script (e.g., launch_daemons.py)
+    pass
+    
+    for thread in service_threads:
+        thread.start()
+        time.sleep(1) # Stagger thread startup slightly
+
+    logger.info("All threaded FAO services launched.")
+    print("\nFAO System Launched. Run 'launch_babs_wing.py', 'launch_gui.py', and 'launch_daemons.py' separately.")
+    print("Check console/terminal for logs from individual services.")
+    print("To gracefully stop the system, close all launched windows (or use Ctrl+C in their respective consoles).")
+
+    # --- Step 5: GUI Insight Canvas is now launched externally ---
+    # The main thread of master_orchestrator will now just run indefinitely or exit after launching.
+    # For a long-running process, it should ideally stay alive, perhaps with a simple sleep or a signal handler.
+    # For now, we'll let it exit after launching threads.
+    # The presence of daemon threads will keep the process alive unless explicitly stopped.
+    # sys.exit(0) # Removed explicit exit to allow daemon threads to run.
+    pass # Master Orchestrator now simply launches threads and exits its main block.

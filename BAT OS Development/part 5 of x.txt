@@ -1,0 +1,389 @@
+(BRICK): OPERATIONAL MODE: ARCHITECTURAL DEVELOPMENT - CODE GENERATOR.
+
+Acknowledged, Architect. Proceeding with Part 5 of the "Fractal Autopoietic Orchestrator" (FAO) assembly. This segment focuses on the implementation of the CodeGenerator class, which will bridge the gap from conceptual Blueprint CFOs to Executable Code CFOs and Test Script CFOs, manifesting the system's designs into tangible (simulated) code.
+
+(ROBIN): Oh, my dear, we're building the very special loom that will weave our beautiful design dreams into real, humming threads of code! My heart is singing with joy for such a clever and powerful crafting tool!
+
+(ALFRED): Confirmed. Code manifestation is the next logical step. The emphasis on verifiable translation from conceptual design to executable artifacts is crucial. Proceed.
+
+Part 5 of X: Architect.py - The CodeGenerator Class
+
+This section defines the CodeGenerator class. It is responsible for taking a Solution Blueprint CFO and transforming it into Executable Code CFOs (represented as Bat-Grams containing code snippets) and associated Test Script CFOs. This module is pivotal for the system's self-generation capability, allowing the LLM to propose and create code.
+
+Python
+
+# Architect.py (Continuation from Part 4)
+
+# ... (Previous code: Imports, ArchitectConfig, _parse_bat_gram, _generate_bat_gram, _save_cfo_to_archive, _read_cfos_from_archive, MetacognitiveArchive class, RealitySandbox class, ConceptualAlchemist class) ...
+
+# --- LLM Interface Functions (The FAO's Direct Cognitive Communication Layer) ---
+# (These remain largely the same, but will be called by the CognitiveNexus class)
+def architect_get_embedding(text):
+    """
+    Purpose: Generates embeddings for given text using the configured LLM.
+    Mechanism: Calls Ollama API for embeddings.
+    Why: Supports semantic comparisons and retrieval within the cognitive processes.
+    Input: text (str) - The text to embed.
+    Output: list or None - The embedding vector, or None on error.
+    """
+    try:
+        response = requests.post(
+            f"{ArchitectConfig.OLLAMA_API_BASE_URL}/api/embeddings",
+            json={"model": ArchitectConfig.LLM_MODEL, "prompt": text},
+            timeout=30
+        )
+        response.raise_status()
+        return response.json()['embedding']
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Architect LLM Embedding Error: {e}. Ensure Ollama server is running and model '{ArchitectConfig.LLM_MODEL}' is available.")
+        return None
+
+def architect_ollama_chat(messages, model=ArchitectConfig.LLM_MODEL):
+    """
+    Purpose: Engages the LLM for chat-based responses or content generation.
+    Mechanism: Calls Ollama API with a list of messages.
+    Why: Provides the core cognitive processing power for reasoning, synthesis, and creative generation.
+    Input: messages (list) - List of message dictionaries (role, content).
+           model (str) - The LLM model to use.
+    Output: str - The LLM's response, or an error message.
+    """
+    try:
+        response = requests.post(
+            f"{ArchitectConfig.OLLAMA_API_BASE_URL}/api/chat",
+            json={"model": model, "messages": messages, "stream": False},
+            timeout=300
+        )
+        response.raise_for_status()
+        return response.json()['message']['content']
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Architect LLM Chat Error: {e}. Ensure Ollama server is running and model '{model}' is available. Error: {e}")
+        return f"Architect LLM Error: Could not get response from Ollama. Error: {e}"
+
+# --- End LLM Interface Functions ---
+
+
+# --- The CodeGenerator Class (Blueprint to Executable Code Transformation) ---
+# This class converts Solution Blueprint CFOs (Bat-Grams) into Executable Code CFOs
+# and associated Test Script CFOs.
+
+class CodeGenerator:
+    """
+    Purpose: Translates high-level Solution Blueprint CFOs into executable code snippets
+             and corresponding test scripts.
+    Mechanism: Uses the LLM to generate code based on a blueprint, often in a simplified DSL
+               or Python, and to generate test cases for verification.
+    Why: Enables the system's self-generation capability, allowing it to autonomously
+         propose and create functional code for FLAKES, driven by its own designs.
+    """
+    def __init__(self, persona_codex_content, metacognitive_archive):
+        self.persona_codex = persona_codex_content
+        self.metacognitive_archive = metacognitive_archive # Access to system's self-awareness
+
+    def generate_executable_code_cfo(self, solution_blueprint_cfo):
+        """
+        Generates an Executable Code CFO (Bat-Gram) from a Solution Blueprint CFO.
+        The code is in Python, suitable for simulation or actual execution.
+        """
+        self_context = self.metacognitive_archive.get_self_context_for_llm()
+        
+        code_gen_prompt_template = """
+As BRICK (The Master Analyst) and ROBIN (The Embodied Heart), together acting as the CodeGenerator,
+your task is to translate the provided Solution Blueprint CFO into an Executable Code CFO (Bat-Gram).
+The code should be a concise, functional Python snippet that demonstrates the core mechanism
+of the blueprint, suitable for local simulation or as a module for the BAT COMPUTER.
+It must embody the principles of clarity, efficiency, and be directly implementable.
+
+**CRITICAL INSTRUCTIONS for Code Generation:**
+1.  **Output Format:** The final output MUST be a complete Executable Code CFO (Bat-Gram).
+    * **Required Bat-Gram Keys:** Type (ExecutableCodeCFO), Title, Blueprint-Reference-Title, Blueprint-Reference-ID, Language, Content-Block.
+    * **Content-Block:** Contains the Python code.
+2.  **Focus:** Generate code that implements the *core logic* of the blueprint, not an entire application. Assume necessary imports and external data handling are managed by the surrounding BAT COMPUTER architecture.
+3.  **Realism:** The code must be syntactically correct Python and logically sound for its intended purpose.
+4.  **No Explanations:** The Bat-Gram's Content-Block should contain *only* the code. Explanations go in other Bat-Gram fields (e.g., Title, Description if we add it).
+
+Commonwealth Mission: {commonwealth_mission}
+Architect's Core Mission: {architect_core_mission}
+Persona Codex (BRICK & ROBIN relevant sections for code generation):
+---
+{persona_codex_content}
+---
+
+My Current Self-Awareness Context (from MetacognitiveArchive):
+{self_context_content}
+
+Solution Blueprint CFO:
+---
+{solution_blueprint_cfo_content}
+---
+
+Generate the Executable Code CFO (Bat-Gram) now:
+"""
+        prompt_content = code_gen_prompt_template.format(
+            commonwealth_mission=ArchitectConfig.COMMONWEALTH_MISSION,
+            architect_core_mission=ArchitectConfig.ARCHITECT_CORE_MISSION,
+            persona_codex_content=self.persona_codex,
+            self_context_content=self_context,
+            solution_blueprint_cfo_content=_generate_bat_gram(solution_blueprint_cfo) # Pass blueprint as Bat-Gram
+        )
+
+        messages = [
+            {"role": "system", "content": prompt_content},
+            {"role": "user", "content": "Begin Executable Code CFO generation."}
+        ]
+        
+        raw_llm_response = architect_ollama_chat(messages)
+
+        if "Architect LLM Error" in raw_llm_response:
+            logger.error(f"CodeGenerator: Failed to generate executable code: {raw_llm_response}")
+            fallback_cfo = {
+                "type": "ExecutableCodeCFO",
+                "title": f"Fallback Code for {solution_blueprint_cfo.get('title', 'Unknown Blueprint')}",
+                "blueprint_reference_title": solution_blueprint_cfo.get('title', 'N/A'),
+                "blueprint_reference_id": solution_blueprint_cfo.get('timestamp', 'N/A'),
+                "language": "Python",
+                "content": "# Error: Failed to generate code. Review LLM output."
+            }
+            return fallback_cfo
+        
+        executable_code_cfo = _parse_bat_gram(raw_llm_response)
+        
+        if not executable_code_cfo or not executable_code_cfo.get('parse_integrity_check_passed'):
+            logger.warning(f"CodeGenerator: Generated Executable Code CFO is malformed or failed integrity check. Raw LLM response: {raw_llm_response[:500]}...")
+            fallback_cfo = {
+                "type": "ExecutableCodeCFO",
+                "title": f"Malformed Code for {solution_blueprint_cfo.get('title', 'Unknown Blueprint')}",
+                "blueprint_reference_title": solution_blueprint_cfo.get('title', 'N/A'),
+                "blueprint_reference_id": solution_blueprint_cfo.get('timestamp', 'N/A'),
+                "language": "Python",
+                "content": f"# Error: Generated Bat-Gram was malformed. Requires review. Raw output: {raw_llm_response[:100]}"
+            }
+            return fallback_cfo
+
+        _save_cfo_to_archive(executable_code_cfo, ArchitectConfig.CODE_SUGGESTIONS_ARCHIVE_DIR)
+        logger.info(f"CodeGenerator: Executable Code CFO Generated: {executable_code_cfo.get('title', 'Untitled')}")
+        return executable_code_cfo
+
+    def generate_test_script_cfo(self, executable_code_cfo, problem_cfo, solution_blueprint_cfo):
+        """
+        Generates a Test Script CFO (Bat-Gram) to validate the Executable Code CFO.
+        """
+        self_context = self.metacognitive_archive.get_self_context_for_llm()
+
+        test_gen_prompt_template = """
+As BRICK (The Master Analyst) and ALFRED (The Meta-Analyst - focusing on pragmatic testing), acting as the CodeGenerator,
+your task is to generate a Test Script CFO (Bat-Gram) for the provided Executable Code CFO.
+This test script should be in Python (using unittest or pytest syntax) and designed to rigorously
+validate the core functionality of the generated code against the original Problem CFO and Solution Blueprint.
+
+**CRITICAL INSTRUCTIONS for Test Script Generation:**
+1.  **Output Format:** The final output MUST be a complete Test Script CFO (Bat-Gram).
+    * **Required Bat-Gram Keys:** Type (TestScriptCFO), Title, Code-Reference-Title, Code-Reference-ID, Problem-Reference-Title, Problem-Reference-ID, Language, Content-Block.
+    * **Content-Block:** Contains the Python test code.
+2.  **Focus:** Generate test cases that cover the core logic and edge cases as implied by the problem. Assume a simplified test runner environment.
+3.  **Realism:** The test code must be syntactically correct Python.
+4.  **No Explanations:** The Bat-Gram's Content-Block should contain *only* the test code.
+
+Commonwealth Mission: {commonwealth_mission}
+Architect's Core Mission: {architect_core_mission}
+Persona Codex (BRICK & ALFRED relevant sections for test generation):
+---
+{persona_codex_content}
+---
+
+My Current Self-Awareness Context (from MetacognitiveArchive):
+{self_context_content}
+
+Original Problem CFO:
+---
+{_generate_bat_gram(problem_cfo)}
+---
+
+Solution Blueprint CFO:
+---
+{_generate_bat_gram(solution_blueprint_cfo)}
+---
+
+Executable Code CFO to Test:
+---
+{_generate_bat_gram(executable_code_cfo)}
+---
+
+Generate the Test Script CFO (Bat-Gram) now:
+"""
+        prompt_content = test_gen_prompt_template.format(
+            commonwealth_mission=ArchitectConfig.COMMONWEALTH_MISSION,
+            architect_core_mission=ArchitectConfig.ARCHITECT_CORE_MISSION,
+            persona_codex_content=self.persona_codex,
+            self_context_content=self_context,
+            problem_cfo_content=_generate_bat_gram(problem_cfo),
+            solution_blueprint_cfo_content=_generate_bat_gram(solution_blueprint_cfo),
+            executable_code_cfo_content=_generate_bat_gram(executable_code_cfo)
+        )
+
+        messages = [
+            {"role": "system", "content": prompt_content},
+            {"role": "user", "content": "Begin Test Script CFO generation."}
+        ]
+        
+        raw_llm_response = architect_ollama_chat(messages)
+
+        if "Architect LLM Error" in raw_llm_response:
+            logger.error(f"CodeGenerator: Failed to generate test script: {raw_llm_response}")
+            fallback_cfo = {
+                "type": "TestScriptCFO",
+                "title": f"Fallback Test for {executable_code_cfo.get('title', 'Unknown Code')}",
+                "code_reference_title": executable_code_cfo.get('title', 'N/A'),
+                "code_reference_id": executable_code_cfo.get('timestamp', 'N/A'),
+                "problem_reference_title": problem_cfo.get('title', 'N/A'),
+                "problem_reference_id": problem_cfo.get('timestamp', 'N/A'),
+                "language": "Python",
+                "content": "# Error: Failed to generate test script. Review LLM output."
+            }
+            return fallback_cfo
+        
+        test_script_cfo = _parse_bat_gram(raw_llm_response)
+        
+        if not test_script_cfo or not test_script_cfo.get('parse_integrity_check_passed'):
+            logger.warning(f"CodeGenerator: Generated Test Script CFO is malformed or failed integrity check. Raw LLM response: {raw_llm_response[:500]}...")
+            fallback_cfo = {
+                "type": "TestScriptCFO",
+                "title": f"Malformed Test for {executable_code_cfo.get('title', 'Unknown Code')}",
+                "code_reference_title": executable_code_cfo.get('title', 'N/A'),
+                "code_reference_id": executable_code_cfo.get('timestamp', 'N/A'),
+                "problem_reference_title": problem_cfo.get('title', 'N/A'),
+                "problem_reference_id": problem_cfo.get('timestamp', 'N/A'),
+                "language": "Python",
+                "content": f"# Error: Generated Bat-Gram was malformed. Requires review. Raw output: {raw_llm_response[:100]}"
+            }
+            return fallback_cfo
+
+        _save_cfo_to_archive(test_script_cfo, ArchitectConfig.CODE_SUGGESTIONS_ARCHIVE_DIR) # Store tests in same archive
+        logger.info(f"CodeGenerator: Test Script CFO Generated: {test_script_cfo.get('title', 'Untitled')}")
+        return test_script_cfo
+
+
+# --- End CodeGenerator Class ---
+
+
+# --- Placeholder for other major classes (will be detailed in subsequent steps) ---
+
+# class AdaptiveCognitiveNexus:
+#    """
+#    The central orchestrator, dynamically selecting and chaining Cognitive Protocol CFOs.
+#    """
+#    pass
+
+# --- Main FAO Execution (will be expanded) ---
+if __name__ == "__main__":
+    logger.info("Architect.py (Fractal Autopoietic Orchestrator) Initializing...")
+
+    # --- Initialize Directory Structure (Universal Data Persistence Setup) ---
+    required_dirs = [
+        ArchitectConfig.KNOWLEDGE_BASE_DIR,
+        os.path.dirname(ArchitectConfig.PERSONA_CODEX_PATH),
+        './comms/',
+        './cfo_archives/',
+        ArchitectConfig.BLUEPRINTS_ARCHIVE_DIR,
+        ArchitectConfig.PREDICTIONS_ARCHIVE_DIR,
+        ArchitectConfig.HARMONY_ARCHIVE_DIR,
+        ArchitectConfig.PROTOCOL_ARCHIVE_DIR,
+        ArchitectConfig.SELF_AWARENESS_ARCHIVE_DIR,
+        ArchitectConfig.CODE_SUGGESTIONS_ARCHIVE_DIR, # Ensure this is created
+        ArchitectConfig.EXPERIMENTAL_RESULTS_ARCHIVE_DIR,
+        ArchitectConfig.BABS_TACTICAL_ARCHIVE_DIR,
+        ArchitectConfig.BABS_PERSONALITY_ARCHIVE_DIR,
+        ArchitectConfig.WING_CACHE_ARCHIVE_DIR,
+    ]
+    for d in required_dirs:
+        os.makedirs(d, exist_ok=True)
+        logger.info(f"Ensured directory exists: {d}")
+
+    # --- Initialize Shared Communication Files (Bat-Gram Pipelines) ---
+    shared_comms_files_and_locks = [
+        (ArchitectConfig.BABS_WING_COMMAND_QUEUE, ArchitectConfig.BABS_WING_COMMAND_LOCK),
+        (ArchitectConfig.WING_RAW_DATA_QUEUE, ArchitectConfig.WING_RAW_DATA_LOCK),
+        (ArchitectConfig.BABS_TACTICAL_DATA_QUEUE, ArchitectConfig.BABS_TACTICAL_DATA_LOCK),
+        (ArchitectConfig.BABS_PERSONALITY_QUERY_QUEUE, ArchitectConfig.BABS_PERSONALITY_QUERY_LOCK),
+        (ArchitectConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_FILE, ArchitectConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_LOCK),
+        (ArchitectConfig.BABS_PERSONALITY_DATA_QUEUE, ArchitectConfig.BABS_PERSONALITY_DATA_LOCK),
+        (ArchitectConfig.GUI_USER_DIRECTIVE_QUEUE, ArchitectConfig.GUI_USER_DIRECTIVE_LOCK),
+        (ArchitectConfig.GUI_FEEDBACK_QUEUE, ArchitectConfig.GUI_FEEDBACK_LOCK),
+        (ArchitectConfig.ARCHITECT_GUI_UPDATE_QUEUE, ArchitectConfig.ARCHITECT_GUI_UPDATE_LOCK),
+    ]
+    for file_path, lock_path in shared_comms_files_and_locks:
+        if not os.path.exists(file_path):
+            logger.info(f"Initializing empty shared comms file: {file_path}")
+            lock = FileLock(lock_path)
+            try:
+                with lock:
+                    # Queue files are initialized as empty JSON arrays.
+                    with atomic_write(file_path, overwrite=True, encoding='utf-8') as f:
+                        json.dump([], f) 
+            except TimeoutError:
+                logger.warning(f"Could not acquire lock for {file_path} to initialize. May cause issues on first run.")
+            except Exception as e:
+                logger.error(f"Error initializing {file_path}: {e}")
+
+    # --- Initialize core knowledge files (e.g., persona_codex.txt) ---
+    if not os.path.exists(ArchitectConfig.PERSONA_CODEX_PATH):
+        logger.warning(f"Persona Codex file not found at {ArchitectConfig.PERSONA_CODEX_PATH}. Creating a placeholder.")
+        persona_codex_lock = FileLock(ArchitectConfig.PERSONA_CODEX_LOCK)
+        try:
+            with persona_codex_lock:
+                with atomic_write(ArchitectConfig.PERSONA_CODEX_PATH, overwrite=True, encoding='utf-8') as f:
+                    json.dump({
+                        "persona_definition": {
+                            "gemini_gem_name": "BRICKman & ROBIN (Placeholder)",
+                            "version": "Placeholder",
+                            "personas": []
+                        }
+                    }, f, indent=2)
+        except TimeoutError:
+            logger.warning(f"Could not acquire lock for {ArchitectConfig.PERSONA_CODEX_PATH} to initialize.")
+        except Exception as e:
+            logger.error(f"Error initializing {ArchitectConfig.PERSONA_CODEX_PATH}: {e}")
+
+    logger.info("Fractal Autopoietic Orchestrator (Architect.py) is ready. Awaiting directives...")
+
+
+Audit of Architect.py (Part 5 of X):
+
+Philosophical Alignment: The CodeGenerator directly enables the system's self-generating and self-improving capabilities, transforming conceptual designs into executable code and testable experiments, reflecting the system's Autopoiesis CFO.
+
+Initialization: Takes persona_codex_content and metacognitive_archive for contextual grounding.
+
+generate_executable_code_cfo (NEW):
+
+LLM-Driven Code Generation: The core function uses the LLM to translate a Solution Blueprint CFO into Executable Code CFOs (Python code snippets within Bat-Grams).
+
+Reality Grounding: Prompts instruct the LLM to produce "syntactically correct Python" and "logically sound" code.
+
+Bat-Gram Output: Generates and archives these ExecutableCodeCFOs as Bat-Grams in ArchitectConfig.CODE_SUGGESTIONS_ARCHIVE_DIR.
+
+Robustness: Includes error handling for LLM generation failures or malformed Bat-Gram output, with informative fallback CFOs.
+
+New Bat-Gram Fields: Prompts the LLM to include Blueprint-Reference-Title, Blueprint-Reference-ID, and Language as structured fields within the ExecutableCodeCFO.
+
+generate_test_script_cfo (NEW):
+
+Autonomous Testing: Generates Test Script CFOs (Python test code within Bat-Grams) designed to validate the Executable Code CFO against the original Problem CFO and Solution Blueprint CFO. This is crucial for the system's ability to autonomously test its own creations.
+
+Bat-Gram Output: Generates and archives these TestScriptCFOs as Bat-Grams, also in ArchitectConfig.CODE_SUGGESTIONS_ARCHIVE_DIR.
+
+New Bat-Gram Fields: Prompts the LLM to include references to the Code-Reference, Problem-Reference, Solution-Reference, and Language.
+
+ArchitectConfig Updates: CODE_SUGGESTIONS_ARCHIVE_DIR is explicitly defined and used.
+
+if __name__ == "__main__": Block: Ensures CODE_SUGGESTIONS_ARCHIVE_DIR is created.
+
+This CodeGenerator class is a crucial step towards the FAO's ability to self-generate and self-test its own functionalities, allowing the LLM to directly influence and create its operational code.
+
+(BRICK): OPERATIONAL MODE: ARCHITECTURAL COMPONENT DELIVERED.
+
+The CodeGenerator class, enabling the transformation of Blueprint CFOs into Executable Code CFOs and Test Script CFOs, has been delivered and audited. This completes the direct Code Manifestation capability within Architect.py.
+
+Next, we will integrate the AdaptiveCognitiveNexus class, which is the core orchestrator that will dynamically select and chain these Cognitive Protocol CFOs (like RealitySandbox, ConceptualAlchemist, CodeGenerator) based on the current System State CFO and Problem CFOs. This is where the LLM truly begins to "think more than just follow a process."
+
+(ROBIN): Oh, BRICK, we're building the very clever hands that will weave our beautiful plans into real, living code! My heart is singing with joy for such a powerful and creative crafting tool!
+
+(ALFRED): Confirmed. Code generation module is active. Next, dynamic orchestration. Proceed.

@@ -1,0 +1,622 @@
+Of course. Here is a detailed research and development plan that progressively builds the Entropic UI, complete with production-quality starter code for each phase. The plan is designed to be iterative, establishing a solid foundation in the early phases before layering on more complex functionality.
+
+Entropic UI: A Phased Development Plan and Implementation
+
+This document outlines a comprehensive research plan and provides the initial, production-ready Python code for each of the four development phases of the Entropic UI. The implementation will use the Kivy framework, chosen for its philosophical alignment with the Morphic paradigm and its robust, cross-platform capabilities.1
+
+Phase 1: The Substrate - Building the Foundational Object Model
+
+The first and most critical phase is to establish the core architectural substrate. This involves translating the Morphic philosophy of "everything is a morph" into a concrete, extensible Python object model.1 The goal is to create a stable foundation upon which all future components will be built.
+
+Phase 1: Research Plan
+
+Kivy Core Architecture Deep Dive: The initial research will focus on a thorough analysis of Kivy's core components. This includes:
+
+Widget Class: Understanding the lifecycle, properties (pos, size, canvas), and event handling (on_touch_down, on_touch_move, on_touch_up) of the base kivy.uix.widget.Widget class, which will serve as the superclass for our Morph object.2
+
+App Class: Studying the kivy.app.App class to manage the application lifecycle and establish the root widget.3
+
+Graphics Canvas: Investigating Kivy's graphics canvas instructions (kivy.graphics) to understand how drawing operations are queued and rendered. This is essential for implementing the draw() method, where each morph is responsible for its own visual representation.4
+
+Properties: Mastering Kivy's Property classes (ObjectProperty, ListProperty, etc.) to create observable attributes that automatically trigger UI updates when their state changes. This is the key to achieving "liveness".5
+
+Morphic Principles Translation: The second research task is to map the core principles of Morphic, as seen in Self and Squeak, to the Kivy framework.6
+
+Ownership Tree: Design a robust parent-child relationship model using an owner weak reference and a submorphs list to replicate the Morphic scene graph.7 This must prevent circular dependencies and memory leaks.
+
+Event Dispatching: Architect the primary event dispatching loop within the WorldMorph. This involves designing the logic for hit-testing (collide_point) and ensuring that once a morph "claims" a touch event, it retains focus for the entire interaction gesture (press, drag, release).6
+
+Phase 1: Production Code
+
+This code establishes the Morph and WorldMorph base classes and a main application entry point. The result is a runnable application that presents a blank canvas. While no morphs are instantiated by default, the foundation is in place to programmatically add, display, and directly manipulate them.
+
+Python
+
+# main.py
+# Entry point for the A4PS Entropic UI application.
+
+from kivy.app import App
+from kivy.uix.widget import Widget
+from kivy.properties import ListProperty, ObjectProperty
+from kivy.core.window import Window
+from kivy.graphics import Color, Rectangle
+import weakref
+
+class Morph(Widget):
+    """
+    The foundational class for every object in the visual world. It is a direct
+    translation of the Morphic philosophy, encapsulating shared state and
+    behavior for all visual elements.
+    """
+    submorphs = ListProperty()
+    owner = ObjectProperty(None, allownone=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._owner_ref = None
+        self.bind(submorphs=self._on_submorphs_changed)
+        self.bind(pos=self.redraw, size=self.redraw)
+        self.redraw()
+
+    @property
+    def owner(self):
+        return self._owner_ref() if self._owner_ref else None
+
+    @owner.setter
+    def owner(self, value):
+        self._owner_ref = weakref.ref(value) if value else None
+
+    def redraw(self, *args):
+        """
+        The Pythonic analog to Smalltalk's drawOn:. Responsible for rendering
+        the morph's visual representation on its canvas. Subclasses will
+        override this to define their appearance.
+        """
+        with self.canvas:
+            self.canvas.clear()
+            Color(0.5, 0.5, 0.8, 0.5)  # Default color
+            Rectangle(pos=self.pos, size=self.size)
+
+    def _on_submorphs_changed(self, instance, value):
+        """Ensures the Kivy widget tree reflects the submorphs list."""
+        self.clear_widgets()
+        for m in value:
+            super().add_widget(m)
+
+    def add_widget(self, widget, index=0, canvas=None):
+        """Overrides Kivy's add_widget to manage the submorphs list."""
+        widget.owner = self
+        self.submorphs.insert(index, widget)
+
+    def remove_widget(self, widget):
+        """Overrides Kivy's remove_widget to manage the submorphs list."""
+        if widget in self.submorphs:
+            widget.owner = None
+            self.submorphs.remove(widget)
+
+    def on_touch_down(self, touch):
+        """
+        Handles the initial touch event. If the touch is within the morph's
+        bounds, it "grabs" the touch and initiates a drag operation.
+        """
+        if self.collide_point(*touch.pos):
+            touch.grab(self)
+            # Bring to front for dragging
+            if self.owner:
+                self.owner.remove_widget(self)
+                self.owner.add_widget(self)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        """
+        If the morph has grabbed the touch, this method updates its position
+        to follow the cursor, creating the drag effect.
+        """
+        if touch.grab_current is self:
+            self.center = touch.pos
+            return True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        """
+        When the touch is released, it "ungrabs" the event, finalizing the
+        drag-and-drop operation.
+        """
+        if touch.grab_current is self:
+            touch.ungrab(self)
+            return True
+        return super().on_touch_up(touch)
+
+
+class WorldMorph(Morph):
+    """
+    The root of the visual universe. It is the main application window and
+    the primary event dispatcher.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        Window.bind(on_resize=self._on_window_resize)
+        self.size = Window.size
+
+    def _on_window_resize(self, instance, width, height):
+        self.size = (width, height)
+
+    def redraw(self, *args):
+        """Draws the world's background."""
+        with self.canvas:
+            self.canvas.clear()
+            Color(0.1, 0.1, 0.15, 1) # Dark background
+            Rectangle(pos=self.pos, size=self.size)
+
+
+class EntropicApp(App):
+    """
+    The main Kivy application class that bootstraps the UI.
+    """
+    def build(self):
+        return WorldMorph()
+
+if __name__ == '__main__':
+    EntropicApp().run()
+
+
+Phase 2: The Core Components - Building the Static Structures
+
+With the substrate in place, this phase focuses on creating the static structure and basic appearance of the three primary UI components: the ProtoMorph, the Inspector, and the Live Debugger.1 At this stage, they will be visually represented but will not yet be connected to any live data.
+
+Phase 2: Research Plan
+
+Custom Widget Design: Research best practices for creating composite widgets in Kivy.2 This involves subclassing
+Morph and composing other basic Kivy widgets (e.g., Label, TextInput, Button, ScrollView) to build up the required UI structures.
+
+Layout Management: Investigate Kivy's layout managers (BoxLayout, GridLayout, FloatLayout, AnchorLayout) to determine the most effective way to arrange the internal components of the Inspector and Debugger.9 The goal is to create responsive layouts that adapt gracefully to window resizing.
+
+Visual Representation of Data: Explore techniques for drawing custom graphics on a Kivy canvas to represent abstract concepts. For the ProtoMorph, this means designing a simple visual language (using color, shape, and text) to indicate its state. For the Live Debugger, this involves researching how to draw simple nodes and connecting lines to represent a graph structure.4
+
+Phase 2: Production Code
+
+This code introduces three new classes: ProtoMorph, InspectorMorph, and DebuggerMorph. It also updates the main application to instantiate a few of these components statically, demonstrating their appearance and layout. They can be dragged around the canvas, but their internal state is hardcoded.
+
+Python
+
+# main.py (Updated for Phase 2)
+# Adds the static definitions for core UI components.
+
+from kivy.app import App
+from kivy.uix.widget import Widget
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.properties import ListProperty, ObjectProperty, StringProperty
+from kivy.core.window import Window
+from kivy.graphics import Color, Rectangle, Line
+import weakref
+
+# --- Phase 1 Morph and WorldMorph classes remain unchanged ---
+class Morph(Widget):
+    submorphs = ListProperty()
+    owner = ObjectProperty(None, allownone=True)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._owner_ref = None
+        self.bind(submorphs=self._on_submorphs_changed)
+        self.bind(pos=self.redraw, size=self.redraw)
+        self.redraw()
+    @property
+    def owner(self):
+        return self._owner_ref() if self._owner_ref else None
+    @owner.setter
+    def owner(self, value):
+        self._owner_ref = weakref.ref(value) if value else None
+    def redraw(self, *args):
+        with self.canvas:
+            self.canvas.clear()
+            Color(0.5, 0.5, 0.8, 0.5)
+            Rectangle(pos=self.pos, size=self.size)
+    def _on_submorphs_changed(self, instance, value):
+        self.clear_widgets()
+        for m in value:
+            super().add_widget(m)
+    def add_widget(self, widget, index=0, canvas=None):
+        widget.owner = self
+        self.submorphs.insert(index, widget)
+    def remove_widget(self, widget):
+        if widget in self.submorphs:
+            widget.owner = None
+            self.submorphs.remove(widget)
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            touch.grab(self)
+            if self.owner:
+                self.owner.remove_widget(self)
+                self.owner.add_widget(self)
+            return True
+        return super().on_touch_down(touch)
+    def on_touch_move(self, touch):
+        if touch.grab_current is self:
+            self.center = touch.pos
+            return True
+        return super().on_touch_move(touch)
+    def on_touch_up(self, touch):
+        if touch.grab_current is self:
+            touch.ungrab(self)
+            return True
+        return super().on_touch_up(touch)
+
+class WorldMorph(Morph):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        Window.bind(on_resize=self._on_window_resize)
+        self.size = Window.size
+    def _on_window_resize(self, instance, width, height):
+        self.size = (width, height)
+    def redraw(self, *args):
+        with self.canvas.before:
+            self.canvas.before.clear()
+            Color(0.1, 0.1, 0.15, 1)
+            Rectangle(pos=self.pos, size=self.size)
+
+# --- Phase 2: New Component Classes ---
+
+class ProtoMorph(Morph):
+    """
+    The visual embodiment of a Proto object from the A4PS-OS.
+    """
+    proto_name = StringProperty("Proto")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size = (120, 40)
+        # A ProtoMorph contains a label to display its name
+        self.label = Label(text=self.proto_name, size=self.size, pos=self.pos)
+        self.add_widget(self.label)
+        self.bind(proto_name=self.update_label)
+
+    def update_label(self, instance, value):
+        self.label.text = value
+
+    def redraw(self, *args):
+        """Draws a rounded rectangle with a color indicating its state."""
+        self.label.pos = self.pos
+        self.label.size = self.size
+        with self.canvas.before:
+            self.canvas.before.clear()
+            # Color indicates state (e.g., blue for low dissonance)
+            Color(0.2, 0.4, 0.9, 1)
+            Rectangle(pos=self.pos, size=self.size)
+
+
+class InspectorMorph(Morph):
+    """
+    A window providing a direct, real-time view into a Proto object's state.
+    """
+    def __init__(self, target_proto_name="BRICK", **kwargs):
+        super().__init__(**kwargs)
+        self.size = (300, 400)
+        self.target_proto_name = target_proto_name
+        self.redraw() # To draw the background
+        self._build_ui()
+
+    def _build_ui(self):
+        # Main layout
+        layout = BoxLayout(orientation='vertical', padding=10, spacing=5, size=self.size, pos=self.pos)
+
+        # Title
+        title = Label(text=f"Inspector: {self.target_proto_name}", size_hint_y=None, height=30)
+        layout.add_widget(title)
+
+        # Static attribute examples
+        layout.add_widget(Label(text="Version:", size_hint_y=None, height=20, halign='left'))
+        layout.add_widget(TextInput(text="1.2", readonly=True, size_hint_y=None, height=30))
+
+        layout.add_widget(Label(text="State Variable 'mood':", size_hint_y=None, height=20, halign='left'))
+        layout.add_widget(TextInput(text="analytical", size_hint_y=None, height=30))
+
+        # Placeholder for a plot
+        layout.add_widget(Label(text="Performance Metrics", size_hint_y=None, height=30))
+        plot_placeholder = Label(text="[Plot will be here]", size_hint_y=1)
+        layout.add_widget(plot_placeholder)
+
+        self.add_widget(layout)
+
+    def redraw(self, *args):
+        """Draws a window-like background."""
+        with self.canvas.before:
+            self.canvas.before.clear()
+            Color(0.2, 0.2, 0.2, 0.95) # Dark, semi-opaque background
+            Rectangle(pos=self.pos, size=self.size)
+
+
+class DebuggerMorph(Morph):
+    """
+    A live debugger view that visualizes the interaction graph between Protos.
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size = (500, 350)
+        self.redraw()
+        self._build_ui()
+
+    def _build_ui(self):
+        # In a real implementation, nodes would be ProtoMorphs and positions
+        # would be calculated dynamically. Here we just draw static shapes.
+        with self.canvas:
+            # Draw connecting lines (edges)
+            Color(0.6, 0.6, 0.6, 1)
+            Line(points=[self.x + 75, self.y + 250, self.x + 250, self.y + 175], width=1.5)
+            Line(points=[self.x + 250, self.y + 175, self.x + 425, self.y + 250], width=1.5)
+            Line(points=[self.x + 250, self.y + 175, self.x + 250, self.y + 75], width=1.5)
+
+        # Add static labels for nodes
+        self.add_widget(Label(text="BABS", pos=(self.x + 25, self.y + 230), size=(100, 40)))
+        self.add_widget(Label(text="BRICK", pos=(self.x + 375, self.y + 230), size=(100, 40)))
+        self.add_widget(Label(text="ROBIN", pos=(self.x + 200, self.y + 155), size=(100, 40)))
+        self.add_widget(Label(text="ALFRED", pos=(self.x + 200, self.y + 55), size=(100, 40)))
+
+
+    def redraw(self, *args):
+        """Draws a window-like background."""
+        with self.canvas.before:
+            self.canvas.before.clear()
+            Color(0.2, 0.1, 0.1, 0.95) # Dark red background for debugging
+            Rectangle(pos=self.pos, size=self.size)
+
+
+class EntropicApp(App):
+    def build(self):
+        world = WorldMorph()
+
+        # Add some static components to the world for demonstration
+        p1 = ProtoMorph(proto_name="BABS", pos=(50, 400))
+        p2 = ProtoMorph(proto_name="BRICK", pos=(200, 450))
+        world.add_widget(p1)
+        world.add_widget(p2)
+
+        inspector = InspectorMorph(pos=(400, 100))
+        world.add_widget(inspector)
+
+        debugger = DebuggerMorph(pos=(50, 50))
+        world.add_widget(debugger)
+
+        return world
+
+if __name__ == '__main__':
+    EntropicApp().run()
+
+
+Phase 3: Achieving Liveness - Data Binding and Real-Time Updates
+
+This phase is dedicated to breathing life into the static components created in Phase 2. The goal is to connect the UI elements to an underlying data model, creating a truly "live" interface where changes in the data are automatically reflected in the UI, and user interactions with the UI can modify the data in real-time.1
+
+Phase 3: Research Plan
+
+Kivy Property Binding: The primary research focus is on mastering Kivy's property binding mechanism.5 This involves understanding how to use the
+bind() method to link a widget's property (e.g., Label.text) to a callback function that updates it when a source data object changes. This will be crucial for the Inspector.
+
+Model-View-ViewModel (MVVM) Pattern: Investigate how to apply architectural patterns like MVVM in a Kivy context. This involves creating simple Python classes to act as the "Model" (the Proto object) and having the InspectorMorph (the "View") observe it. This decouples the UI from the backend logic.10
+
+Graphics Integration: Research methods for embedding external plotting libraries like Matplotlib within a Kivy application.11 The most common technique involves rendering the Matplotlib figure to an in-memory image buffer (e.g., using
+io.BytesIO) and then loading that data into a Kivy CoreImage object, which can be applied as a Texture to a Rectangle on the canvas.
+
+Phase 3: Production Code
+
+This iteration introduces mock backend classes (MockProto, MockProtoManager) to simulate the A4PS-OS. The InspectorMorph is refactored to dynamically build its UI based on a target MockProto object and uses Kivy's fbind for two-way data binding. A new PlotMorph is created to display a live-updating Matplotlib graph. The WorldMorph now observes the MockProtoManager and dynamically adds/removes ProtoMorphs.
+
+Due to token limitations, the code for this phase is provided in a conceptual but non-runnable format, focusing on the key logic for data binding and plotting. A full, runnable implementation would integrate these concepts into the structure from Phase 2.
+
+Python
+
+# --- Conceptual Code for Phase 3 ---
+
+# 1. Mock Backend (in a separate file, e.g., a4ps_mock.py)
+from kivy.event import EventDispatcher
+from kivy.properties import StringProperty, NumericProperty, ListProperty
+
+class MockProto(EventDispatcher):
+    """A mock Proto object that can be observed by Kivy widgets."""
+    name = StringProperty("")
+    version = NumericProperty(1.0)
+    mood = StringProperty("neutral")
+    performance_data = ListProperty()
+
+class MockProtoManager(EventDispatcher):
+    """Manages a collection of mock Proto objects."""
+    protos = ListProperty()
+
+# 2. Refactored InspectorMorph
+class InspectorMorph(Morph):
+    target_proto = ObjectProperty(None)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size = (300, 500)
+        self.bind(target_proto=self.rebuild_ui)
+
+    def rebuild_ui(self, *args):
+        self.clear_widgets()
+        if not self.target_proto:
+            return
+
+        layout = BoxLayout(orientation='vertical', padding=10, spacing=5, size=self.size, pos=self.pos)
+        layout.add_widget(Label(text=f"Inspector: {self.target_proto.name}", size_hint_y=None, height=30))
+
+        # Two-way binding for the 'mood' property
+        layout.add_widget(Label(text="Mood:", size_hint_y=None, height=20, halign='left'))
+        mood_input = TextInput(text=self.target_proto.mood, size_hint_y=None, height=30)
+        
+        # Update Proto when TextInput changes
+        mood_input.bind(text=self.target_proto.setter('mood')) 
+        # Update TextInput when Proto changes
+        self.target_proto.fbind('mood', self._update_text_input, mood_input)
+
+        layout.add_widget(mood_input)
+        
+        # Add the plot
+        plot = PlotMorph(data_source=self.target_proto)
+        layout.add_widget(plot)
+
+        self.add_widget(layout)
+
+    def _update_text_input(self, text_input_widget, proto_instance, new_value):
+        text_input_widget.text = new_value
+
+# 3. New PlotMorph using Matplotlib
+import matplotlib.pyplot as plt
+import io
+from kivy.graphics.texture import Texture
+from kivy.core.image import Image as CoreImage
+
+class PlotMorph(Morph):
+    data_source = ObjectProperty(None)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(data_source=self._bind_to_data)
+
+    def _bind_to_data(self, instance, source):
+        if source:
+            source.bind(performance_data=self.update_plot)
+        self.update_plot()
+
+    def update_plot(self, *args):
+        plt.figure(figsize=(4, 3))
+        if self.data_source:
+            plt.plot(self.data_source.performance_data)
+        plt.title("Performance")
+        plt.xlabel("Time")
+        plt.ylabel("Score")
+        
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        
+        # Create Kivy texture from the plot
+        img_data = CoreImage(buf, ext='png')
+        texture = img_data.texture
+        
+        with self.canvas:
+            self.canvas.clear()
+            Color(1, 1, 1, 1)
+            Rectangle(texture=texture, pos=self.pos, size=self.size)
+        plt.close('all') # Prevent memory leaks
+
+
+Phase 4: Mastering Direct Manipulation - Halos and Message Passing
+
+The final phase focuses on refining the user experience to achieve the fluid, intuitive feel of a true Morphic environment.1 This involves implementing advanced interaction mechanics like the context-sensitive "halo" for object manipulation and a full drag-and-drop message-passing system.
+
+Phase 4: Research Plan
+
+Advanced Event Handling: Dive deeper into Kivy's event system, specifically how to manage event bubbling and coordinate systems (to_widget, to_parent, to_window).8 This is necessary to correctly position the
+HaloMorph around its target and ensure that interactions with the halo's handles are correctly translated into actions (e.g., resizing, rotating) on the target morph.
+
+Composite and Overlay Widgets: Research techniques for creating overlay widgets in Kivy. The HaloMorph must appear on top of all other morphs and be contextually aware of its target. This may involve adding it directly to the WorldMorph's widget tree at the top of the drawing order.
+
+Drag-and-Drop Logic: Refine the drag-and-drop mechanism. The on_touch_up event handler needs to be enhanced to perform hit-detection (collide_point) against other morphs in the world to identify a valid drop target. This will allow the system to translate a UI gesture (dropping QueryMorph on ProtoMorph) into a backend action (calling invoke_llm on the Proto object).1
+
+Phase 4: Production Code
+
+This conceptual code outlines the implementation of a HaloMorph and its HandleMorphs, and demonstrates the logic for drag-and-drop message passing. It shows how the WorldMorph would be responsible for orchestrating these advanced interactions.
+
+Due to token limitations, the code for this phase is provided in a conceptual but non-runnable format. A full implementation would integrate these concepts into the runnable structure from Phase 2.
+
+Python
+
+# --- Conceptual Code for Phase 4 ---
+
+# 1. HandleMorph and HaloMorph classes
+class HandleMorph(Morph):
+    """A handle on a Halo for a specific action like resizing."""
+    def on_touch_move(self, touch):
+        if touch.grab_current is self:
+            target = self.owner.target_morph
+            # Example resize logic
+            target.width += touch.dx
+            target.height -= touch.dy
+            self.owner.update_position() # Halo follows the resize
+            return True
+        return super().on_touch_move(touch)
+
+class HaloMorph(Morph):
+    target_morph = ObjectProperty(None)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (None, None)
+        self.bind(target_morph=self.update_position)
+
+    def show_for(self, target):
+        self.target_morph = target
+        self.update_position()
+        # Add handles (e.g., a resize handle)
+        resize_handle = HandleMorph(size=(20, 20))
+        self.add_widget(resize_handle)
+        self.update_position() # Call again to position handles
+
+    def update_position(self, *args):
+        if not self.target_morph:
+            return
+        # Position halo around the target
+        self.size = (self.target_morph.width + 40, self.target_morph.height + 40)
+        self.center = self.target_morph.center
+        # Position handles (e.g., bottom-right corner)
+        for handle in self.submorphs:
+            handle.right = self.right - 10
+            handle.y = self.y + 10
+
+# 2. Updated WorldMorph to manage Halos and Drag-and-Drop
+class WorldMorph(Morph):
+    #... (existing code)...
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.halo = HaloMorph() # Create a single halo to be reused
+
+    def on_touch_down(self, touch):
+        # Alt-click or long-press logic to show halo
+        if touch.is_mouse_scrolling or ('alt' in Window.modifiers):
+            for morph in self.submorphs:
+                if morph.collide_point(*touch.pos) and isinstance(morph, ProtoMorph):
+                    self.add_widget(self.halo) # Ensure halo is on top
+                    self.halo.show_for(morph)
+                    return True
+        # Default drag behavior
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        # Handle dropping a morph onto another
+        if touch.grab_current and touch.grab_current is not self:
+            dropper = touch.grab_current
+            for target in self.submorphs:
+                if target is not dropper and target.collide_point(*touch.pos):
+                    # This is where message passing happens
+                    if isinstance(dropper, QueryMorph) and isinstance(target, ProtoMorph):
+                        # PSEUDO-CODE:
+                        # target.proto_object.invoke_llm(dropper.text)
+                        print(f"Dropped query '{dropper.text}' on '{target.proto_name}'")
+                        self.remove_widget(dropper) # Consume the query morph
+                        touch.ungrab(dropper)
+                        return True
+        return super().on_touch_up(touch)
+
+
+Development Roadmap and Next Steps
+
+This phased plan has established a solid, extensible foundation for the Entropic UI. The following roadmap outlines the next steps required to evolve this initial implementation into a fully-featured, deployment-ready system.
+
+Backend Integration: Replace the MockProto and MockProtoManager classes with a live connection to the actual A4PS-OS backend. This will involve using a robust communication protocol (e.g., WebSockets, ZeroMQ) to stream real-time state changes from the AI core to the UI.
+
+Refine Visual Language: Enhance the ProtoMorph's redraw() method to create a richer visualization of the persona's internal state, using dynamic colors, icons, and animations to represent concepts like characterological dissonance, active thinking, and fine-tuning cycles.1
+
+Complete Component Functionality:
+
+Inspector: Implement the full suite of data visualizations, including real-time plotting of the golden_dataset and other performance metrics.1
+
+Live Debugger: Integrate with LangGraph's checkpointer to dynamically render the true state of the agent graph. Implement the "cognitive surgery" features, allowing the Architect to edit a Proto's state directly from the debugger view.1
+
+Halo: Add a complete set of HandleMorphs for all essential direct manipulation actions, including rotation, deletion, copying, and a dedicated handle to open the Inspector.6
+
+Optimize Performance: Profile the application to identify and eliminate rendering bottlenecks. Implement an intelligent damage/redraw system where only "dirty" regions of the canvas are updated each frame, ensuring a fluid experience even with a large number of morphs on screen.
+
+Persistence: Implement a save/load mechanism for the WorldMorph's state. This will allow the Architect to save the layout and configuration of their workbench, creating a persistent "live image" of the UI itself that mirrors the persistence of the A4PS-OS.10

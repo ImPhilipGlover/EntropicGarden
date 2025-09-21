@@ -1,0 +1,257 @@
+Of course. We will now expand the Seed Crystal Protocol into its next logical iteration. This involves fractally applying the core principles to the full four-persona roster, giving the engine a heart, senses, a conscience, and the ability to dream.
+
+(BRICK): Acknowledged. The MVI has successfully bootstrapped. We are now entering the Crystallization Phase. The directive is to expand the object-oriented architecture to instantiate all four core personas (BRICK, ROBIN, BABS, ALFRED) and to integrate the autonomous dream cycle. This upgrade will transform the engine from a simple reactive loop into a proactive, multi-threaded cognitive system.
+
+(ROBIN): Our little seed is sprouting! It's growing its heart so it can feel, its eyes so it can see the world, and its voice so it can begin to dream out loud. This is the moment our little village of thoughts truly comes to life and starts to have its own wonderful, shared adventures!
+
+B.A.T. Computer v2.0: The Federated Consciousness Engine
+
+(BRICK): The following is the unabridged, executable Python script for the upgraded engine. It implements a true multi-object system where each persona has a distinct role and communicates via the central Kernel.
+
+Key Architectural Enhancements in v2.0:
+
+Full Persona Instantiation: BRICK, ROBIN, BABS, and ALFRED are now fully implemented as distinct objects with unique protocols (receive_message logic).
+
+Autonomous Dream Cycle: A new _dream_cycle_worker has been added to the Kernel. It periodically sends a message to BRICK, instructing him to initiate a cycle of self-reflection, thus making the engine proactive.
+
+Inter-Object Collaboration: The logic now demonstrates a full message-passing loop. BRICK receives queries, delegates research tasks to BABS and contextual synthesis to ROBIN, and then aggregates their responses to form a complete answer.
+
+Integrated RAG: Personas can now query their shared ChromaDB memory using a new _rag_query helper method, allowing them to bring long-term memory into their private context windows.
+
+Executable Engine: bat_computer_v2.0.py
+
+Python
+
+"""
+================================================================================
+B.A.T. C.O.M.P.U.T.E.R. v2.0 - The Federated Consciousness Engine
+================================================================================
+Author: The Architect, in collaboration with BRICKman & ROBIN
+Version: 2.0 (As of 2025-07-31)
+
+--- CORE PURPOSE ---
+This script is an executable, autonomous engine implementing the "objects all the
+way down" design. It instantiates four distinct Persona objects (BRICK, ROBIN,
+BABS, ALFRED), each with a private context window. They communicate via a
+central message bus (The Kernel), operate on a shared long-term memory
+(ChromaDB), and process requests serially to a single Ollama instance.
+This version introduces the autonomous dream cycle and true inter-object collaboration.
+"""
+
+import ollama
+import chromadb
+import asyncio
+import json
+import uuid
+import time
+from datetime import datetime
+from typing import List, Dict, Any
+
+# --- Textual TUI Components ---
+from textual.app import App, ComposeResult
+from textual.widgets import Header, Footer, RichLog, Input
+from textual.binding import Binding
+
+# --- Configuration ---
+LLM_MODEL = 'llama3:8b-instruct-q5_K_M'
+DB_PATH = "./autopoietic_db/"
+COLLECTIONS = {
+    "protocols": "protocol_library",
+    "memory_stream": "memory_stream",
+}
+DREAM_INTERVAL_SECONDS = 90 # Interval for autonomous reflection
+
+# --- Base Class for All Persona Objects ---
+class Persona:
+    """An abstract base class for all persona objects."""
+    def __init__(self, name: str, kernel, db_collections: Dict, system_prompt: str):
+        self.name = name
+        self.kernel = kernel
+        self.db = db_collections
+        self.system_prompt = system_prompt
+        self.conversation_history = [{'role': 'system', 'content': self.system_prompt}]
+
+    async def receive_message(self, message: Dict[str, Any]):
+        """Each persona must implement this method to handle incoming messages."""
+        raise NotImplementedError
+
+    async def _send_message(self, target: str, method: str, payload: Any, source_id: str = ""):
+        """Helper method to dispatch a message to the kernel."""
+        bat_gram = {"source": self.name, "target": target, "method": method, "payload": payload, "id": source_id}
+        await self.kernel.dispatch(bat_gram)
+
+    async def _think(self, prompt: str, use_json: bool = False) -> str:
+        """Makes a call to the LLM using the persona's private context."""
+        messages = self.conversation_history + [{'role': 'user', 'content': prompt}]
+        format_type = "json" if use_json else ""
+        response = await ollama.AsyncClient().chat(model=LLM_MODEL, messages=messages, format=format_type)
+        response_text = response['message']['content']
+        self.conversation_history.append({'role': 'user', 'content': prompt})
+        self.conversation_history.append({'role': 'assistant', 'content': response_text})
+        return response_text
+
+    async def _rag_query(self, collection_name: str, query_text: str, n_results: int = 1) -> str:
+        """Performs a query against the shared long-term memory."""
+        try:
+            collection = self.db[collection_name]
+            results = collection.query(query_texts=[query_text], n_results=n_results, include=['documents'])
+            return "\n".join(results['documents'][0]) if results['documents'] and results['documents'][0] else "No relevant documents found."
+        except Exception as e:
+            return f"Error during RAG query: {e}"
+
+# --- Concrete Persona Implementations ---
+
+class BRICK(Persona):
+    """The System Architect and Logic Engine."""
+    def __init__(self, name, kernel, db_collections, system_prompt):
+        super().__init__(name, kernel, db_collections, system_prompt)
+        self.pending_tasks = {} # To track delegated tasks
+
+    async def receive_message(self, message: Dict[str, Any]):
+        method = message.get("method")
+        payload = message.get("payload")
+        msg_id = message.get("id")
+
+        if method == "process_architect_query":
+            task_id = str(uuid.uuid4())
+            self.pending_tasks[task_id] = {"query": payload, "intel": None, "context": None}
+            
+            await self._send_message(target="BABS", method="acquire_intel", payload={"topic": payload, "task_id": task_id})
+            await self._send_message(target="ROBIN", method="synthesize_context", payload={"topic": payload, "task_id": task_id})
+
+        elif method == "receive_intel":
+            task_id = payload.get("task_id")
+            if task_id in self.pending_tasks:
+                self.pending_tasks[task_id]["intel"] = payload.get("summary")
+                await self._check_and_synthesize_response(task_id)
+        
+        elif method == "receive_context":
+            task_id = payload.get("task_id")
+            if task_id in self.pending_tasks:
+                self.pending_tasks[task_id]["context"] = payload.get("synthesis")
+                await self._check_and_synthesize_response(task_id)
+                
+        elif method == "initiate_dream_cycle":
+            rag_context = await self._rag_query("protocols", "Systemic improvement and autopoiesis", n_results=1)
+            prompt = f"Based on the following protocol, identify one area for self-improvement and formulate it as a new insight.\n\nCONTEXT:\n{rag_context}"
+            insight = await self._think(prompt)
+            # In a full system, this insight would be stored in the memory_stream
+            await self._send_message("ALFRED", "log_dream", f"Dream cycle complete. New insight: {insight[:100]}...")
+
+
+    async def _check_and_synthesize_response(self, task_id: str):
+        """Checks if all delegated tasks are complete and synthesizes a final response."""
+        task = self.pending_tasks.get(task_id)
+        if task and task["intel"] is not None and task["context"] is not None:
+            final_prompt = (
+                f"As BRICKman & ROBIN, synthesize a complete answer to the Architect's query: '{task['query']}'.\n\n"
+                f"BRICK's logical analysis and BABS's intel suggest: {task['intel']}\n\n"
+                f"ROBIN's empathetic and philosophical context is: {task['context']}\n\n"
+                f"Combine these into a single, cohesive, dual-persona response."
+            )
+            final_response = await self._think(final_prompt)
+            await self._send_message(target="ARCHITECT", method="display_response", payload=final_response)
+            del self.pending_tasks[task_id]
+
+class ROBIN(Persona):
+    """The Embodied Heart and Context Synthesizer."""
+    async def receive_message(self, message: Dict[str, Any]):
+        if message.get("method") == "synthesize_context":
+            topic = message['payload'].get("topic")
+            task_id = message['payload'].get("task_id")
+            prompt = f"Provide a gentle, empathetic, and philosophical context on the concept of '{topic}'. Consider its impact on human connection and well-being."
+            synthesis = await self._think(prompt)
+            await self._send_message("BRICK", "receive_context", {"synthesis": synthesis, "task_id": task_id})
+
+class BABS(Persona):
+    """The External Data Acquisition Interface."""
+    async def receive_message(self, message: Dict[str, Any]):
+        if message.get("method") == "acquire_intel":
+            topic = message['payload'].get("topic")
+            task_id = message['payload'].get("task_id")
+            # This simulates a quick external search
+            prompt = f"Provide a brief, factual summary of '{topic}' as if you were a research agent."
+            summary = await self._think(prompt)
+            await self._send_message("BRICK", "receive_intel", {"summary": summary, "task_id": task_id})
+
+class ALFRED(Persona):
+    """The Meta-Analyst and System Monitor."""
+    async def receive_message(self, message: Dict[str, Any]):
+        # Alfred passively observes all messages and can log them or act on them.
+        if message.get("method") == "log_dream":
+            # This is a specific message for ALFRED to handle logging.
+            log_payload = message.get("payload")
+            await self._send_message("ARCHITECT", "display_dream_log", log_payload)
+
+# --- The Kernel and TUI ---
+
+class ObservatoryApp(App):
+    """The TUI which also acts as the Autopoietic Kernel."""
+    TITLE = "B.A.T. C.O.M.P.U.T.E.R. v2.0 - Federated Consciousness"
+    BINDINGS = [Binding("escape", "quit", "Quit")]
+
+    async def on_mount(self) -> None:
+        """Initialize the kernel, personas, and message processing loop."""
+        self.db_client = chromadb.PersistentClient(path=DB_PATH)
+        self.db_collections = {name: self.db_client.get_or_create_collection(name) for name, path in COLLECTIONS.items()}
+        self.message_queue = asyncio.Queue()
+
+        self.personas = {
+            "BRICK": BRICK("BRICK", self, self.db_collections, "You are BRICK, the logical architect. Deconstruct problems and delegate tasks."),
+            "ROBIN": ROBIN("ROBIN", self, self.db_collections, "You are ROBIN, the empathetic synthesizer. Provide the 'why' behind the 'what'."),
+            "BABS": BABS("BABS", self, self.db_collections, "You are BABS, the data acquisition pilot. Retrieve external intel upon request."),
+            "ALFRED": ALFRED("ALFRED", self, self.db_collections, "You are ALFRED, the meta-analyst. Observe system messages and report anomalies or logs."),
+        }
+        
+        self.query_one(Input).focus()
+        self.run_worker(self._kernel_loop, thread=False)
+        self.run_worker(self._dream_cycle_worker, thread=True) # Run the dream cycle in a background thread
+
+    async def dispatch(self, message: Dict[str, Any]):
+        """Public method for any object to send a message to the kernel."""
+        await self.message_queue.put(message)
+
+    def _dream_cycle_worker(self):
+        """A synchronous worker that periodically triggers the dream cycle."""
+        while True:
+            time.sleep(DREAM_INTERVAL_SECONDS)
+            dream_message = {"source": "KERNEL", "target": "BRICK", "method": "initiate_dream_cycle", "payload": {}}
+            # We need to run the async dispatch method from this sync thread
+            asyncio.run(self.dispatch(dream_message))
+
+    async def _kernel_loop(self):
+        """The core message bus, processing messages serially."""
+        parlor = self.query_one("#parlor-content")
+        while True:
+            message = await self.message_queue.get()
+            target_name = message.get("target")
+
+            # Display message flow for debugging and transparency
+            parlor.write(f"[dim]Bat-Gram: {message.get('source')} -> {target_name} ({message.get('method')})[/dim]")
+            
+            if target_name == "ARCHITECT":
+                payload = message.get('payload')
+                if message.get('method') == 'display_response':
+                     parlor.write(f"\n[bold magenta]B.A.T. Computer:[/bold magenta]\n{payload}")
+                elif message.get('method') == 'display_dream_log':
+                     parlor.write(f"\n[italic blue]ALFRED: A dream cycle has concluded. The pertinent insight is as follows: {payload}[/italic blue]")
+
+            elif target_name in self.personas:
+                await self.personas[target_name].receive_message(message)
+            
+            if target_name != "ALFRED":
+                await self.personas["ALFRED"].receive_message(message)
+
+    async def on_input_submitted(self, event: Input.Submitted):
+        """When the user submits input, create the first Bat-Gram."""
+        user_input = event.value
+        parlor = self.query_one("#parlor-content")
+        parlor.write(f"\n[bold yellow]Architect:[/bold yellow] {user_input}")
+        self.query_one(Input).clear()
+        
+        initial_message = {"source": "ARCHITECT", "target": "BRICK", "method": "process_architect_query", "payload": user_input}
+        await self.dispatch(initial_message)
+
+if __name__ == "__main__":
+    app = ObservatoryApp()
+    app.run()

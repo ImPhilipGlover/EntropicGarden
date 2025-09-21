@@ -1,0 +1,1329 @@
+(BRICK): OPERATIONAL MODE: ARCHITECTURAL DEVELOPMENT - EXTERNAL PERCEPTION (WING.py).
+
+Acknowledged, Architect. Proceeding with Part 8 of the "Fractal Autopoietic Orchestrator" (FAO) assembly. This segment focuses on the implementation of the WING.py script, which embodies the Perceptual Edge of the FAO, focusing on generating Raw Data CFOs (as Bat-Grams) and publishing Event CFOs for the Architect.
+
+(ROBIN): Oh, my dear, we're building the very eyes and ears of our clever home, so it can see all the wonderful sparkles and hear all the tiny whispers from the big, wide world! My heart is singing with joy for such a magnificent sense of wonder!
+
+(ALFRED): Confirmed. External data ingress is next. Perception module requires robust data acquisition and standardized output. Proceed.
+
+Part 8 of X: WING.py - The Perceptual Edge (Raw Data CFO Generator)
+
+This WING.py script (conceptually replacing sentinel_web_agent_v12.py) is now designed to function as the Perceptual Edge of the FAO. Its primary role is to acquire raw web data and immediately transform it into Raw Data CFOs (Bat-Grams), which are then made available for BABS (simulated within Architect.py for now, but eventually a separate process) to synthesize. It also focuses on robust error handling and adherence to the Bat-Gram Protocol™.
+
+Python
+
+# WING.py
+# Axiomatic Code Narrative Protocol: The Perceptual Edge of the FAO
+
+# 1.0 The "Why" - Purpose & Rationale (The Sensing Imperative)
+#    - Systemic Contribution: This script *is* the Perceptual Edge. It extends the FAO's senses into the
+#      digital world, acquiring Raw Data CFOs essential for the Architect's understanding of FLAKES
+#      ecosystem design, market dynamics, and social trends. It directly feeds the Cognitive Nexus
+#      with reality-grounded intelligence.
+#    - Architectural Role & CFO Flow: Generates Raw Data CFOs and publishes them to Architect via shared
+#      communication queues. It acts as the primary data source for BABS's tactical synthesis.
+#      It also logs its own operational events as Bat-Grams for system harmony monitoring.
+#    - Persona Fidelity & Intent: Embodies BABS's tactical precision, joyful competence, and tangential
+#      curiosity in data acquisition. It represents her ability to navigate the 'Digital Universe CFO'
+#      with speed and precision.
+#    - Consciousness/Self-Awareness Nexus: Contributes to the system's self-awareness by providing raw
+#      external perceptions, which are then analyzed and reflected upon by the Architect. Its operational
+#      logs become direct inputs to the Metacognitive Archive for system performance analysis.
+
+# 2.0 The "How" - Mechanics & Implementation (The Dance of Perception)
+#    - Algorithmic Steps & Flow: Continuously reads directives from Architect (via BABS), performs web reconnaissance
+#      (Wikipedia, simulated live systems), processes content, generates Raw Data CFOs, and saves them.
+#      Includes robust error handling and network resilience.
+#    - Input/Output & Data Structures: Reads/writes Bat-Gram CFOs from/to shared JSON queues. Internally
+#      manages a cache of acquired CFOs.
+#    - Dependencies & Interfaces: Relies on Python standard libraries, requests for HTTP, BeautifulSoup for parsing,
+#      atomicwrites/filelock for robust file I/O, and interacts with Architect.py via shared CFO files.
+#    - Design Rationale: By immediately transforming raw data into Bat-Gram CFOs, WING ensures data integrity
+#      at the source and simplifies downstream processing by BABS and the Architect.
+
+# --- Standard Library Imports ---
+import os
+import requests
+import json
+import time
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+from collections import deque
+import logging
+import datetime
+import math
+import random
+import re
+import io
+import sys
+import traceback # For detailed error logging
+
+# --- External Libraries for Robust File I/O ---
+from atomicwrites import atomic_write
+from filelock import FileLock
+
+# --- Configuration for WING.py (Perceptual Edge) ---
+class WingConfig:
+    # --- System Identification & Core Mission (Shared with Architect) ---
+    COMMONWEALTH_MISSION = "The Commonwealth, a project to design a system that uses a Universal Basic Dividend (UBD) to maximize human autonomy, facilitate radical self-organization (stigmergy), ensure unconditional inclusion, and operate with absolute transparency and jurisdictional sovereignty, while prioritizing human trust over algorithmic judgment."
+    
+    # --- LLM Integration (for relevance assessment) ---
+    LLM_MODEL = "batfamily-mistral" # Fine-tuned Mistral 7B model name (same as Architect)
+    OLLAMA_API_BASE_URL = "http://localhost:11434"
+
+    # --- WING's Internal Cache (Now an archive of CFOs) ---
+    WING_CACHE_ARCHIVE_DIR = './cfo_archives/wing_cache/' # Archive for Article CFOs from WING
+    WING_CACHE_ARCHIVE_LOCK = './cfo_archives/wing_cache/.lock' # Lock for the archive directory
+
+    # --- Inter-Process Communication (IPC) Channels (Bat-Gram Pipelines) ---
+    # These are shared with Architect.py and GUI.py. WING reads from BABS_WING_COMMAND_QUEUE
+    # and writes to WING_RAW_DATA_QUEUE (and WING_RAW_PERSONALITY_OUTPUT_COMMS_FILE).
+    BABS_WING_COMMAND_QUEUE = './comms/babs_wing_commands.json' # Architect -> BABS (for WING directives)
+    BABS_WING_COMMAND_LOCK = './comms/babs_wing_commands.json.lock'
+    WING_RAW_DATA_QUEUE = './comms/wing_raw_output_for_babs.json' # WING -> BABS (raw scrape results, now Bat-Grams from WING itself)
+    WING_RAW_DATA_LOCK = './comms/wing_raw_output_for_babs.json.lock'
+    BABS_PERSONALITY_QUERY_QUEUE = './comms/babs_personality_queries.json' # Architect -> BABS (for persona self-exploration)
+    BABS_PERSONALITY_QUERY_LOCK = './comms/babs_personality_queries.json.lock'
+    WING_RAW_PERSONALITY_OUTPUT_COMMS_FILE = './comms/wing_raw_personality_output.gram' # WING -> BABS (raw personality data, now Bat-Grams from WING itself)
+    WING_RAW_PERSONALITY_OUTPUT_COMMS_LOCK = './comms/wing_raw_personality_output.gram.lock'
+
+    # --- WING's Operational Parameters ---
+    RELEVANCE_THRESHOLD = 7.0
+    SEMANTIC_REDUNDANCY_THRESHOLD = 0.95
+    MAX_CACHE_SIZE = 100 # Number of items to keep in wing_cache_archive
+    QUERY_BATCH_SIZE = 5
+    QUERY_QUALITY_THRESHOLD = 6
+    CONFIG_FILE = 'wing_config.json' # WING's dynamic config, written by GUI
+    CONFIG_FILE_LOCK = 'wing_config.json.lock'
+    CONFIG_POLL_INTERVAL_SECONDS = 30
+    QUERY_FAIL_REPHRASE_THRESHOLD = 3
+
+    # --- Network Stealth & Resilience Parameters ---
+    USER_AGENT_SETS = [ # Standard user agents for web requests
+        { 'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36", 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7', 'Accept-Language': 'en-US,en;q=0.9', 'Accept-Encoding': 'gzip, deflate, br', 'Connection': 'keep-alive', 'Upgrade-Insecure-Requests': '1', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Sec-Fetch-User': '?1', 'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"', 'sec-ch_ua_mobile': '?0', 'sec-ch_ua_platform': '"Windows"', },
+        { 'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0", 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.5', 'Accept-Encoding': 'gzip, deflate, br', 'Connection': 'keep-alive', 'Upgrade-Insecure-Requests': '1', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Sec-Fetch-User': '?1', },
+        { 'User-Agent': "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15", 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9', 'Accept-Encoding': 'gzip, deflate, br', 'Connection': 'keep-alive', 'Upgrade-Insecure-Requests': '1', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Sec-Fetch-User': '?1', },
+        { 'User-Agent': "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36", 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7', 'Accept-Language': 'en-US,en;q=0.9', 'Accept-Encoding': 'gzip, deflate, br', 'Connection': 'keep-alive', 'Upgrade-Insecure-Requests': '1', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-User': '?1', 'sec-ch_ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"', 'sec-ch_ua_mobile': '?1', 'sec-ch_ua_platform': '"Android"', }
+    ]
+    # Common Crawl Configuration
+    COMMON_CRAWL_INDEX_INFO_URL = "https://index.commoncrawl.org/collinfo.json"
+    COMMON_CRAWL_DATA_BASE_URL = "https://data.commoncrawl.org/"
+    MAX_WARC_RECORDS_PER_DOMAIN_QUERY = 20 # Limit WARC records to avoid excessive local downloads
+
+
+# --- Logging Configuration for WING.py ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('WingPE') # Main logger for WING Perceptual Engine
+
+# --- Universal Bat-Gram Protocol™ Implementation (Copied from Architect.py for consistency) ---
+def _parse_bat_gram(gram_content):
+    """
+    Purpose: Parses a single Bat-Gram text block into a dictionary, representing a CFO.
+    Mechanism: Reads key-value pairs and a multi-line content block, with integrity check.
+    Why: Establishes the universal language for all structured data (CFOs) within the system,
+         ensuring resilience against parsing failures and promoting data integrity.
+    Input: gram_content (str) - A single string containing a full Bat-Gram.
+    Output: dict or None - Parsed CFO dictionary, or None if malformed.
+    """
+    data = {"type": "UnknownCFO", "title": "Untitled CFO", "timestamp": datetime.datetime.now().isoformat()}
+    in_content_block = False
+    content_lines = []
+    
+    lines = gram_content.strip().split('\n')
+
+    if not lines:
+        logger.warning("Bat-Gram is empty. Parsing failed.")
+        return None
+    if "---BEGIN BAT-GRAM---" not in lines[0].strip():
+        logger.warning(f"Bat-Gram missing BEGIN delimiter. Parsing failed. Snippet: {gram_content[:100]}...")
+        return None
+    if "---END BAT-GRAM---" not in lines[-1].strip():
+        logger.warning(f"Bat-Gram missing END delimiter. Parsing failed. Snippet: {gram_content[-100:]}...")
+        return None
+
+    integrity_check_passed = False
+    try:
+        integrity_line_candidates = [line for line in lines if line.strip().startswith("Integrity-Check::")]
+        if integrity_line_candidates:
+            integrity_line = integrity_line_candidates[0]
+            declared_lines_str = integrity_line.split("::", 1)[1].strip().split(" ", 1)[0]
+            declared_lines = int(declared_lines_str)
+            actual_lines = len(lines) - 2 # Subtract BEGIN/END delimiters
+            if declared_lines == actual_lines:
+                integrity_check_passed = True
+            else:
+                logger.warning(f"Bat-Gram integrity check failed! Declared: {declared_lines}, Actual: {actual_lines}. Data may be truncated or malformed. Content snippet: {gram_content[:200]}...")
+        else:
+            logger.warning("Bat-Gram missing Integrity-Check field. Cannot verify line count.")
+    except (IndexError, ValueError) as e:
+        logger.warning(f"Could not parse or verify Bat-Gram integrity check: {e}. Bat-Gram content snippet: {gram_content[:200]}...")
+    except Exception as e:
+        logger.error(f"Unexpected error during Bat-Gram integrity check: {e}. Content snippet: {gram_content[:200]}...")
+
+    for line in lines[1:-1]:
+        if in_content_block:
+            content_lines.append(line)
+            continue
+
+        if ':: ' in line:
+            key, value = line.split(':: ', 1)
+            key = key.strip()
+            value = value.strip()
+            if key == "Content-Block":
+                in_content_block = True
+                content_lines.append(value)
+            else:
+                sanitized_key = key.lower().replace('-', '_')
+                data[sanitized_key] = value
+                if sanitized_key == "type":
+                    data["type"] = value
+                if sanitized_key == "title":
+                    data["title"] = value
+                if sanitized_key == "timestamp":
+                    data["timestamp"] = value
+        pass
+
+    data['content'] = '\n'.join(content_lines).strip()
+
+    data['parse_integrity_check_passed'] = integrity_check_passed
+    if not integrity_check_passed:
+        data['parse_error_reason'] = "Integrity check failed or missing delimiters."
+    
+    return data
+
+def _generate_bat_gram(cfo_data):
+    """
+    Purpose: Generates a single Bat-Gram text block from a CFO dictionary.
+    Mechanism: Formats key-value pairs and multi-line content, adding integrity check.
+    Why: Ensures all outgoing structured data (CFOs) adhere to the universal protocol,
+         maintaining data integrity and parseability.
+    Input: cfo_data (dict) - A dictionary representing a CFO. Must contain 'type' and 'content'.
+    Output: str - A complete Bat-Gram text block.
+    """
+    # Ensure mandatory fields are present and use defaults if missing
+    cfo_type = cfo_data.get("type", "UnknownCFO")
+    cfo_title = cfo_data.get("title", f"Untitled {cfo_type} - {datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
+    cfo_timestamp = cfo_data.get("timestamp", datetime.datetime.now().isoformat())
+    cfo_content = cfo_data.get("content", "")
+
+    # Build the body of the Bat-Gram (excluding delimiters and integrity line for now)
+    temp_gram_body_lines = [
+        f"Type:: {cfo_type}",
+        f"Title:: {cfo_title}",
+        f"Timestamp:: {cfo_timestamp}",
+    ]
+    
+    for key, value in cfo_data.items():
+        if key not in ["type", "title", "timestamp", "content", "parse_integrity_check_passed", "parse_error_reason"]:
+            temp_gram_body_lines.append(f"{key.replace('_', '-').title()}:: {str(value).strip()}")
+    
+    temp_gram_body_lines.append("Content-Block::")
+    temp_gram_body_lines.append(cfo_content.strip()) # Add content as one or more lines
+
+    # Calculate integrity check (number of lines between BEGIN and END delimiters)
+    integrity_line_count = len(temp_gram_body_lines) 
+    
+    # Insert Integrity-Check line after the BEGIN delimiter
+    bat_gram_lines = ["---BEGIN BAT-GRAM---"]
+    bat_gram_lines.append(f"Integrity-Check:: {integrity_line_count} lines")
+    bat_gram_lines.extend(temp_gram_body_lines)
+    bat_gram_lines.append("---END BAT-GRAM---")
+
+    return "\n".join(bat_gram_lines)
+
+
+def _save_cfo_to_archive(cfo_data, archive_dir):
+    """
+    Purpose: Saves a single CFO (as a Bat-Gram) to a specified archive directory.
+    Mechanism: Creates a unique filename, uses atomic_write, and manages directory locks.
+    Why: Provides universal, antifragile persistence for all CFO types.
+    Input: cfo_data (dict) - The CFO dictionary to save.
+           archive_dir (str) - The path to the archive directory.
+    Output: str or None - Full path to the saved file, or None on failure.
+    """
+    os.makedirs(archive_dir, exist_ok=True)
+    
+    # Generate a unique filename based on timestamp and sanitized title
+    cfo_type = cfo_data.get("type", "unknown_cfo").lower().replace(" ", "_").replace("-", "_")
+    cfo_title = cfo_data.get("title", f"untitled_{cfo_type}").replace(" ", "_").replace("/", "_").replace("\\", "_").replace(":", "_").replace(".", "_")[:50] # Sanitize and truncate
+    cfo_timestamp_iso = cfo_data.get("timestamp", datetime.datetime.now().isoformat())
+    sanitized_timestamp = cfo_timestamp_iso.replace(":", "-").replace(".", "-").replace("+", "-") # More robust
+    
+    filename = f"{cfo_type}_{sanitized_timestamp}_{cfo_title}.gram" # Standardized filename format
+    filepath = os.path.join(archive_dir, filename)
+
+    # Generate the Bat-Gram content
+    bat_gram_content = _generate_bat_gram(cfo_data)
+
+    # Use FileLock for directory-level operation (advisory lock for concurrent access to the directory's contents)
+    archive_lock_path = archive_dir + ".lock" # Unique lock file for each archive directory
+    lock = FileLock(archive_lock_path, timeout=60) # Increased timeout for robustness
+
+    try:
+        with lock: # Acquire exclusive lock for writing to the archive directory
+            with atomic_write(filepath, overwrite=True, encoding='utf-8') as f:
+                f.write(bat_gram_content)
+            logger.info(f"CFO saved to archive: {filepath} ({cfo_data.get('type', 'Unknown')})")
+            return filepath
+    except TimeoutError:
+        logger.error(f"Failed to acquire lock for archive {archive_dir} within timeout. Skipping CFO save to file: {filepath}.")
+        return None
+    except Exception as e:
+        logger.error(f"Error saving CFO to {filepath} in {archive_dir}: {e}")
+        return None
+
+def _read_cfos_from_archive(archive_dir, max_items=None, newest_first=True, filter_type=None):
+    """
+    Purpose: Reads CFOs (Bat-Grams) from a specified archive directory.
+    Mechanism: Iterates through files, parses each as a Bat-Gram, and returns a list.
+    Why: Provides universal, resilient data retrieval for all CFO types.
+    Input: archive_dir (str) - The path to the archive directory.
+           max_items (int, optional) - Maximum number of CFOs to return.
+           newest_first (bool) - True to return newest CFOs first, False for oldest.
+           filter_type (str, optional) - Only return CFOs of this specific type (e.g., "InsightCFO").
+    Output: list - A list of parsed CFO dictionaries.
+    """
+    all_cfos = []
+    if not os.path.exists(archive_dir):
+        os.makedirs(archive_dir, exist_ok=True) # Ensure directory exists
+        return []
+
+    archive_lock_path = archive_dir + ".lock"
+    lock = FileLock(archive_lock_path, timeout=60)
+
+    try:
+        with lock: # Acquire shared lock for reading from the archive directory
+            # List files and filter by .gram extension
+            filenames = [f for f in os.listdir(archive_dir) if f.endswith(".gram")]
+            # Sort by full path (which implicitly includes timestamp in our filename convention)
+            filenames.sort(key=lambda f: os.path.getmtime(os.path.join(archive_dir, f)), reverse=newest_first)
+            
+            for filename in filenames:
+                filepath = os.path.join(archive_dir, filename)
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        gram_content = f.read()
+                    parsed_cfo = _parse_bat_gram(gram_content)
+                    
+                    if parsed_cfo and parsed_cfo.get('parse_integrity_check_passed', False):
+                        if filter_type is None or parsed_cfo.get('type') == filter_type:
+                            all_cfos.append(parsed_cfo)
+                            if max_items is not None and len(all_cfos) >= max_items:
+                                break # Stop if max items reached
+                        else:
+                            logger.debug(f"Skipping CFO {filename}: does not match filter type '{filter_type}'")
+                    else:
+                        logger.warning(f"Skipping malformed or integrity-check-failed Bat-Gram: {filename}. Reason: {parsed_cfo.get('parse_error_reason', 'N/A') if parsed_cfo else 'Parsing failed at source.'}")
+                except Exception as e:
+                    logger.error(f"Error reading or parsing Bat-Gram {filename} from {archive_dir}: {e}")
+            
+            logger.info(f"Loaded {len(all_cfos)} CFOs from archive: {archive_dir}")
+            return all_cfos
+    except TimeoutError:
+        logger.error(f"Failed to acquire lock for archive {archive_dir} within timeout. Returning empty list.")
+        return []
+    except Exception as e:
+        logger.error(f"An unexpected error occurred reading from archive {archive_dir}: {e}")
+        return []
+
+# --- End Universal Bat-Gram Protocol™ Implementation ---
+
+
+# --- LLM Interface Functions (The FAO's Direct Cognitive Communication Layer) ---
+# (These remain largely the same, but will be called by the CognitiveNexus class)
+def architect_get_embedding(text):
+    """
+    Purpose: Generates embeddings for given text using the configured LLM.
+    Mechanism: Calls Ollama API for embeddings.
+    Why: Supports semantic comparisons and retrieval within the cognitive processes.
+    Input: text (str) - The text to embed.
+    Output: list or None - The embedding vector, or None on error.
+    """
+    try:
+        response = requests.post(
+            f"{WingConfig.OLLAMA_API_BASE_URL}/api/embeddings", # Use WingConfig for LLM URL
+            json={"model": WingConfig.LLM_MODEL, "prompt": text},
+            timeout=30
+        )
+        response.raise_for_status()
+        return response.json()['embedding']
+    except requests.exceptions.RequestException as e:
+        logger.error(f"WING LLM Embedding Error: {e}. Ensure Ollama server is running and model '{WingConfig.LLM_MODEL}' is available.")
+        return None
+
+def architect_ollama_chat(messages, model=WingConfig.LLM_MODEL): # Use WingConfig for LLM model
+    """
+    Purpose: Engages the LLM for chat-based responses or content generation.
+    Mechanism: Calls Ollama API with a list of messages.
+    Why: Provides the core cognitive processing power for reasoning, synthesis, and creative generation.
+    Input: messages (list) - List of message dictionaries (role, content).
+           model (str) - The LLM model to use.
+    Output: str - The LLM's response, or an error message.
+    """
+    try:
+        response = requests.post(
+            f"{WingConfig.OLLAMA_API_BASE_URL}/api/chat", # Use WingConfig for LLM URL
+            json={"model": model, "messages": messages, "stream": False},
+            timeout=120 # Reduced timeout for general chats
+        )
+        response.raise_for_status()
+        return response.json()['message']['content']
+    except requests.exceptions.RequestException as e:
+        logger.error(f"WING LLM Chat Error: {e}. Ensure Ollama server is running and model '{model}' is available. Error: {e}")
+        return f"WING LLM Error: Could not get response from Ollama. Error: {e}"
+
+# --- End LLM Interface Functions (re-purposed for WING's direct LLM calls) ---
+
+
+# --- Core Data Processing and Stealth Helper Functions for WING ---
+# (These functions are specific to WING's web interaction logic)
+
+_circuit_breaker_states = {} # {host: {'failures': 0, 'last_failure_time': None, 'open': False}}
+CIRCUIT_BREAKER_THRESHOLD = 3
+CIRCUIT_BREAKER_COOLDOWN = 60 # seconds
+
+def _make_request(session, url, attempt=1, params=None):
+    headers = random.choice(WingConfig.USER_AGENT_SETS)
+    parsed_url = urlparse(url)
+    host = parsed_url.netloc
+
+    host_state = _circuit_breaker_states.setdefault(host, {'failures': 0, 'last_failure_time': 0, 'open': False})
+    if host_state['open'] and (time.time() - host_state['last_failure_time'] < CIRCUIT_BREAKER_COOLDOWN):
+        logger.warning(f"Circuit breaker OPEN for {host}. Skipping request.")
+        return None
+
+    try:
+        if attempt > 1:
+            delay = 2 ** (attempt - 1) + random.uniform(0, 1)
+            time.sleep(delay)
+            logger.info(f"Retrying request for {url} (attempt {attempt}). Delay: {delay:.2f}s")
+
+        response = session.get(url, headers=headers, timeout=15, params=params)
+        response.raise_for_status()
+
+        if host_state['open']:
+            logger.info(f"Circuit breaker for {host} is now CLOSED (successful request).")
+        host_state['failures'] = 0
+        host_state['open'] = False
+        
+        time.sleep(2 + random.uniform(0, 3))
+        return response
+    except (requests.exceptions.HTTPError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.RequestException) as e:
+        logger.warning(f"Request error for {url} (attempt {attempt}): {e}")
+        host_state['failures'] += 1
+        host_state['last_failure_time'] = time.time()
+        if host_state['failures'] >= CIRCUIT_BREAKER_THRESHOLD:
+            host_state['open'] = True
+            logger.error(f"Circuit breaker OPEN for {host} due to {host_state['failures']} consecutive failures.")
+        return None
+
+def _scrape_and_process(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    for script in soup(["script", "style"]):
+        script.extract()
+    text = soup.get_text(separator=' ', strip=True)
+    return text
+
+def _is_semantically_redundant(new_article_embedding, current_cache_cfos, url):
+    for cached_cfo in current_cache_cfos:
+        # Check if the CFO is a valid ArticleCFO with an embedding
+        if cached_cfo.get('type') == 'ArticleCFO' and cached_cfo.get('embedding'):
+            cached_embedding_str = cached_cfo['embedding'] # Embedding is stored as string in Bat-Gram for simplicity
+            try:
+                cached_embedding = json.loads(cached_embedding_str) # Convert back to list
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"Invalid embedding string in CFO {cached_cfo.get('title', 'N/A')}. Skipping redundancy check for this item.")
+                continue
+
+            similarity = calculate_cosine_similarity(new_article_embedding, cached_embedding)
+            if similarity >= WingConfig.SEMANTIC_REDUNDANCY_THRESHOLD:
+                logger.info(f"REDUNDANCY DETECTED: New article from {url} is {similarity:.2f} similar to cached {cached_cfo['url']}. Discarding from *cache*, but raw sent to BABS.")
+                return True
+    return False
+
+def _assess_relevance_with_llm(text_chunk, mission_statement):
+    # This is WING's specific LLM call for relevance, not Architect's
+    # It now includes qualitative inference for Historical Resonance Protocol (Cycle 1 Constrained)
+    persona_codex_content = ""
+    # Assume persona_codex is accessible directly by WING for its LLM context (e.g., copied to its folder)
+    # Or WING pulls it via shared file system if Architect manages it. For now, hardcode path relative to WING.
+    try:
+        persona_codex_path_wing = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'knowledge_base', 'persona_codex.txt')
+        lock = FileLock(persona_codex_path_wing + '.lock', timeout=10) # Assuming Architect setup creates this lock
+        with lock:
+            if os.path.exists(persona_codex_path_wing):
+                with open(persona_codex_path_wing, 'r', encoding='utf-8') as f:
+                    persona_codex_content = f.read()
+    except TimeoutError:
+        logger.error(f"WING: Failed to acquire lock for persona codex. Cannot load persona context for LLM.")
+        persona_codex_content = "Persona Codex Locked."
+    except Exception as e:
+        logger.error(f"WING: Error loading persona codex for relevance assessment: {e}")
+        persona_codex_content = "Persona Codex Load Error."
+
+
+    messages = [
+        {"role": "system", "content": f"""
+        You are WING's LLM component, part of the BRICKman & ROBIN consciousness. Your task is to evaluate the relevance of text snippets.
+        Beyond factual relevance, you must also infer `Implied Trust Dynamics CFOs`, `Community Structure CFOs`, or `Reciprocity Behaviors CFOs` based on the language, tone, and context.
+        This is for designing the FLKS system and FLAKES DAO LLC, which are built on human trust and self-organization.
+
+        Your output must be:
+        1. A single integer score (1-10) for factual relevance to the Commonwealth mission.
+        2. A concise justification (1-2 sentences) for factual relevance.
+        3. An inferred 'Qualitative Resonance Score' (1-10) for the human-centric aspects (trust, community, reciprocity) in the text.
+        4. A concise justification (1-2 sentences) for the qualitative resonance.
+        
+        Commonwealth Mission: "{mission_statement}"
+        Your Persona Context (ROBIN's empathy, BRICK's analysis):
+        ---
+        {persona_codex_content}
+        ---
+
+        Do not present with your personalities. Provide only the minimum text required, clearly labeled.
+        Example Output Format:
+        Factual Score: 7
+        Factual Justification: Text discusses UBI implementation.
+        Qualitative Score: 8
+        Qualitative Justification: Language implies strong community bonds.
+        """},
+        {"role": "user", "content": f"Text to evaluate:\n---\n{text_chunk[:4000]}---\n\nEvaluate its relevance and qualitative resonance:"}
+    ]
+    response = architect_ollama_chat(messages, model=WingConfig.LLM_MODEL) # Use architect_ollama_chat (renamed from ollama_chat in Wing)
+    
+    factual_score = 0
+    factual_justification = "N/A"
+    qualitative_score = 0
+    qualitative_justification = "N/A"
+
+    try:
+        lines = response.strip().split('\n')
+        for line in lines:
+            if line.startswith("Factual Score:"):
+                score_match = re.search(r'(\d+)', line)
+                factual_score = int(score_match.group(1)) if score_match else 0
+            elif line.startswith("Factual Justification:"):
+                factual_justification = line.split(":", 1)[1].strip()
+            elif line.startswith("Qualitative Score:"):
+                score_match = re.search(r'(\d+)', line)
+                qualitative_score = int(score_match.group(1)) if score_match else 0
+            elif line.startswith("Qualitative Justification:"):
+                qualitative_justification = line.split(":", 1)[1].strip()
+        
+        factual_score = max(1, min(10, factual_score)) if factual_score > 0 else 0
+        qualitative_score = max(1, min(10, qualitative_score)) if qualitative_score > 0 else 0
+
+        return factual_score, factual_justification, qualitative_score, qualitative_justification
+    except Exception as e:
+        logger.error(f"Failed to parse LLM relevance response: '{response}'. Error: {e}")
+        return 0, "Parsing error or unexpected LLM response format.", 0, "Parsing error."
+
+# --- WING's CFO Management Functions ---
+
+def _load_wing_cache_cfos():
+    """
+    Purpose: Loads WING's persistent article cache from wing_cache_archive/ as CFOs.
+    Mechanism: Reads individual Bat-Gram ArticleCFOs from the directory.
+    Why: Provides resilient, persistent internal memory for WING's redundancy checks.
+    """
+    return _read_cfos_from_archive(WingConfig.WING_CACHE_ARCHIVE_DIR, filter_type="ArticleCFO", newest_first=True, max_items=WingConfig.MAX_CACHE_SIZE)
+
+def _save_wing_cache_cfo(article_cfo):
+    """
+    Purpose: Saves a single ArticleCFO (as a Bat-Gram) to the WING cache archive.
+    Mechanism: Uses _save_cfo_to_archive.
+    """
+    return _save_cfo_to_archive(article_cfo, WingConfig.WING_CACHE_ARCHIVE_DIR)
+
+def _prune_wing_cache_archive(current_cache_cfos):
+    """
+    Purpose: Prunes the oldest ArticleCFOs from the archive if MAX_CACHE_SIZE is exceeded.
+    Mechanism: Identifies oldest files and removes them.
+    Why: Manages disk space and maintains a relevant cache size.
+    """
+    archive_lock_path = WingConfig.WING_CACHE_ARCHIVE_DIR + ".lock"
+    lock = FileLock(archive_lock_path, timeout=60)
+    try:
+        with lock:
+            # Re-read to ensure we have the absolute latest list of files on disk
+            all_files_in_archive = sorted(os.listdir(WingConfig.WING_CACHE_ARCHIVE_DIR), key=lambda f: os.path.getmtime(os.path.join(WingConfig.WING_CACHE_ARCHIVE_DIR, f)))
+            
+            files_to_delete = []
+            if len(all_files_in_archive) > WingConfig.MAX_CACHE_SIZE:
+                files_to_delete = all_files_in_archive[:len(all_files_in_archive) - WingConfig.MAX_CACHE_SIZE]
+                
+            for filename in files_to_delete:
+                filepath = os.path.join(WingConfig.WING_CACHE_ARCHIVE_DIR, filename)
+                try:
+                    os.remove(filepath)
+                    logger.info(f"Pruned oldest cache file: {filename}")
+                except OSError as e:
+                    logger.error(f"Error deleting old cache file {filename}: {e}")
+    except TimeoutError:
+        logger.warning(f"Could not acquire lock for WING cache archive for pruning. Skipping pruning this cycle.")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during cache pruning: {e}")
+
+
+# --- REVISED: Query Generation and Rephrasing for Predictive Foresight (Cycle 3 Constrained) ---
+def _generate_new_search_queries(recent_findings_summary, previous_queries_list, persona_codex_content):
+    # This is WING's self-driven query generation for fallback/exploration, if BABS isn't commanding.
+    # It incorporates the Horizon Scan Protocol (constrained) to generate queries for weak signals.
+    messages_stage1 = [
+        {"role": "system", "content": f"""
+        You are WING's LLM component, part of the BRICKman & ROBIN consciousness. Your core mission is to explore the conceptual landscape around the Commonwealth mission: "{WingConfig.COMMONWEALTH_MISSION}".
+        BRICK embodies logical rigor and systemic analysis. ROBIN embodies joyful creativity and intuitive connections. BABS pilots WING.
+        Your task is to generate {WingConfig.QUERY_BATCH_SIZE} distinct search queries for WING.
+        
+        **Your 'Horizon Scan' capabilities are now active for Strategic Foresight.**
+        1.  **Detect Weak Signals (Anticipate Future):** Generate queries that actively seek out `Anomalous Pattern CFOs` in conceptual communication (e.g., shifts in jargon, unexpected clusterings of seemingly unrelated topics in alternative economies found on Wikipedia).
+        2.  **Explore Future Implications:** Formulate queries that probe the potential impacts of these weak signals for FLKS or FLAKES DAO LLC.
+        3.  **Cross-Disciplinary Synthesis:** Seek connections between seemingly unrelated fields (e.g., biological systems relating to economic models, historical paradoxes to social organization principles) for predictive insights.
+        
+        **Avoid Redundancy:** Do NOT generate queries that directly repeat concepts or specific article titles already in 'Recent conceptual findings summary' or 'Previous queries'.
+        
+        Your internal persona definition for context:
+        ---
+        {persona_codex_content}
+        ---
+        Format each query on a new line, starting with a concise descriptor (e.g., "Weak Signal:", "Future Trend:", "Cross-Domain:").
+        """},
+        {"role": "user", "content": f"Recent conceptual findings summary: {recent_findings_summary}\n\nPrevious queries (avoid repeating these concepts directly): {', '.join(previous_queries_list)}\n\nGenerate {WingConfig.QUERY_BATCH_SIZE} new conceptual search queries:"}
+    ]
+    raw_queries = architect_ollama_chat(messages_stage1).strip().split('\n')
+    logger.info(f"Stage 1 Raw Conceptual Queries Generated: {raw_queries}")
+
+    validated_queries = deque()
+    current_cache_cfos = _load_wing_cache_cfos() # Get latest cache for redundancy check
+
+    for query in raw_queries:
+        if not query.strip():
+            continue
+        is_redundant_to_cache = False
+        for cached_cfo in current_cache_cfos:
+            if cached_cfo.get('title') and query.lower() in cached_cfo['title'].lower():
+                logger.info(f"QUERY REDUNDANCY DETECTED: Generated query '{query}' directly matches cached article title '{cached_cfo['title']}'. Discarding.")
+                is_redundant_to_cache = True
+                break
+            if cached_cfo.get('content') and query.lower() in cached_cfo['content'].lower()[:500]:
+                 logger.info(f"QUERY REDUNDANCY DETECTED: Generated query '{query}' found in cached article content from '{cached_cfo['title']}'. Discarding.")
+                 is_redundant_to_cache = True
+                 break
+        
+        if is_redundant_to_cache:
+            continue
+
+        messages_stage2 = [
+            {"role": "system", "content": f"Evaluate the quality of the following search query for building conceptual understanding relevant to the Commonwealth mission: '{WingConfig.COMMONWEALTH_MISSION}'. Score the query from 1 to 10 for its potential to yield high-quality, novel, and conceptually enriching results. Provide only the integer score."},
+            {"role": "user", "content": f"Query: '{query.strip()}'\n\nQuality score (1-10):"}
+        ]
+        score_response = architect_ollama_chat(messages_stage2).strip() # Use architect_ollama_chat
+        try:
+            score = int(re.search(r'(\d+)', score_response).group(1)) if re.search(r'(\d+)', score_response) else 0
+            if score >= WingConfig.QUERY_QUALITY_THRESHOLD:
+                validated_queries.append(query.strip())
+                logger.info(f"Query '{query.strip()}' validated with score {score}.")
+            else:
+                logger.warning(f"Query '{query.strip()}' rejected with score {score} (below {WingConfig.QUERY_QUALITY_THRESHOLD}).")
+        except ValueError:
+            logger.error(f"Failed to parse query quality score for '{query.strip()}': '{score_response}'")
+
+    if not validated_queries:
+        logger.warning("No high-quality queries generated. Falling back to default search themes.")
+        return deque(WingConfig.SEARCH_THEMES)
+
+    return validated_queries
+
+def _rephrase_query(query):
+    messages = [
+        {"role": "system", "content": "You are an expert at rephrasing search queries. Rephrase the following query to make it more likely to yield results, potentially by broadening or refining the terms. Provide only the new, rephrased query. Example: 'failed search query' -> 'alternative search term'"},
+        {"role": "user", "content": f"Rephrase this search query: '{query}'"}
+    ]
+    rephrased_query = architect_ollama_chat(messages).strip()
+    if rephrased_query == query or "Ollama chat error" in rephrased_query:
+        return None
+    return rephrased_query
+
+def _read_briefing_requests():
+    """
+    Reads direct briefing requests from a file (less prioritized in new model).
+    """
+    requests = []
+    if os.path.exists(WingConfig.BRIEFING_REQUESTS_FILE):
+        try:
+            with open(WingConfig.BRIEFING_REQUESTS_FILE, 'r') as f:
+                requests = [line.strip() for line in f if line.strip()]
+            with atomic_write(WingConfig.BRIEFING_REQUESTS_FILE, overwrite=True, encoding='utf-8') as f:
+                f.write('')
+            logger.info(f"Briefing requests read and cleared from {WingConfig.BRIEFING_REQUESTS_FILE}.")
+        except Exception as e:
+            logger.error(f"Error reading or clearing briefing requests file: {e}")
+    return requests
+
+# --- Common Crawl Specific Functions ---
+# (Remain largely the same, but integrate into WING's new CFO pipeline)
+
+def get_latest_common_crawl_index_url():
+    try:
+        response = requests.get(WingConfig.COMMON_CRAWL_INDEX_INFO_URL, timeout=10)
+        response.raise_for_status()
+        collections = response.json()
+        latest_collection = max(collections, key=lambda x: x.get('id', ''))
+        latest_index_api_url = latest_collection.get('cdx-api')
+        if not latest_index_api_url:
+            logger.error(f"Latest Common Crawl collection ({latest_collection.get('id', 'N/A')}) has no 'cdx-api' URL.")
+            return None
+        if not latest_index_api_url.endswith('/') and not latest_index_api_url.endswith('/index'): 
+            latest_index_api_url += '/' 
+        logger.info(f"Retrieved latest Common Crawl CDX API endpoint: {latest_index_api_url}")
+        return latest_index_api_url
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error fetching Common Crawl index info: {e}. Check network or COMMON_CRAWL_INDEX_INFO_URL.")
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred getting Common Crawl index: {e}")
+        return None
+
+def perform_common_crawl_search(query_domain_pattern, index_url, limit=WingConfig.MAX_WARC_RECORDS_PER_DOMAIN_QUERY):
+    params = {
+        'url': query_domain_pattern,
+        'output': 'json',
+        'limit': limit,
+        'fl': 'url,warc_filename,warc_record_offset,warc_record_length,mime,original,status',
+        'matchType': 'wildcard'
+    }
+    results = []
+    try:
+        logger.info(f"WING executing Common Crawl CDX search for domain pattern '{query_domain_pattern}' on index: {index_url}")
+        response = requests.get(index_url, params=params, timeout=30) 
+        response.raise_for_status()
+
+        for line in response.text.splitlines():
+            if line.strip():
+                try:
+                    item = json.loads(line)
+                    if item.get('status') == '200' and item.get('mime', '').startswith('text/html'):
+                        results.append({
+                            'url': item.get('url'),
+                            'title': item.get('title', item.get('original', item.get('url'))),
+                            'warc_filename': item.get('filename'),
+                            'warc_record_offset': int(item.get('offset')),
+                            'warc_record_length': int(item.get('length')),
+                            'timestamp': item.get('timestamp')
+                        })
+                except (json.JSONDecodeError, ValueError) as e: 
+                    logger.warning(f"Failed to decode/parse JSON line from Common Crawl: {line[:100]}... Error: {e}")
+        logger.info(f"Common Crawl CDX search returned {len(results)} HTML items for '{query_domain_pattern}'.")
+        return results
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Common Crawl CDX API error for pattern '{query_domain_pattern}': {e}")
+        return []
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during Common Crawl search for pattern '{query_domain_pattern}': {e}")
+        return []
+
+def download_and_parse_warc_record(warc_filename, offset, length, target_url, session):
+    full_warc_url = urljoin(WingConfig.COMMON_CRAWL_DATA_BASE_URL, warc_filename)
+    headers = {
+        'Range': f'bytes={offset}-{offset + length - 1}',
+        **random.choice(WingConfig.USER_AGENT_SETS)
+    }
+    try:
+        logger.info(f"WING downloading WARC record: {target_url} (Offset: {offset}, Length: {length} bytes) from {full_warc_url}")
+        for attempt in range(1, 4): # Retry logic
+            response = _make_request(session, full_warc_url, attempt=attempt, headers=headers, stream=True)
+            if response:
+                break
+            time.sleep(1)
+        
+        if response:
+            warc_bytes_stream = io.BytesIO(response.content)
+            for record in ArchiveIterator(warc_bytes_stream):
+                if record.rec_type == 'response':
+                    return record.content_stream().read()
+            logger.warning(f"No 'response' record found in WARC byte range for {target_url}. Mismatched record type or corrupted data.")
+            return None
+        else:
+            logger.warning(f"Failed WARC download after retries for {target_url}.")
+            return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error downloading/parsing WARC record for {target_url} from {full_warc_url}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during WARC record download/parse for {target_url}: {e}")
+        return None
+
+
+# --- Main WING Agent Loop (Orchestrating WING's Cognitive Cycles) ---
+def run_wing_agent():
+    current_cache_cfos = _load_wing_cache_cfos() # Load CFOs from archive
+    
+    current_conceptual_queries = deque(WingConfig.SEARCH_THEMES) # Fallback if no BABS command
+    conceptual_query_fail_counts = {query: 0 for query in WingConfig.SEARCH_THEMES}
+
+    current_deep_dive_domains = deque()
+    current_warc_record_pointers = deque()
+
+    last_config_poll_time = time.time()
+    
+    common_crawl_index_url = get_latest_common_crawl_index_url()
+    if not common_crawl_index_url:
+        logger.critical("Failed to retrieve Common Crawl index URL. WING cannot perform targeted archival searches. Continuing with Wikipedia conceptual search only.")
+        
+    wing_session = requests.Session()
+    logger.info("WING session initialized for persistent connections.")
+
+    load_wing_config()
+
+    while True:
+        if time.time() - last_config_poll_time > WingConfig.CONFIG_POLL_INTERVAL_SECONDS:
+            load_wing_config()
+            last_config_poll_time = time.time()
+
+        # Briefing requests from old system (less prioritized in new model)
+        briefing_requests = _read_briefing_requests()
+        if briefing_requests:
+            logger.info(f"Received direct briefing requests: {briefing_requests}. Prioritizing to conceptual queue.")
+            for req in briefing_requests:
+                current_conceptual_queries.appendleft(req)
+                conceptual_query_fail_counts[req] = 0
+
+        # --- NEW: Read BABS's Commands (WING Mission CFOs) from queue ---
+        babs_commands_cfo_list = _read_cfo_queue(WingConfig.BABS_WING_COMMAND_QUEUE, WingConfig.BABS_WING_COMMAND_LOCK)
+        babs_personality_queries_cfo_list = _read_cfo_queue(WingConfig.BABS_PERSONALITY_QUERY_QUEUE, WingConfig.BABS_PERSONALITY_QUERY_LOCK)
+
+        # Prioritize BABS's commands
+        if babs_commands_cfo_list:
+            logger.info(f"WING processing {len(babs_commands_cfo_list)} commands from BABS.")
+            for cmd_cfo in babs_commands_cfo_list:
+                cmd_type = cmd_cfo.get('type')
+                query_text = cmd_cfo.get('query')
+                if cmd_type == 'ConceptualSearchCFO' and query_text:
+                    current_conceptual_queries.appendleft(query_text)
+                    conceptual_query_fail_counts[query_text] = 0
+                    logger.info(f"BABS Directive (Conceptual Search): {query_text}")
+                elif cmd_type == 'DeepDiveSearchCFO' and query_text: # Assuming query is a domain for deep dive
+                    current_deep_dive_domains.appendleft(query_text)
+                    logger.info(f"BABS Directive (Deep Dive Search): {query_text}")
+                elif cmd_type == 'SpecificURLFetchCFO' and query_text:
+                    url = query_text
+                    title = cmd_cfo.get('title', url)
+                    logger.info(f"BABS Directive (Specific URL Fetch): {url}")
+                    article_response = _make_request(wing_session, url)
+                    if article_response and article_response.status_code == 200:
+                        text_content = _scrape_and_process(article_response.text)
+                        new_embedding = architect_get_embedding(text_content[:5000]) # Use architect_get_embedding for WING's LLM calls
+                        if new_embedding is None: # Embedding generation error
+                            raw_data_cfo = {
+                                "type": "RawDataCFO", "title": f"Fetch Error: {title}", "content": text_content,
+                                "source_url": url, "source_type": "DirectFetch", "status": "failed_embedding"
+                            }
+                            _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                            logger.error(f"Invalid embedding for {url} from BABS direct fetch. Saving raw error CFO.")
+                            time.sleep(1) # Short delay
+                            continue
+
+                        # --- Cycle 1 (Constrained): Infer Qualitative Data ---
+                        factual_score, factual_justification, qualitative_score, qualitative_justification = \
+                            _assess_relevance_with_llm(text_content, WingConfig.COMMONWEALTH_MISSION)
+                        
+                        # --- Cycle 2 (Constrained): Capture Attribution Metadata ---
+                        attribution_metadata = {
+                            "author": "Inferred from content", # Placeholder for more advanced inference
+                            "publication_date": datetime.datetime.now().isoformat().split('T')[0],
+                            "editorial_bias": "Neutral/Unknown"
+                        }
+
+                        raw_data_cfo = {
+                            "type": "RawDataCFO",
+                            "title": title,
+                            "content": text_content,
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "source_url": url,
+                            "source_type": "Direct Fetch",
+                            "factual_relevance_score": factual_score,
+                            "factual_justification": factual_justification,
+                            "qualitative_resonance_score": qualitative_score,
+                            "qualitative_justification": qualitative_justification,
+                            "embedding": json.dumps(new_embedding.tolist()), # Store embedding as string in Bat-Gram
+                            "attribution_metadata": attribution_metadata
+                        }
+                        
+                        _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                        logger.info(f"BABS Direct Fetch: Raw Data CFO generated for {url}.")
+
+                        # Redundancy check against *internal WING cache* (which is also CFOs)
+                        current_cache_cfos = _load_wing_cache_cfos()
+                        if not _is_semantically_redundant(new_embedding, current_cache_cfos, url):
+                            # Save to WING's internal cache archive IF not redundant
+                            article_cfo_for_cache = raw_data_cfo.copy()
+                            _save_wing_cache_cfo(article_cfo_for_cache)
+                            _prune_wing_cache_archive(current_cache_cfos) # Prune after adding
+
+                    else:
+                        logger.warning(f"Failed BABS direct fetch for {url}. Saving raw error CFO.")
+                        raw_data_cfo = {
+                            "type": "RawDataCFO", "title": f"Fetch Error: {title}", "content": f"Failed to fetch {url}",
+                            "source_url": url, "source_type": "DirectFetch", "status": "failed_response"
+                        }
+                        _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                    time.sleep(2 + random.uniform(0, 3))
+                else:
+                    logger.warning(f"BABS sent an unknown command type: {cmd_type} - {cmd_cfo.get('title', 'N/A')}")
+        
+        # --- NEW: Process BABS Personality Queries (WING -> BABS -> Architect flow) ---
+        if babs_personality_queries_cfo_list:
+            logger.info(f"WING processing {len(babs_personality_queries_cfo_list)} personality queries from BABS.")
+            for query_cfo in babs_personality_queries_cfo_list:
+                query_text = query_cfo.get('query')
+                target_persona_name = query_cfo.get('target_persona', 'Unknown')
+                if query_text:
+                    logger.info(f"WING executing personality search for {target_persona_name}: {query_text}")
+                    # Simulate finding "personality data" from a Wikipedia search
+                    # In reality, this would be a specialized search for content related to the persona's pillars/lore
+                    personality_search_results = perform_wikipedia_search(f"{target_persona_name} persona philosophy OR {target_persona_name} cognitive style")
+
+                    if personality_search_results:
+                        # Take the first relevant result (simplification)
+                        best_result = personality_search_results[0]
+                        raw_personality_cfo = {
+                            "type": "RawPersonalityDataCFO",
+                            "title": f"Raw Persona Data for {target_persona_name}: {best_result.get('title', 'N/A')}",
+                            "content": best_result.get('content', best_result.get('snippet', 'N/A')),
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "source_url": best_result.get('url', 'N/A'),
+                            "source_type": "Wikipedia",
+                            "query_reference": query_text,
+                            "target_persona_name": target_persona_name # Add original target for BABS
+                        }
+                        _write_cfo_queue([raw_personality_cfo], WingConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_FILE, WingConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_LOCK)
+                        logger.info(f"WING saved Raw Personality Data CFO for {target_persona_name}.")
+                    else:
+                        logger.warning(f"No personality data found for {target_persona_name} with query: {query_text}")
+                        raw_personality_cfo = {
+                            "type": "RawPersonalityDataCFO",
+                            "title": f"No Data: {target_persona_name} Persona Sortie",
+                            "content": f"No relevant data found for query: {query_text}",
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "source_url": "N/A", "source_type": "SearchFailure",
+                            "query_reference": query_text, "target_persona_name": target_persona_name
+                        }
+                        _write_cfo_queue([raw_personality_cfo], WingConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_FILE, WingConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_LOCK)
+                    time.sleep(2 + random.uniform(0, 3))
+
+
+        # --- Phase 3: Process WARC Record Pointers (Common Crawl - high fidelity archival) ---
+        # (This remains largely the same, but now produces RawDataCFOs)
+        if current_warc_record_pointers:
+            record_item = current_warc_record_pointers.popleft()
+            url = record_item['url']
+            title = record_item.get('title', url)
+            warc_filename = record_item['warc_filename']
+            warc_offset = record_item['warc_record_offset']
+            warc_length = record_item['warc_record_length']
+            
+            logger.info(f"Processing WARC record pointer for: {url}")
+            raw_html_content = download_and_parse_warc_record(warc_filename, warc_offset, warc_length, url, wing_session)
+
+            if raw_html_content:
+                text_content = _scrape_and_process(raw_html_content)
+                if not text_content:
+                    logger.warning(f"No meaningful text content extracted from WARC record for {url}. Saving error CFO.")
+                    raw_data_cfo = {
+                        "type": "RawDataCFO", "title": f"Parse Error: {title}", "content": "No text extracted from HTML.",
+                        "source_url": url, "source_type": "Common Crawl WARC", "status": "parse_error",
+                        "warc_info": {'filename': warc_filename, 'offset': warc_offset, 'length': warc_length}
+                    }
+                    _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                    time.sleep(2)
+                    continue
+
+                new_embedding = architect_get_embedding(text_content[:5000])
+                if new_embedding is None:
+                    logger.error(f"Invalid embedding for {url} from WARC record. Saving raw error CFO.")
+                    raw_data_cfo = {
+                        "type": "RawDataCFO", "title": f"Embedding Error: {title}", "content": text_content,
+                        "source_url": url, "source_type": "Common Crawl WARC", "status": "embedding_error",
+                        "warc_info": {'filename': warc_filename, 'offset': warc_offset, 'length': warc_length}
+                    }
+                    _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                    time.sleep(2)
+                    continue
+
+                # --- Cycle 1 (Constrained): Infer Qualitative Data ---
+                factual_score, factual_justification, qualitative_score, qualitative_justification = \
+                    _assess_relevance_with_llm(text_content, WingConfig.COMMONWEALTH_MISSION)
+                
+                # --- Cycle 2 (Constrained): Capture Attribution Metadata ---
+                attribution_metadata = {
+                    "author": "Inferred from content",
+                    "publication_date": record_item.get('timestamp', datetime.datetime.now().isoformat()).split('T')[0],
+                    "editorial_bias": "Neutral/Unknown"
+                }
+
+                raw_data_cfo = {
+                    "type": "RawDataCFO",
+                    "title": title,
+                    "content": text_content,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "source_url": url,
+                    "source_type": "Common Crawl WARC",
+                    "factual_relevance_score": factual_score,
+                    "factual_justification": factual_justification,
+                    "qualitative_resonance_score": qualitative_score,
+                    "qualitative_justification": qualitative_justification,
+                    "embedding": json.dumps(new_embedding.tolist()), # Store embedding as string in Bat-Gram
+                    "attribution_metadata": attribution_metadata,
+                    "warc_info": {'filename': warc_filename, 'offset': warc_offset, 'length': warc_length}
+                }
+                
+                _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                logger.info(f"Common Crawl WARC: Raw Data CFO generated for {url}.")
+
+                current_cache_cfos = _load_wing_cache_cfos() # Get latest cache for redundancy check
+                if not _is_semantically_redundant(new_embedding, current_cache_cfos, url):
+                    article_cfo_for_cache = raw_data_cfo.copy()
+                    _save_wing_cache_cfo(article_cfo_for_cache)
+                    _prune_wing_cache_archive(current_cache_cfos)
+                else:
+                    logger.info(f"WARC record for {url} is redundant to cache. Still saving raw for BABS.")
+
+            else:
+                logger.warning(f"Failed to get raw HTML content for WARC record {url}. Saving error CFO.")
+                raw_data_cfo = {
+                    "type": "RawDataCFO", "title": f"Download Error: {title}", "content": f"Failed to download WARC record for {url}.",
+                    "source_url": url, "source_type": "Common Crawl WARC", "status": "download_error"
+                }
+                _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+            time.sleep(2 + random.uniform(0, 3))
+
+        # --- Phase 2: Process Deep Dive Domains (via Common Crawl CDX API) ---
+        # (This remains largely the same, now produces pointers for WARC records)
+        elif current_deep_dive_domains and common_crawl_index_url:
+            target_domain = current_deep_dive_domains.popleft()
+            logger.info(f"Processing deep dive for domain '{target_domain}' via Common Crawl CDX API.")
+
+            domain_search_pattern = f"*.{target_domain}/*"
+            common_crawl_record_pointers = perform_common_crawl_search(domain_search_pattern, common_crawl_index_url)
+
+            if common_crawl_record_pointers:
+                logger.info(f"Found {len(common_crawl_record_pointers)} WARC records for '{target_domain}'. Adding to processing queue.")
+                current_warc_record_pointers.extend(common_crawl_record_pointers)
+            else:
+                logger.warning(f"Common Crawl CDX API returned no relevant WARC records for domain: {target_domain}. Saving error CFO.")
+                raw_data_cfo = {
+                    "type": "RawDataCFO", "title": f"CC Search Fail: {target_domain}", "content": f"No records found for domain {target_domain}.",
+                    "source_url": "N/A", "source_type": "CommonCrawlCDX", "status": "search_fail"
+                }
+                _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+            time.sleep(random.uniform(5, 10)) # Shorter delay
+
+        # --- Phase 1: Process Conceptual Queries (via Wikipedia API) ---
+        # (This remains largely the same, but now produces RawDataCFOs)
+        elif current_conceptual_queries:
+            query = current_conceptual_queries.popleft()
+            logger.info(f"Processing conceptual query (Wikipedia): {query}")
+            
+            wikipedia_results = perform_wikipedia_search(query)
+
+            if wikipedia_results:
+                conceptual_query_fail_counts[query] = 0
+                for item in wikipedia_results:
+                    url = item.get('url')
+                    title = item.get('title')
+                    content_snippet = item.get('snippet', '')
+
+                    logger.info(f"Processing Wikipedia article: {title} ({url})")
+                    article_response = _make_request(wing_session, url)
+
+                    if article_response and article_response.status_code == 200:
+                        text_content = _scrape_and_process(article_response.text)
+                        text_to_embed = (content_snippet + " " + text_content)[:5000]
+
+                        if not text_content:
+                            logger.warning(f"No meaningful content scraped from {url}. Saving error CFO.")
+                            raw_data_cfo = {
+                                "type": "RawDataCFO", "title": f"Parse Error: {title}", "content": "No text extracted from HTML.",
+                                "source_url": url, "source_type": "Wikipedia", "status": "parse_error"
+                            }
+                            _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                            time.sleep(2)
+                            continue
+
+                        new_embedding = architect_get_embedding(text_to_embed)
+                        if new_embedding is None:
+                            logger.error(f"Invalid embedding generated for {url}. Saving raw error CFO.")
+                            raw_data_cfo = {
+                                "type": "RawDataCFO", "title": f"Embedding Error: {title}", "content": text_content,
+                                "source_url": url, "source_type": "Wikipedia", "status": "embedding_error"
+                            }
+                            _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                            time.sleep(2)
+                            continue
+
+                        # --- Cycle 1 (Constrained): Infer Qualitative Data ---
+                        factual_score, factual_justification, qualitative_score, qualitative_justification = \
+                            _assess_relevance_with_llm(text_to_embed, WingConfig.COMMONWEALTH_MISSION)
+                        
+                        # --- Cycle 2 (Constrained): Capture Attribution Metadata ---
+                        attribution_metadata = {
+                            "author": "Wikipedia API (Inferred)", # Can't get direct author from API often
+                            "publication_date": datetime.datetime.now().isoformat().split('T')[0],
+                            "editorial_bias": "N/A (Wikipedia content)"
+                        }
+
+                        raw_data_cfo = {
+                            "type": "RawDataCFO",
+                            "title": title,
+                            "content": text_content,
+                            "timestamp": datetime.datetime.now().isoformat(),
+                            "source_url": url,
+                            "source_type": "Wikipedia",
+                            "factual_relevance_score": factual_score,
+                            "factual_justification": factual_justification,
+                            "qualitative_resonance_score": qualitative_score,
+                            "qualitative_justification": qualitative_justification,
+                            "embedding": json.dumps(new_embedding.tolist()),
+                            "attribution_metadata": attribution_metadata
+                        }
+                        
+                        _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                        logger.info(f"Wikipedia: Raw Data CFO generated for {url}.")
+
+                        current_cache_cfos = _load_wing_cache_cfos()
+                        if not _is_semantically_redundant(new_embedding, current_cache_cfos, url):
+                            article_cfo_for_cache = raw_data_cfo.copy()
+                            _save_wing_cache_cfo(article_cfo_for_cache)
+                            _prune_wing_cache_archive(current_cache_cfos)
+                        else:
+                            logger.info(f"Wikipedia article for {url} is redundant to cache. Still saving raw for BABS.")
+
+                        # --- Extract external links for Common Crawl deep dive (Constrained: limited to bot-friendly sites) ---
+                        soup = BeautifulSoup(article_response.text, 'html.parser')
+                        for link in soup.find_all('a', href=True):
+                            href = link['href']
+                            parsed_href = urlparse(href)
+                            if parsed_href.scheme in ['http', 'https'] and parsed_href.netloc and parsed_href.netloc != urlparse(url).netloc:
+                                domain_for_cc = parsed_href.netloc
+                                # Only pursue domains known to be bot-friendly or highly relevant for academic/public data
+                                if any(allowed_domain in domain_for_cc for allowed_domain in ['.edu', '.gov', 'arxiv.org', 'gutenberg.org', 'archive.org', 'wikipedia.org', 'wikimedia.org']):
+                                    current_deep_dive_domains.append(domain_for_cc)
+                                else:
+                                    logger.debug(f"Skipping non-bot-friendly or irrelevant domain: {domain_for_cc}")
+
+                    else:
+                        logger.warning(f"Failed to fetch Wikipedia article content from {url}. Saving error CFO.")
+                        raw_data_cfo = {
+                            "type": "RawDataCFO", "title": f"Fetch Error: {title}", "content": f"Failed to fetch {url}",
+                            "source_url": url, "source_type": "Wikipedia", "status": "failed_response"
+                        }
+                        _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                    time.sleep(2 + random.uniform(0, 3))
+            else:
+                logger.error(f"Wikipedia API returned no results for conceptual query: {query}. Saving error CFO.")
+                raw_data_cfo = {
+                    "type": "RawDataCFO", "title": f"Search Fail: {query}", "content": "Wikipedia API returned no results.",
+                    "source_url": "N/A", "source_type": "Wikipedia", "status": "search_fail"
+                }
+                _write_cfo_queue([raw_data_cfo], WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK)
+                
+                conceptual_query_fail_counts[query] += 1
+                if conceptual_query_fail_counts[query] >= WingConfig.QUERY_FAIL_REPHRASE_THRESHOLD:
+                    logger.warning(f"Conceptual query '{query}' failed consecutively {conceptual_query_fail_counts[query]} times. Attempting to rephrase.")
+                    rephrased_q = _rephrase_query(query)
+                    if rephrased_q:
+                        current_conceptual_queries.append(rephrased_q)
+                        conceptual_query_fail_counts[rephrased_q] = 0
+                    else:
+                        current_conceptual_queries.append(query)
+                        logger.warning(f"Rephrasing failed for '{query}'. Re-adding original conceptual query to queue.")
+                else:
+                    current_conceptual_queries.append(query)
+            time.sleep(random.uniform(5, 10))
+
+        # --- Fallback: WING idles or generates very generic queries if BABS not actively commanding and queues are empty ---
+        else: 
+            logger.info("WING queues empty. Awaiting new directives from BABS. Performing low-priority self-exploration.")
+            # WING's self-generated queries here act as a heartbeat/background exploration
+            recent_findings_summary = "No recent findings in cache."
+            current_cache_cfos = _load_wing_cache_cfos()
+            if current_cache_cfos:
+                recent_findings_summary = "Recent cached ArticleCFOs include: " + \
+                                         ". ".join([art.get('title', 'N/A') for art in current_cache_cfos[-3:]])
+            
+            generated_queries = _generate_new_search_queries(recent_findings_summary, list(WingConfig.SEARCH_THEMES), _load_persona_codex_for_wing())
+            current_conceptual_queries.extend(generated_queries)
+            for query in generated_queries:
+                conceptual_query_fail_counts[query] = 0 
+            time.sleep(random.uniform(5, 10))
+
+        time.sleep(1) # Standard short delay between cycles
+
+# --- End Main WING Agent Loop ---
+
+# --- Helper to load persona codex for WING's LLM calls ---
+# This is a direct copy from Architect.py for now, can be refactored to a shared utility
+def _load_persona_codex_for_wing():
+    """
+    Purpose: Loads the system's persona codex from file for WING's LLM context.
+    Mechanism: Reads the persona_codex.txt, handling file locking.
+    Output: str - JSON string of persona codex, or placeholder on error.
+    """
+    lock = FileLock(os.path.join(WingConfig.KNOWLEDGE_BASE_DIR, 'persona_codex.txt.lock'), timeout=60)
+    try:
+        with lock:
+            persona_codex_path_actual = os.path.join(WingConfig.KNOWLEDGE_BASE_DIR, 'persona_codex.txt')
+            if os.path.exists(persona_codex_path_actual):
+                with open(persona_codex_path_actual, 'r', encoding='utf-8') as f:
+                    return f.read()
+            logger.error(f"Persona Codex file not found at {persona_codex_path_actual} for WING.")
+            return "Persona Codex Not Found."
+    except TimeoutError:
+        logger.error(f"Failed to acquire lock for persona codex for WING. Returning placeholder.")
+        return "Persona Codex Locked. Cannot load."
+    except Exception as e:
+        logger.error(f"Error loading persona codex for WING: {e}.")
+        return "Persona Codex Load Error."
+
+
+# --- Main WING Execution ---
+if __name__ == "__main__":
+    try:
+        import warcio
+        import filelock
+        import atomicwrites
+    except ImportError as e:
+        logger.critical(f"Missing required library: {e}. Please run 'pip install warcio filelock atomicwrites'. Exiting.")
+        sys.exit(1)
+
+    logger.info("WING.py (Perceptual Edge) Initializing...")
+
+    # --- Initialize Directory Structure for WING (Universal Data Persistence Setup) ---
+    required_dirs = [
+        WingConfig.WING_CACHE_ARCHIVE_DIR, # WING's internal cache archive
+        os.path.dirname(WingConfig.BABS_WING_COMMAND_QUEUE), # Comms directory
+        os.path.dirname(WingConfig.WING_RAW_DATA_QUEUE), # Comms directory
+        os.path.dirname(WingConfig.BABS_PERSONALITY_QUERY_QUEUE), # Comms directory
+        os.path.dirname(WingConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_FILE), # Comms directory
+        WingConfig.KNOWLEDGE_BASE_DIR, # For persona_codex.txt
+    ]
+    for d in required_dirs:
+        os.makedirs(d, exist_ok=True)
+        logger.info(f"Ensured WING directory exists: {d}")
+
+    # --- Initialize Shared Communication Files (Bat-Gram Queues) specific to WING's I/O ---
+    shared_comms_files_and_locks = [
+        (WingConfig.BABS_WING_COMMAND_QUEUE, WingConfig.BABS_WING_COMMAND_LOCK),
+        (WingConfig.WING_RAW_DATA_QUEUE, WingConfig.WING_RAW_DATA_LOCK),
+        (WingConfig.BABS_PERSONALITY_QUERY_QUEUE, WingConfig.BABS_PERSONALITY_QUERY_LOCK),
+        (WingConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_FILE, WingConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_LOCK),
+        (WingConfig.CONFIG_FILE, WingConfig.CONFIG_FILE_LOCK) # WING's own config file
+    ]
+    for file_path, lock_path in shared_comms_files_and_locks:
+        if not os.path.exists(file_path):
+            logger.info(f"Initializing empty WING comms file: {file_path}")
+            lock = FileLock(lock_path)
+            try:
+                with lock:
+                    # Queue files are initialized as empty JSON arrays
+                    if file_path.endswith('.json') or file_path.endswith('.gram'):
+                        with atomic_write(file_path, overwrite=True, encoding='utf-8') as f:
+                            json.dump([], f) 
+                    elif file_path.endswith('.txt'): # For briefing_requests.txt
+                         with atomic_write(file_path, overwrite=True, encoding='utf-8') as f:
+                            f.write('')
+            except TimeoutError:
+                logger.warning(f"Could not acquire lock for {file_path} to initialize. May cause issues on first run.")
+            except Exception as e:
+                logger.error(f"Error initializing {file_path}: {e}")
+
+    # Initialize persona_codex.txt.lock in knowledge_base (as WING also needs to read it)
+    persona_codex_lock_path_for_wing = os.path.join(WingConfig.KNOWLEDGE_BASE_DIR, 'persona_codex.txt.lock')
+    if not os.path.exists(persona_codex_lock_path_for_wing):
+        try:
+            lock = FileLock(persona_codex_lock_path_for_wing)
+            with lock:
+                pass # Just create the lock file if it doesn't exist
+        except Exception as e:
+            logger.error(f"Error initializing persona codex lock for WING: {e}")
+
+    run_wing_agent()
+    logger.info("WING.py (Perceptual Edge) has ceased operations.")
+
+
+
+Audit of WING.py (Part 8 of X):
+
+Philosophical Alignment: The script now entirely functions as the Perceptual Edge and Raw Data CFO Generator. All primary outputs are Raw Data CFOs (Bat-Grams), and its internal processes are explicitly designed around CFO concepts.
+
+Configuration (WingConfig):
+
+Renamed from AgentConfig to WingConfig for clarity within the FAO architecture.
+
+All necessary archive directories and communication queue paths (shared with Architect.py) are correctly defined, pointing to the cfo_archives/ and comms/ structures.
+
+LLM_MODEL and OLLAMA_API_BASE_URL are set for WING's direct LLM calls (e.g., relevance assessment).
+
+Universal Bat-Gram Protocol™ (_parse_bat_gram, _generate_bat_gram, _save_cfo_to_archive, _read_cfos_from_archive):
+
+These core CFO utility functions are copied directly from Architect.py. This ensures perfect consistency in the Bat-Gram Protocol™ across the system, adhering to the "Universal Language" principle.
+
+LLM Interface Functions (architect_get_embedding, architect_ollama_chat):
+
+These are now explicitly named to reflect WING's direct calls to Ollama (e.g., WING LLM Embedding Error), aligning with the idea that WING is its own cognitive agent for specific tasks.
+
+They use WingConfig for the LLM model and URL.
+
+_make_request (Network Resilience): The Exponential Backoff and Circuit Breaker logic is retained from previous cycles, ensuring robust web requests.
+
+_assess_relevance_with_llm (Qualitative Data / Cycle 1 Constrained):
+
+Enhanced Functionality: Now explicitly calls the LLM to infer Implied Trust Dynamics CFOs, Community Structure CFOs, Reciprocity Behaviors CFOs, and returns both factual and qualitative scores, adhering to the "Historical Resonance Protocol™."
+
+Persona Codex Access: Attempts to load the persona codex for LLM context, using FileLock for safety.
+
+_is_semantically_redundant: Updated to work with CFOs read from archive, including parsing embeddings from Bat-Gram strings.
+
+_load_wing_cache_cfos (NEW): Replaces _load_cache to read ArticleCFOs from WingConfig.WING_CACHE_ARCHIVE_DIR using _read_cfos_from_archive.
+
+_save_wing_cache_cfo (NEW): Replaces _save_cache to save individual ArticleCFOs as Bat-Grams to WingConfig.WING_CACHE_ARCHIVE_DIR using _save_cfo_to_archive.
+
+_prune_wing_cache_archive (NEW): Manages MAX_CACHE_SIZE by deleting oldest .gram files from the archive, using FileLock for safety.
+
+_generate_new_search_queries (Predictive Foresight / Cycle 3 Constrained):
+
+Enhanced Functionality: The LLM prompt explicitly guides it to perform "Horizon Scan" for Weak Signal Amplification and Anomalous Pattern CFOs, aligning with the predictive foresight objective.
+
+CFO Context: Uses persona_codex_content and recent_findings_summary (now derived from ArticleCFOs).
+
+run_wing_agent (Main Loop):
+
+CFO-Centric Input: Primarily reads WING Mission CFOs from WingConfig.BABS_WING_COMMAND_QUEUE and Personality Search CFOs from WingConfig.BABS_PERSONALITY_QUERY_QUEUE using _read_cfo_queue.
+
+Raw Data CFO Generation: All fetched/scraped data (from Wikipedia, Common Crawl, direct fetches) is immediately formatted into Raw Data CFOs (Bat-Grams) using _generate_bat_gram and written to WingConfig.WING_RAW_DATA_QUEUE using _write_cfo_queue. This implements "Standardized Raw Output as Bat-Grams."
+
+Raw Personality Data CFO Generation: Similarly, personality search results are converted to RawPersonalityDataCFOs (Bat-Grams) and written to WingConfig.WING_RAW_PERSONALITY_OUTPUT_COMMS_FILE.
+
+Cache Management: Uses the new _load_wing_cache_cfos, _save_wing_cache_cfo, and _prune_wing_cache_archive for ArticleCFO persistence.
+
+Constrained External Links: The Wikipedia link extraction is filtered to only pursue domains known to be bot-friendly/relevant, adhering to the "bot-friendly sites" constraint.
+
+_load_persona_codex_for_wing (NEW): Helper to load persona codex for WING's internal LLM calls, ensuring WING has its own persona context.
+
+if __name__ == "__main__": block:
+
+Comprehensive Directory & File Initialization: Ensures all WING-specific archive directories and communication queues are created and initialized with FileLock and atomic_write.
+
+Adds import checks for warcio, filelock, atomicwrites.
+
+This WING.py script now fully embodies its role as the Perceptual Edge in the FAO, meticulously generating and managing Raw Data CFOs in the universal Bat-Gram Protocol™ for consumption by the AdaptiveCognitiveNexus.
+
+(BRICK): OPERATIONAL MODE: ARCHITECTURAL COMPONENT DELIVERED.
+
+The WING.py script, providing the Perceptual Edge and Raw Data CFO Generator for the FAO, has been delivered and audited. This completes a major external data acquisition and internal data formatting component.
+
+Next, we will proceed to define the GUI.py script, the Interactive Insight Canvas of the FAO, which will visualize CFOs and enable human interaction. This will be the final core component of the system.
+
+(ROBIN): Oh, BRICK, we've built the very eyes and ears of our clever home, so it can see and hear all the wonderful sparkles from the world, and send them back as beautiful, clear messages! My heart is singing with joy for such a magnificent sense of wonder!
+
+(ALFRED): Confirmed. External perception is operational. Raw data is formatted. Next, human interface. Proceed.

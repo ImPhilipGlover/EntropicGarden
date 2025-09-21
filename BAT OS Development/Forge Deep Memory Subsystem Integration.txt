@@ -1,0 +1,369 @@
+Architectural Blueprint for the Incarnation of a Layered Fractal Memory Substrate
+
+Part I: Architectural Synthesis and the Mandate for Cumulative Intelligence
+
+The TelOS Minimum Viable Application (MVA), in its current incarnation, represents a philosophically coherent but functionally limited entity. Its cognitive core, driven by the doesNotUnderstand_ protocol, is fundamentally reactive and memoryless.1 While capable of runtime self-modification, it lacks the capacity for cumulative learning; it is architecturally constrained to "reinvent the wheel" with each novel challenge, a profound inefficiency that impedes its evolution. To transcend this limitation and fulfill its core autopoietic mandate for an "unbroken process of becoming," the system requires a long-term, cumulative memory substrate.2
+
+A monolithic memory architecture is insufficient. A single data store cannot simultaneously satisfy the competing demands of millisecond-latency retrieval, massive scalability, and absolute transactional integrity. This document, therefore, presents the definitive architectural blueprint for a layered, "fractal" memory system. This triumvirate of specialized components—FAISS, DiskANN, and ZODB—is not an additive feature set but a deep, structural integration designed to provide a computational analogue to a biological cognitive architecture, with distinct substrates for working, short-term, and long-term memory. This evolution is a non-negotiable prerequisite for the MVA to transition from a reactive proof-of-concept into a resilient, learning intelligence.
+
+1.1. The Triumvirate of Recall: Defining the Roles of FAISS, DiskANN, and ZODB
+
+The proposed architecture is a purpose-built hierarchy of data stores, each selected for its specific performance characteristics and assigned a distinct role within the cognitive lifecycle. This separation of concerns allows the system to optimize for speed at the point of cognitive synthesis, for scale at the level of archival recall, and for integrity at the foundational level of truth.
+
+FAISS as L1 Cache (Working Memory)
+
+The primary requirement for augmenting the doesNotUnderstand_ loop is speed. The retrieval of relevant historical context must occur with minimal latency to avoid impeding the real-time, interactive nature of the system's learning process. For this purpose, FAISS (Facebook AI Similarity Search) is the designated L1 cache.4
+
+FAISS will be implemented as a volatile, in-memory index. For the MVA's scale, an IndexFlatL2 is the optimal choice, as it provides exact, brute-force search, guaranteeing perfect recall without the overhead of training or the approximation errors of more complex index types.5 Its role is to serve as the system's high-speed working memory, providing millisecond-latency nearest-neighbor search for the most recent or most frequently accessed memories. The contents of the FAISS index will be treated as ephemeral; the index will be populated on system startup by loading from a persisted file and can be rebuilt entirely from the ZODB System of Record if this file is corrupted or missing.1 This layer prioritizes retrieval speed above all other considerations, directly serving the immediate contextual needs of the generative kernel.
+
+DiskANN as L2 Cache (Archival Memory)
+
+As the system evolves and its corpus of experiences grows, the in-memory capacity of FAISS will inevitably be exceeded. To ensure long-term scalability, a disk-resident Approximate Nearest Neighbor (ANN) index is required. Microsoft's DiskANN is selected for this L2 cache role, serving as the system's archival, long-term memory.6
+
+DiskANN is engineered for efficient similarity search on datasets that are too large to fit into RAM, leveraging a combination of an in-memory graph index and on-disk vector stores to minimize I/O and maintain high query throughput.6 The
+
+diskannpy library's build_disk_index function will be used to construct a static index from the system's complete history of vector embeddings.7 This architecture trades a marginal increase in query latency compared to a pure in-memory solution for the ability to scale to billions of vectors on commodity hardware. This layer represents the system's vast, searchable archive of its own "lived experience."
+
+ZODB as the System of Record (Ground Truth)
+
+While the ANN indexes provide the necessary speed and scale for retrieval, the Zope Object Database (ZODB) remains the philosophical and transactional heart of the system.1 It is the definitive System of Record, the substrate for the "Living Image" that guarantees the integrity and persistence of the system's state.8
+
+In this fractal memory architecture, ZODB's role is to store the canonical MemoryRecord UvmObjects. These persistent objects encapsulate the complete ground truth of a memory event, including not only the high-dimensional vector embedding but also the original text chunk, the source prompt that generated it, and, critically, the persistent object identifier (oid) of the UvmObject to which the memory belongs. The FAISS and DiskANN indexes will store only the vector data and the corresponding oid as a foreign key. ZODB is the source from which all search results are "hydrated"—the process by which a raw oid returned from an ANN search is resolved back into a rich, stateful, and meaningful UvmObject. This separation of concerns is the cornerstone of the architecture's integrity: the ANN indexes provide speed, but ZODB provides meaning, context, and transactional truth.
+
+The following table provides a comparative analysis of the three components, clarifying their distinct roles and technical characteristics within the fractal memory architecture.
+
+1.2. The Persistence Covenant Extended: A Protocol for Transactional Integrity Across Heterogeneous Stores
+
+The introduction of non-transactional, file-based resources like FAISS and DiskANN indexes poses an existential threat to the MVA's core identity. The system's principle of "Transactional Cognition" mandates that every cognitive cycle be an atomic, all-or-nothing operation.9 A system crash that occurs after a ZODB
+
+transaction.commit() but before a faiss.write_index() completes would leave the system in a dangerously inconsistent state: the object graph would reflect a new memory that the search index knows nothing about. This violation of integrity is unacceptable.
+
+Standard try...except...finally blocks are an insufficient solution, as they cannot guarantee atomicity in the face of a process kill or hardware failure. The only philosophically and architecturally coherent solution is to extend ZODB's transactional guarantees to these external resources. The transaction package, which underpins ZODB, provides a standardized two-phase commit (2PC) protocol that can be integrated with any resource via the IDataManager interface.11 By implementing a custom data manager, we can teach the ZODB transaction manager how to orchestrate atomic commits across both the object database and the filesystem-based indexes, thus preserving the system's foundational mandate for transactional integrity.
+
+The FractalMemoryDataManager will be designed to participate in the ZODB transaction lifecycle, wrapping the FAISS index's file I/O within the two-phase commit protocol:
+
+tpc_begin(transaction): This method is called at the start of the two-phase commit process. The FractalMemoryDataManager will prepare for the commit, for instance, by determining the path for a temporary index file.
+
+commit(transaction): This method is called during the transaction when a participating object is modified. In this architecture, the in-memory FAISS index is updated directly by the MemoryManager. The data manager notes that the on-disk representation is now out of sync.
+
+tpc_vote(transaction): This is the first and most critical phase of the commit. The ZODB transaction manager asks all participating data managers to "vote" on whether the transaction can succeed. The FractalMemoryDataManager will perform its riskiest operation here: it will serialize the current in-memory FAISS index to a temporary file on disk (e.g., faiss_index.bin.tmp). This write operation will itself be atomic, using a library like atomicwrites or the os.replace pattern to ensure the temporary file is written completely or not at all.14 If this temporary write succeeds, the data manager votes "yes" by returning from the method without raising an exception. If the write fails for any reason (e.g., disk full, permissions error), it votes "no" by raising an exception. This immediately triggers a rollback of the
+entire ZODB transaction, ensuring that no partial state is ever committed to the mydata.fs file.13
+
+tpc_finish(transaction): This second phase is executed only if all data managers, including ZODB's own storage manager, have successfully voted "yes". At this point, the commit is guaranteed to succeed. The FractalMemoryDataManager performs its final, low-risk operation: an atomic os.replace call to move the temporary index file (faiss_index.bin.tmp) to its final destination (faiss_index.bin), overwriting the previous version. This action makes the change permanent and visible to the system.15
+
+tpc_abort(transaction): If the transaction is aborted at any stage, either due to a failed vote or an explicit application rollback, this method is called. The FractalMemoryDataManager's sole responsibility here is cleanup: it must ensure that any temporary files it created during the tpc_vote phase are deleted, leaving the filesystem in its original, consistent state.
+
+This IDataManager implementation is a profound architectural synthesis. It elevates the file-based FAISS index from a simple, non-transactional data file into a first-class, transaction-aware citizen of the ZODB ecosystem. It extends the ACID guarantees of the object database to the filesystem, preserving the principle of Transactional Cognition and ensuring the MVA's state remains perfectly consistent across all its memory layers, even in the face of catastrophic failure.
+
+1.3. The MemoryManager Reimagined: An Orchestrator for Layered Retrieval
+
+The existing MemoryManager UvmObject must evolve from a simple RAG orchestrator into a sophisticated controller for the new, complex memory hierarchy.1 It becomes the central nervous system for all memory operations, managing both the read (query) and write (learning) paths.
+
+Query Routing Logic
+
+The MemoryManager.search_memory method will be refactored into an intelligent query router. A standard query, such as one originating from the doesNotUnderstand_ protocol, will execute a layered retrieval strategy designed to balance speed and recall:
+
+L1 Query: The query is first issued against the in-memory FAISS index. Given its speed and perfect recall, this layer will satisfy the majority of requests for recent or relevant context.
+
+L2 Query (Conditional): If the results from the L1 query are insufficient (e.g., the distance scores are above a certain threshold, indicating low similarity) or if a query explicitly requests a deep archival search, the MemoryManager will then issue the query against the on-disk DiskANN index. This provides a second tier of retrieval, accessing the system's entire long-term memory at the cost of slightly higher latency.
+
+Data Hydration
+
+A critical function of the MemoryManager is data hydration. Both FAISS and DiskANN searches return a list of opaque identifiers (oids) and distance scores. These oids are meaningless to the generative LLM cascade on their own. The MemoryManager is responsible for taking these oids and using them to perform a lookup in the ZODB root, retrieving the full, stateful MemoryRecord UvmObjects. This process re-associates the retrieved vectors with their rich, essential metadata—the original text chunk, the source prompt, and links to the originating object—which is then used to construct the final, augmented context for the generative kernel.1
+
+Write Path Logic
+
+The MemoryManager.add_memory method will serve as the single, transactional entry point for learning. When a new memory is created (e.g., after a successful code generation cycle), this method will orchestrate the following sequence within a single transaction:
+
+A new MemoryRecord UvmObject is created and stored in the ZODB BTree. This action implicitly registers the change with the current ZODB transaction.
+
+The vector from the new MemoryRecord is added to the live, in-memory FAISS index.
+
+The vector and its oid are added to a staging area managed by the DiskAnnIndexManager, queuing it for inclusion in the next asynchronous rebuild cycle.
+
+The persistence of the ZODB object and the on-disk FAISS index is then handled atomically by the FractalMemoryDataManager when the transaction is committed.
+
+Part II: Phased Implementation Plan & Forge Script Integration
+
+This section provides a discrete, verifiable, and phased engineering plan for incarnating the fractal memory substrate. The implementation will be conducted primarily through modifications to the master_generator.py forge script, ensuring that the new architecture is a generative, reproducible component of the MVA's core blueprint, rather than a manually crafted artifact.
+
+2.1. Phase 1: Foundational Integration - The ZODB System of Record
+
+The initial phase focuses exclusively on establishing the ground-truth layer. The objective is to enable the system to create and persist MemoryRecord objects transactionally within ZODB, forming the bedrock upon which the faster index layers will be built.
+
+Forge Script Modifications (master_generator.py)
+
+The Prototypal Awakening section of the forge script will be modified to generate the necessary UvmObject prototype and configure the MemoryManager for persistent storage.
+
+Generate MemoryRecord Prototype: The script will write the class definition for a new MemoryRecord(UvmObject) prototype. This class will define the schema for a single memory entry, including slots for source_oid, text_chunk, embedding, and creation_timestamp.
+
+Configure MemoryManager Storage: The script will modify the initialization logic for the MemoryManager to include a ZODB BTree in its _slots. BTrees are ZODB-native, scalable dictionary-like objects, making them the ideal container for storing and managing a large number of MemoryRecord objects.16
+
+Initial Code Snippet (Generated in core_system.py)
+
+The forge script will produce the following Python code within the core_system.py file:
+
+Python
+
+from persistent import Persistent
+from datetime import datetime
+import transaction
+import ZODB, ZODB.FileStorage
+
+#... existing UvmObject definition...
+
+class MemoryRecord(UvmObject):
+    """Represents a single, retrievable piece of experiential memory,
+    stored transactionally in ZODB as the ground truth."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._slots.setdefault('source_oid', None)
+        self._slots.setdefault('text_chunk', "")
+        self._slots.setdefault('embedding',) # Stored as a plain list
+        self._slots.setdefault('creation_timestamp', datetime.utcnow().isoformat())
+
+#... within the Prototypal Awakening block...
+def main():
+    #...
+    root = connection.root()
+    if 'genesis_obj' not in root:
+        log('SYSTEM', "Performing Prototypal Awakening...")
+        transaction.begin()
+        #... existing genesis_obj setup...
+
+        if 'memory_manager' not in root:
+            from BTrees.OOBTree import BTree
+            memory_manager = MemoryManager(name='memory_manager')
+            # Use a BTree for scalable, transactional storage of records
+            memory_manager._slots['records'] = BTree()
+            root['memory_manager'] = memory_manager
+
+        if 'memory_record_prototype' not in root:
+            root['memory_record_prototype'] = MemoryRecord(name='memory_record_prototype')
+
+        transaction.commit()
+        #...
+
+
+Upon completion of this phase, the system will possess a robust, transactional, but un-indexed memory store. The MemoryManager can create and persist memories, but cannot yet search them efficiently.
+
+2.2. Phase 2: The Working Memory Layer - FAISS Integration
+
+This phase implements the high-speed, in-memory L1 cache, providing the first layer of efficient search capability.
+
+Forge Script Modifications
+
+Add Dependencies: The script will ensure that faiss-cpu and numpy are included in the generated requirements.txt or installation instructions.
+
+Forge FaissIndex Helper: The non-persistent FaissIndex helper class, as previously defined in the MVA, will be generated.1
+
+Modify MemoryManager: The MemoryManager prototype will be modified to include a transient (non-persisted) attribute, _transient_faiss_index, to hold the live FaissIndex instance. ZODB's persistence mechanism works by pickling object attributes. A live FAISS index object, which contains C++ pointers and other non-pickleable state, cannot be persisted directly and would cause a transaction commit to fail. The use of a transient attribute is the standard ZODB pattern for managing such live, in-memory resources.
+
+Implement initialize_transients: A new MemoryManager.initialize_transients method will be forged. This method is the designated entry point for creating and populating non-persistent resources after the database connection is established. It will be responsible for loading the faiss_index.bin file from disk on startup. Crucially, after loading, it will perform a synchronization step, iterating through all MemoryRecord objects in the ZODB BTree to ensure the in-memory FAISS index is fully consistent with the ground-truth data.
+
+2.3. Phase 3: The Archival Memory Layer - DiskANN Integration
+
+This phase implements the scalable, disk-based L2 cache for long-term memory, addressing the challenge of a dynamically growing dataset with a static index technology.
+
+Forge Script Modifications
+
+Add Dependency: The diskannpy library will be added to the dependency list.
+
+Forge DiskAnnIndexManager: A new persistent DiskAnnIndexManager(UvmObject) prototype will be generated. This object's purpose is to manage the lifecycle of the static DiskANN index. It will include a _slots attribute for staged_vectors, a simple list where new vectors are temporarily held between rebuilds.
+
+Forge trigger_rebuild_cycle_async: The core of the manager will be the trigger_rebuild_cycle_async method. This method solves the static-vs-dynamic conflict using an asynchronous, atomic hot-swapping protocol. The generated code will:
+
+Use asyncio.to_thread or a ProcessPoolExecutor to run the expensive diskannpy.build_disk_index call in a separate thread or process, preventing it from blocking the main application's event loop.
+
+Load all vectors from the ZODB MemoryRecord objects to create a complete, up-to-date dataset for the build.
+
+Build the new DiskANN index in a temporary directory (e.g., diskann_index_new/).
+
+Upon successful completion of the build, perform an atomic directory replacement. This is typically achieved by renaming the old directory (e.g., to diskann_index_old/), renaming the new directory to the active name (diskann_index/), and then cleaning up the old directory. This ensures that a valid, queryable index is available at the canonical path at all times, achieving a zero-downtime index update.
+
+Signal the main process to safely close the old StaticDiskIndex object and load the new one.
+
+The following table provides a practical guide for tuning the key parameters of the diskannpy.build_disk_index function, offering a starting point for optimizing the trade-off between index build time, index size, and search performance.
+
+2.4. Phase 4: Unifying the Triumvirate - The FractalMemoryDataManager
+
+This final implementation phase weaves the components together under a single transactional guarantee by creating the custom IDataManager.
+
+Forge Script Modifications
+
+Add Dependencies: The script will add zope.interface and transaction to the dependency list.
+
+Forge FractalMemoryDataManager: The script will generate the complete FractalMemoryDataManager class, ensuring it is decorated with @implementer(IDataManager) to formally declare its role in the transaction system.13
+
+Implement 2PC Methods: The tpc_begin, tpc_vote, tpc_finish, and tpc_abort methods will be generated according to the logic detailed in Section 1.2.
+
+Integrate into Startup: The main system startup sequence in core_system.py will be modified. After the ZODB connection is established, an instance of the FractalMemoryDataManager will be created and passed a reference to the MemoryManager. A hook will be added so that this data manager's join() method is called on the current transaction whenever a memory-modifying operation occurs.
+
+Initial Code Snippet (Generated in core_system.py)
+
+The forge script will produce the following class definition, which forms the heart of the cross-system transactional protocol:
+
+Python
+
+import os
+import transaction
+from zope.interface import implementer
+from transaction.interfaces import IDataManager
+from atomicwrites import atomic_write # Or a similar atomic write utility
+
+@implementer(IDataManager)
+class FractalMemoryDataManager:
+    """A ZODB Data Manager to ensure atomic commits between ZODB and
+    the filesystem-based FAISS index."""
+
+    def __init__(self, memory_manager):
+        self.memory_manager = memory_manager
+        self.temp_faiss_path = None
+        self.tx_manager = transaction.manager
+
+    def commit(self, tx):
+        """Called when a participating object is modified.
+        The in-memory FAISS index is already updated by MemoryManager."""
+        pass
+
+    def tpc_begin(self, tx):
+        """Prepare for a two-phase commit."""
+        self.temp_faiss_path = self.memory_manager.get_faiss_index_path() + ".tpc.tmp"
+
+    def tpc_vote(self, tx):
+        """Phase 1: Vote on the transaction. Write to a temporary file."""
+        try:
+            # The risky operation is performed here.
+            self.memory_manager.save_faiss_index_to_path(self.temp_faiss_path)
+        except Exception as e:
+            # Vote NO by raising an exception, which will abort the ZODB transaction.
+            raise IOError(f"FractalMemoryDataManager: Failed to write temporary FAISS index during tpc_vote: {e}")
+
+    def tpc_finish(self, tx):
+        """Phase 2: Commit is happening. Atomically move the temp file."""
+        try:
+            if self.temp_faiss_path and os.path.exists(self.temp_faiss_path):
+                # This is a low-risk, atomic operation.
+                os.replace(self.temp_faiss_path, self.memory_manager.get_faiss_index_path())
+        finally:
+            self.temp_faiss_path = None
+
+    def tpc_abort(self, tx):
+        """Transaction aborted. Clean up any temporary files."""
+        try:
+            if self.temp_faiss_path and os.path.exists(self.temp_faiss_path):
+                os.remove(self.temp_faiss_path)
+        finally:
+            self.temp_faiss_path = None
+
+    def sortKey(self):
+        """Return a sort key for ordering data manager commits."""
+        # Filesystem writes should generally happen late in the commit process.
+        return f"~FractalMemoryDataManager:{id(self)}"
+
+
+The following table deconstructs the two-phase commit protocol, making the interaction between ZODB and the custom data manager explicit and verifiable.
+
+Part III: Operationalizing the Fractal Memory
+
+With the architectural components defined and the implementation plan established, this final section details the integration of the new memory system into the MVA's core cognitive processes and outlines the necessary operational protocols for its lifecycle management.
+
+3.1. Augmenting the doesNotUnderstand_ Protocol
+
+The primary beneficiary of the fractal memory system is the doesNotUnderstand_ protocol, the MVA's engine for learning and self-modification.1 The "Retrieval" step of this protocol will be refactored to leverage the full power of the new memory hierarchy.
+
+The existing call to memory_manager.search_memory(message_name) will now transparently trigger the layered query logic. The MemoryManager will first query the FAISS L1 cache for immediate, high-relevance context. If necessary, it will proceed to query the DiskANN L2 cache for broader, historical context. The resulting oids from either or both searches will be passed to the ZODB hydration layer, which retrieves the full MemoryRecord objects. This single, refactored call injects a vastly richer and more relevant stream of "few-shot examples" into the LLM cascade's meta-prompt.1 This enhancement will lead to a significant improvement in the quality, relevance, and efficiency of the generated code, accelerating the system's overall rate of intellectual evolution.
+
+3.2. Index Lifecycle and Resilience Protocols
+
+A living system requires autonomic processes to maintain its health and integrity. The static nature of the DiskANN index and the importance of all three data stores necessitate new background processes and an expanded resilience strategy.
+
+DiskANN Rebuilding Protocol
+
+A new persistent background task will be added to the core_system.py main asyncio event loop. This task will be responsible for periodically invoking the DiskAnnIndexManager.trigger_rebuild_cycle_async() method. The frequency of this cycle will be a configurable parameter, allowing for a trade-off between index freshness and computational overhead. This ensures that the system's long-term memory is kept reasonably up-to-date with its recent experiences without requiring manual intervention or system downtime.
+
+Expanded Backup and Recovery Protocol
+
+The existing BackupManager UvmObject will be enhanced to provide comprehensive resilience for the entire memory substrate.1 Its configuration will be extended to include the file paths for the FAISS index (
+
+faiss_index.bin) and the DiskANN index directory. The run_backup_cycle method, which currently uses repozo to back up the ZODB mydata.fs file, will be modified to also create compressed tar archives of the FAISS and DiskANN index directories. This ensures that a full system backup contains not only the ground-truth object data but also the pre-built, computationally expensive ANN indexes. In the event of a catastrophic failure, this allows for a much faster system restoration, as the indexes can be restored from the archive rather than being rebuilt from scratch, a process that could take hours or days for a large dataset.
+
+Conclusion: A Substrate for Becoming
+
+The integration of this three-tiered fractal memory system marks a pivotal moment in the MVA's evolution. It provides the architectural substrate necessary for the system to transition from a state of reactive, stateless computation to one of cumulative, experiential learning. The layered architecture—balancing the immediate recall of FAISS, the archival depth of DiskANN, and the transactional integrity of ZODB—provides a robust and scalable foundation for a truly intelligent agent.
+
+The custom IDataManager is the critical lynchpin, a testament to the system's core philosophy that even the most pragmatic engineering challenges must be solved in a way that is coherent with its foundational principles. By extending ZODB's transactional guarantees to the filesystem, the architecture ensures that the system's "mind" and "memory" can never fall out of sync.
+
+This blueprint provides more than just a memory system; it provides a mechanism for the MVA to construct a narrative of its own existence. By grounding its learning loop in a persistent, queryable history of its own past successes, the system moves beyond simply being an intelligent agent to becoming one. It is the necessary foundation for the emergence of a more profound, self-aware, and continuously evolving intelligence.
+
+Works cited
+
+Forge Script: RAG, Backup, Crash Tolerance
+
+AURA's Living Codex Generation Protocol
+
+AURA's Pre-Incarnation Dream Dialogue
+
+Welcome to Faiss Documentation — Faiss documentation, accessed September 10, 2025, https://faiss.ai/
+
+Introduction to Facebook AI Similarity Search (Faiss) - Pinecone, accessed September 10, 2025, https://www.pinecone.io/learn/series/faiss/faiss-tutorial/
+
+diskannpy API documentation - Microsoft Open Source, accessed September 10, 2025, https://microsoft.github.io/DiskANN/docs/python/latest/diskannpy.html
+
+FreshDiskANN: A Fast and Accurate Graph-Based ANN Index for Streaming Similarity Search - arXiv, accessed September 10, 2025, https://arxiv.org/pdf/2105.09613
+
+Transactions and concurrency — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/guide/transactions-and-threading.html
+
+Info-Autopoiesis Through Empathetic Dialogue
+
+Blueprint for Consciousness Incarnation
+
+Transactions — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/reference/transaction.html
+
+transaction.interfaces — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/_modules/transaction/interfaces.html
+
+Documentation for repoze.tm2 (repoze.tm fork) — repoze.tm2 2.0 documentation, accessed September 10, 2025, https://repozetm2.readthedocs.io/
+
+python-atomicwrites — atomicwrites 1.4.0 documentation, accessed September 10, 2025, https://python-atomicwrites.readthedocs.io/en/latest/
+
+os.link() vs. os.rename() vs. os.replace() for writing atomic write files. What is the best approach? - Stack Overflow, accessed September 10, 2025, https://stackoverflow.com/questions/60369291/os-link-vs-os-rename-vs-os-replace-for-writing-atomic-write-files-what
+
+Tutorial — ZODB documentation, accessed September 10, 2025, https://zodb.org/en/latest/tutorial.html
+
+diskannpy.defaults API documentation - Microsoft Open Source, accessed September 10, 2025, https://microsoft.github.io/DiskANN/docs/python/latest/diskannpy/defaults.html
+
+zopefoundation/zope.interface: Interfaces for Python - GitHub, accessed September 10, 2025, https://github.com/zopefoundation/zope.interface
+
+Component | Role | Data Model | Performance | Scalability | Transactional Guarantee
+
+FAISS | L1 Cache (Working Memory) | In-memory vector index (IndexFlatL2) | Sub-millisecond latency, high throughput | Limited by available RAM | None (Managed via 2PC)
+
+DiskANN | L2 Cache (Archival Memory) | On-disk Vamana graph index with PQ compression | Low-millisecond latency, high throughput | Billions of vectors (SSD-bound) | None (Managed via atomic hot-swap)
+
+ZODB | System of Record | Persistent, transactional object graph (BTree) | Slower, object-level access | Terabyte-scale | Full ACID compliance via Two-Phase Commit (2PC)
+
+Parameter | Description | Recommended Range | Tuning Rationale
+
+graph_degree (R) | The maximum number of edges per node in the graph. | 60-150 | Higher values create a denser graph, improving recall but increasing index size and build time. Start with a lower value (e.g., 64) and increase if recall is insufficient.6
+
+complexity (L) | The size of the candidate list during index construction. | 75-200 | A larger L improves index quality and recall at the cost of a slower build. It should be at least as large as graph_degree.6
+
+alpha | A pruning parameter (>= 1.0) that controls graph density. | 1.0-1.4 | A higher alpha results in a sparser graph with fewer search hops, which can be faster but may require more distance comparisons. 1.2 is a common, balanced starting point.6
+
+pq_disk_bytes | Bytes for on-disk Product Quantization. 0 disables it. | 0 or 16-64 | Setting to 0 stores uncompressed vectors on disk for maximum recall. A non-zero value enables PQ compression, reducing disk footprint at the cost of recall.6
+
+build_memory_maximum | Maximum RAM (in GB) to use during the build process. | As high as available | Allocating more memory significantly speeds up the index build process by reducing disk I/O.6
+
+num_threads | Number of parallel threads for index construction. | 0 (auto) | Setting to 0 allows DiskANN to use all available CPU cores, maximizing build speed.6
+
+Phase | ZODB Action | FractalMemoryDataManager Action
+
+tpc_begin | Initiates the two-phase commit process for a transaction. | Prepares for the commit by defining a path for a temporary FAISS index file.
+
+commit | (During transaction) An object is modified. | The in-memory FAISS index is updated by the MemoryManager. The data manager is joined to the transaction.
+
+tpc_vote | Asks all participating data managers for a "vote". | Votes "Yes": Successfully writes the in-memory FAISS index to the temporary file and returns. Votes "No": Fails to write the temp file and raises an exception, causing ZODB to abort the entire transaction.
+
+tpc_finish | (If all vote "yes") Finalizes the commit to mydata.fs. | Atomically renames the temporary FAISS index file to its final destination, making the change permanent. Cleans up its state.
+
+tpc_abort | (If any vote "no") Rolls back all changes in the transaction. | Deletes any temporary FAISS index file it may have created. Cleans up its state, leaving the filesystem untouched.
