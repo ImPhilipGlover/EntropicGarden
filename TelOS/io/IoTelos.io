@@ -6,12 +6,12 @@
 Telos := Object clone do(
 
     // Initialize the TelOS zygote - the computational embryo
-    init := method(
-        self world := nil
-        self morphs := List clone
-        self morphIndex := Map clone
-        self nextId := 1
-    )
+    // REMOVED: init method - objects must be immediately usable after cloning
+    // State lives directly in prototype slots
+    world := nil
+    morphs := List clone
+    morphIndex := Map clone
+    nextId := 1
 
     // Pillar 1: Synaptic Bridge - Reach into Python muscle (helper)
     pythonVersion := method(
@@ -25,7 +25,9 @@ Telos := Object clone do(
     // Create the root world (Morphic's World) and anchor Io state
     bootWorld := method(
         createWorld
-        self world = self // anchor
+        worldSetter := Object clone
+        worldSetter worldValue := self
+        self world := worldSetter worldValue
         writeln("Telos: Morphic World initialized - living canvas ready")
         self
     )
@@ -44,8 +46,13 @@ Telos := Object clone do(
         morph submorphs := List clone
         // assign id
         if(morph hasSlot("id") not,
-            morph id := ("m" .. nextId asString)
-            nextId = nextId + 1
+            idSetter := Object clone
+            idSetter idValue := ("m" .. nextId asString)
+            morph id := idSetter idValue
+            nextIdIncrementer := Object clone
+            nextIdIncrementer currentValue := nextId
+            nextIdIncrementer newValue := nextIdIncrementer currentValue + 1
+            self nextId := nextIdIncrementer newValue
         )
         morphs append(morph)
         morphIndex atPut(morph id, morph)
@@ -67,8 +74,13 @@ Telos := Object clone do(
         addMorphToWorld(child)
         morphs appendIfAbsent(child)
         if(child hasSlot("id") not,
-            child id := ("m" .. nextId asString)
-            nextId = nextId + 1
+            idSetter := Object clone
+            idSetter idValue := ("m" .. nextId asString)
+            child id := idSetter idValue
+            nextIdIncrementer := Object clone
+            nextIdIncrementer currentValue := nextId
+            nextIdIncrementer newValue := nextIdIncrementer currentValue + 1
+            self nextId := nextIdIncrementer newValue
         )
         morphIndex atPut(child id, child)
         "Telos: Morph added to world"
@@ -130,14 +142,32 @@ Telos := Object clone do(
                         if(m,
                             // naive numeric parse
                             valNum := Number fromString(rhs) ; hasNum := (valNum isNan not)
-                            if(slot == "x", m x = hasNum ifTrue(valNum) ifFalse(m x))
-                            if(slot == "y", m y = hasNum ifTrue(valNum) ifFalse(m y))
-                            if(slot == "width", m width = hasNum ifTrue(valNum) ifFalse(m width))
-                            if(slot == "height", m height = hasNum ifTrue(valNum) ifFalse(m height))
+                            if(slot == "x",
+                                valueSetter := Object clone
+                                valueSetter value := hasNum ifTrue(valNum) ifFalse(m x)
+                                m x := valueSetter value
+                            )
+                            if(slot == "y",
+                                valueSetter := Object clone
+                                valueSetter value := hasNum ifTrue(valNum) ifFalse(m y)
+                                m y := valueSetter value
+                            )
+                            if(slot == "width",
+                                valueSetter := Object clone
+                                valueSetter value := hasNum ifTrue(valNum) ifFalse(m width)
+                                m width := valueSetter value
+                            )
+                            if(slot == "height",
+                                valueSetter := Object clone
+                                valueSetter value := hasNum ifTrue(valNum) ifFalse(m height)
+                                m height := valueSetter value
+                            )
                             if(slot == "color",
                                 comps := rhs split(",")
                                 if(comps size >= 4,
-                                    m color = list(Number fromString(comps at(0)), Number fromString(comps at(1)), Number fromString(comps at(2)), Number fromString(comps at(3)))
+                                    colorSetter := Object clone
+                                    colorSetter colorValue := list(Number fromString(comps at(0)), Number fromString(comps at(1)), Number fromString(comps at(2)), Number fromString(comps at(3)))
+                                    m color := colorSetter colorValue
                                 )
                             )
                         )
@@ -152,36 +182,43 @@ Telos := Object clone do(
 // Morph prototype - the fundamental living interface object
 Morph := Object clone do(
 
-    // Initialize a morph with living properties
-    init := method(
-        self x := 100
-        self y := 100
-        self width := 50
-        self height := 50
-        self color := list(1, 0, 0, 1)  // Red by default
-        self submorphs := List clone
-        self owner := nil
-    )
+    // REMOVED: init method - objects must be immediately usable after cloning
+    // State lives directly in prototype slots
+    x := 100
+    y := 100
+    width := 50
+    height := 50
+    color := list(1, 0, 0, 1)  // Red by default
+    submorphs := List clone
+    owner := nil
 
     // Move the morph (direct manipulation)
     moveTo := method(newX, newY,
-        self x = newX
-        self y = newY
+        positionSetter := Object clone
+        positionSetter xValue := newX
+        positionSetter yValue := newY
+        self x := positionSetter xValue
+        self y := positionSetter yValue
         if(self hasSlot("id"), Telos walSet(self id, "x", newX asString); Telos walSet(self id, "y", newY asString))
         "Telos: Morph moved to living position"
     )
 
     // Resize the morph (direct manipulation)
     resizeTo := method(newWidth, newHeight,
-        self width = newWidth
-        self height = newHeight
+        sizeSetter := Object clone
+        sizeSetter widthValue := newWidth
+        sizeSetter heightValue := newHeight
+        self width := sizeSetter widthValue
+        self height := sizeSetter heightValue
         if(self hasSlot("id"), Telos walSet(self id, "width", newWidth asString); Telos walSet(self id, "height", newHeight asString))
         "Telos: Morph resized in living space"
     )
 
     // Change color (direct manipulation)
     setColor := method(r, g, b, a := 1,
-        self color = list(r, g, b, a)
+        colorSetter := Object clone
+        colorSetter colorValue := list(r, g, b, a)
+        self color := colorSetter colorValue
         if(self hasSlot("id"), Telos walSet(self id, "color", ("" .. r .. "," .. g .. "," .. b .. "," .. a)))
         "Telos: Morph color changed in living palette"
     )
@@ -193,7 +230,9 @@ Morph := Object clone do(
 
     // Add a submorph to this morph
     addMorph := method(child,
-        child owner = self
+        ownerSetter := Object clone
+        ownerSetter ownerValue := self
+        child owner := ownerSetter ownerValue
         submorphs append(child)
         Telos addSubmorph(self, child)
     )
@@ -201,7 +240,9 @@ Morph := Object clone do(
     // Remove a submorph
     removeMorph := method(child,
         submorphs remove(child)
-        child owner = nil
+        ownerSetter := Object clone
+        ownerSetter ownerValue := nil
+        child owner := ownerSetter ownerValue
         Telos removeSubmorph(self, child)
     )
 
@@ -253,18 +294,19 @@ CircleMorph := Morph clone do(
 
 // Text morph - for displaying text
 TextMorph := Morph clone do(
-    init := method(
-        resend
-        self text := "Hello TelOS"
-        self fontSize := 12
-    )
+    // REMOVED: init method - objects must be immediately usable after cloning
+    // State lives directly in prototype slots
+    text := "Hello TelOS"
+    fontSize := 12
 
     draw := method(
         writeln("Telos: Drawing text '", text, "' at (", x, ",", y, ") size ", fontSize)
     )
 
     setText := method(newText,
-        self text = newText
+        textSetter := Object clone
+        textSetter textValue := newText
+        self text := textSetter textValue
         "Telos: Text morph updated with living message"
     )
 )

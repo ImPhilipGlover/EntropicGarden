@@ -37,28 +37,56 @@ Persona clone := method(
 
 // Factory method for creating personas with specifications
 Persona with := method(specObj,
-    // Prototypal parameter handling
+    # Prototypal parameter handling
     specAnalyzer := Object clone
-    specAnalyzer spec := specObj
-    specAnalyzer name := if(specAnalyzer spec == nil, "Anonymous", specAnalyzer spec atIfAbsent("name", "Anonymous"))
-    specAnalyzer role := if(specAnalyzer spec == nil, "Generic Agent", specAnalyzer spec atIfAbsent("role", "Generic Agent"))
-    specAnalyzer ethos := if(specAnalyzer spec == nil, "helpful", specAnalyzer spec atIfAbsent("ethos", "helpful"))
-    specAnalyzer style := if(specAnalyzer spec == nil, "direct", specAnalyzer spec atIfAbsent("speakStyle", "direct"))
+    specSetter := Object clone
+    specSetter specValue := specObj
+    specAnalyzer spec := specSetter specValue
+    specGetter := Object clone
+    specGetter currentSpec := specAnalyzer spec
+    nameCalculator := Object clone
+    nameCalculator defaultName := "Anonymous"
+    nameCalculator specName := if(currentSpec == nil, nameCalculator defaultName, currentSpec atIfAbsent("name", nameCalculator defaultName))
+    specAnalyzer name := nameCalculator specName
+    roleCalculator := Object clone
+    roleCalculator defaultRole := "Generic Agent"
+    roleCalculator specRole := if(currentSpec == nil, roleCalculator defaultRole, currentSpec atIfAbsent("role", roleCalculator defaultRole))
+    specAnalyzer role := roleCalculator specRole
+    ethosCalculator := Object clone
+    ethosCalculator defaultEthos := "helpful"
+    ethosCalculator specEthos := if(currentSpec == nil, ethosCalculator defaultEthos, currentSpec atIfAbsent("ethos", ethosCalculator defaultEthos))
+    specAnalyzer ethos := ethosCalculator specEthos
+    styleCalculator := Object clone
+    styleCalculator defaultStyle := "direct"
+    styleCalculator specStyle := if(currentSpec == nil, styleCalculator defaultStyle, currentSpec atIfAbsent("speakStyle", styleCalculator defaultStyle))
+    specAnalyzer style := styleCalculator specStyle
     
-    // Create new persona instance
+    # Create new persona instance
     personaCreator := Object clone
     personaCreator newPersona := Persona clone
-    personaCreator newPersona name := specAnalyzer name
-    personaCreator newPersona role := specAnalyzer role
-    personaCreator newPersona ethos := specAnalyzer ethos
-    personaCreator newPersona speakStyle := specAnalyzer style
+    newPersonaGetter := Object clone
+    newPersonaGetter newPersona := personaCreator newPersona
+    nameSetter := Object clone
+    nameSetter nameValue := specAnalyzer name
+    newPersonaGetter newPersona name := nameSetter nameValue
+    roleSetter := Object clone
+    roleSetter roleValue := specAnalyzer role
+    newPersonaGetter newPersona role := roleSetter roleValue
+    ethosSetter := Object clone
+    ethosSetter ethosValue := specAnalyzer ethos
+    newPersonaGetter newPersona ethos := ethosSetter ethosValue
+    styleSetter := Object clone
+    styleSetter styleValue := specAnalyzer style
+    newPersonaGetter newPersona speakStyle := styleSetter styleValue
     
-    // Initialize traits from spec if provided
-    if(specAnalyzer spec != nil and specAnalyzer spec hasSlot("traits"),
-        personaCreator newPersona traits := specAnalyzer spec at("traits")
+    # Initialize traits from spec if provided
+    if(currentSpec != nil and currentSpec hasSlot("traits"),
+        traitsSetter := Object clone
+        traitsSetter traitsValue := currentSpec at("traits")
+        newPersonaGetter newPersona traits := traitsSetter traitsValue
     )
     
-    personaCreator newPersona
+    newPersonaGetter newPersona
 )
 
 // Persona behavior methods
@@ -81,54 +109,109 @@ Persona deactivate := method(
 Persona describe := method(
     descriptionBuilder := Object clone
     descriptionBuilder parts := List clone
-    descriptionBuilder parts append("Persona: " .. name)
-    descriptionBuilder parts append("Role: " .. role)
-    descriptionBuilder parts append("Ethos: " .. ethos)
-    descriptionBuilder parts append("Style: " .. speakStyle)
-    descriptionBuilder parts append("Status: " .. if(active, "active", "inactive"))
-    descriptionBuilder parts append("Conversations: " .. conversationHistory size)
-    descriptionBuilder parts append("Experiences: " .. experienceMemory size)
+    descriptionBuilder partsGetter := Object clone
+    descriptionBuilder partsGetter parts := descriptionBuilder parts
+    descriptionBuilder partsGetter parts append("Persona: " .. self name)
+    descriptionBuilder partsGetter parts append("Role: " .. self role)
+    descriptionBuilder partsGetter parts append("Ethos: " .. self ethos)
+    descriptionBuilder partsGetter parts append("Style: " .. self speakStyle)
+    descriptionBuilder partsGetter parts append("Status: " .. if(self active, "active", "inactive"))
+    descriptionBuilder historyGetter := Object clone
+    descriptionBuilder historyGetter history := self conversationHistory
+    descriptionBuilder partsGetter parts append("Conversations: " .. descriptionBuilder historyGetter history size)
+    descriptionBuilder memoryGetter := Object clone
+    descriptionBuilder memoryGetter memory := self experienceMemory
+    descriptionBuilder partsGetter parts append("Experiences: " .. descriptionBuilder memoryGetter memory size)
     
-    descriptionBuilder parts join("\n")
+    descriptionBuilder partsGetter parts join("\n")
 )
 
 Persona converse := method(messageObj, contextObj,
-    // Prototypal parameter handling
+    # Prototypal parameter handling
     conversationAnalyzer := Object clone
-    conversationAnalyzer message := messageObj
-    conversationAnalyzer context := contextObj
-    conversationAnalyzer messageStr := if(conversationAnalyzer message == nil, "", conversationAnalyzer message asString)
-    conversationAnalyzer contextList := if(conversationAnalyzer context == nil, List clone, conversationAnalyzer context)
+    messageSetter := Object clone
+    messageSetter messageValue := messageObj
+    conversationAnalyzer message := messageSetter messageValue
+    contextSetter := Object clone
+    contextSetter contextValue := contextObj
+    conversationAnalyzer context := contextSetter contextValue
+    messageGetter := Object clone
+    messageGetter currentMessage := conversationAnalyzer message
+    contextGetter := Object clone
+    contextGetter currentContext := conversationAnalyzer context
+    messageStrCalculator := Object clone
+    messageStrCalculator defaultMessage := ""
+    messageStrCalculator messageStr := if(messageGetter currentMessage == nil, messageStrCalculator defaultMessage, messageGetter currentMessage asString)
+    conversationAnalyzer messageStr := messageStrCalculator messageStr
+    contextListCalculator := Object clone
+    contextListCalculator defaultContext := List clone
+    contextListCalculator contextList := if(contextGetter currentContext == nil, contextListCalculator defaultContext, contextGetter currentContext)
+    conversationAnalyzer contextList := contextListCalculator contextList
     
-    // Process conversation
+    # Process conversation
     conversationProcessor := Object clone
     conversationProcessor persona := self
-    conversationProcessor input := conversationAnalyzer messageStr
-    conversationProcessor history := conversationAnalyzer contextList
+    messageStrGetter := Object clone
+    messageStrGetter messageStr := conversationAnalyzer messageStr
+    conversationProcessor input := messageStrGetter messageStr
+    contextListGetter := Object clone
+    contextListGetter contextList := conversationAnalyzer contextList
+    conversationProcessor history := contextListGetter contextList
     
-    // Log the conversation
+    # Log the conversation
     conversationLogger := Object clone
     conversationLogger persona := self
     conversationLogger entry := Map clone
-    conversationLogger entry atPut("input", conversationProcessor input)
-    conversationLogger entry atPut("timestamp", Date clone now asString)
-    conversationLogger persona conversationHistory append(conversationLogger entry)
+    entryGetter := Object clone
+    entryGetter entry := conversationLogger entry
+    inputGetter := Object clone
+    inputGetter inputValue := conversationProcessor input
+    entryGetter entry atPut("input", inputGetter inputValue)
+    timestampSetter := Object clone
+    timestampSetter timestampValue := Date clone now asString
+    entryGetter entry atPut("timestamp", timestampSetter timestampValue)
+    historyGetter := Object clone
+    historyGetter history := conversationLogger persona conversationHistory
+    entryGetter2 := Object clone
+    entryGetter2 entry := conversationLogger entry
+    historyGetter history append(entryGetter2 entry)
     
-    // Generate response based on persona characteristics
+    # Generate response based on persona characteristics
     responseGenerator := Object clone
     responseGenerator persona := self
-    responseGenerator input := conversationProcessor input
-    responseGenerator response := responseGenerator persona generateResponse(responseGenerator input, conversationProcessor history)
+    inputGetter2 := Object clone
+    inputGetter2 inputValue := conversationProcessor input
+    responseGenerator input := inputGetter2 inputValue
+    historyGetter2 := Object clone
+    historyGetter2 historyValue := conversationProcessor history
+    responseGenerator history := historyGetter2 historyValue
+    personaGetter := Object clone
+    personaGetter persona := responseGenerator persona
+    inputGetter3 := Object clone
+    inputGetter3 inputValue := responseGenerator input
+    historyGetter3 := Object clone
+    historyGetter3 historyValue := responseGenerator history
+    responseGenerator response := personaGetter persona generateResponse(inputGetter3 inputValue, historyGetter3 historyValue)
     
-    // Log the response
+    # Log the response
     responseLogger := Object clone
     responseLogger persona := self
     responseLogger entry := Map clone
-    responseLogger entry atPut("output", responseGenerator response)
-    responseLogger entry atPut("timestamp", Date clone now asString)
-    responseLogger persona conversationHistory append(responseLogger entry)
+    entryGetter3 := Object clone
+    entryGetter3 entry := responseLogger entry
+    responseGetter := Object clone
+    responseGetter responseValue := responseGenerator response
+    entryGetter3 entry atPut("output", responseGetter responseValue)
+    timestampSetter2 := Object clone
+    timestampSetter2 timestampValue := Date clone now asString
+    entryGetter3 entry atPut("timestamp", timestampSetter2 timestampValue)
+    historyGetter4 := Object clone
+    historyGetter4 history := responseLogger persona conversationHistory
+    entryGetter4 := Object clone
+    entryGetter4 entry := responseLogger entry
+    historyGetter4 history append(entryGetter4 entry)
     
-    responseGenerator response
+    responseGetter responseValue
 )
 
 Persona generateResponse := method(inputObj, historyObj,
@@ -136,15 +219,23 @@ Persona generateResponse := method(inputObj, historyObj,
     responseAnalyzer := Object clone
     responseAnalyzer input := inputObj
     responseAnalyzer history := historyObj
-    responseAnalyzer inputStr := if(responseAnalyzer input == nil, "", responseAnalyzer input asString)
-    responseAnalyzer historyList := if(responseAnalyzer history == nil, List clone, responseAnalyzer history)
+    responseAnalyzer inputGetter := Object clone
+    responseAnalyzer inputGetter currentInput := responseAnalyzer input
+    responseAnalyzer historyGetter := Object clone
+    responseAnalyzer historyGetter currentHistory := responseAnalyzer history
+    responseAnalyzer inputStr := if(responseAnalyzer inputGetter currentInput == nil, "", responseAnalyzer inputGetter currentInput asString)
+    responseAnalyzer historyList := if(responseAnalyzer historyGetter currentHistory == nil, List clone, responseAnalyzer historyGetter currentHistory)
     
     // Simple response generation based on persona traits
     responseBuilder := Object clone
     responseBuilder persona := self
     responseBuilder input := responseAnalyzer inputStr
-    responseBuilder ethos := responseBuilder persona ethos
-    responseBuilder style := responseBuilder persona speakStyle
+    responseBuilder ethosGetter := Object clone
+    responseBuilder ethosGetter ethos := responseBuilder persona ethos
+    responseBuilder ethos := responseBuilder ethosGetter ethos
+    responseBuilder styleGetter := Object clone
+    responseBuilder styleGetter speakStyle := responseBuilder persona speakStyle
+    responseBuilder style := responseBuilder styleGetter speakStyle
     
     // Pattern matching for responses
     responseSelector := Object clone
@@ -170,49 +261,115 @@ Persona generateResponse := method(inputObj, historyObj,
 )
 
 Persona addTrait := method(traitKeyObj, traitValueObj,
-    // Prototypal parameter handling
+    # Prototypal parameter handling
     traitAnalyzer := Object clone
-    traitAnalyzer key := traitKeyObj
-    traitAnalyzer value := traitValueObj
-    traitAnalyzer keyStr := if(traitAnalyzer key == nil, "unknown", traitAnalyzer key asString)
-    traitAnalyzer valueStr := if(traitAnalyzer value == nil, "undefined", traitAnalyzer value asString)
+    traitKeySetter := Object clone
+    traitKeySetter keyValue := traitKeyObj
+    traitAnalyzer key := traitKeySetter keyValue
+    traitValueSetter := Object clone
+    traitValueSetter valueValue := traitValueObj
+    traitAnalyzer value := traitValueSetter valueValue
+    keyGetter := Object clone
+    keyGetter currentKey := traitAnalyzer key
+    valueGetter := Object clone
+    valueGetter currentValue := traitAnalyzer value
+    keyStrCalculator := Object clone
+    keyStrCalculator defaultKey := "unknown"
+    keyStrCalculator keyStr := if(keyGetter currentKey == nil, keyStrCalculator defaultKey, keyGetter currentKey asString)
+    traitAnalyzer keyStr := keyStrCalculator keyStr
+    valueStrCalculator := Object clone
+    valueStrCalculator defaultValue := "undefined"
+    valueStrCalculator valueStr := if(valueGetter currentValue == nil, valueStrCalculator defaultValue, valueGetter currentValue asString)
+    traitAnalyzer valueStr := valueStrCalculator valueStr
     
-    // Store trait
+    # Store trait
     traitRecorder := Object clone
     traitRecorder persona := self
-    traitRecorder key := traitAnalyzer keyStr
-    traitRecorder value := traitAnalyzer valueStr
-    traitRecorder persona traits atPut(traitRecorder key, traitRecorder value)
+    keyStrGetter := Object clone
+    keyStrGetter keyStr := traitAnalyzer keyStr
+    traitRecorder key := keyStrGetter keyStr
+    valueStrGetter := Object clone
+    valueStrGetter valueStr := traitAnalyzer valueStr
+    traitRecorder value := valueStrGetter valueStr
+    traitsGetter := Object clone
+    traitsGetter traits := traitRecorder persona traits
+    keyGetter2 := Object clone
+    keyGetter2 keyValue := traitRecorder key
+    valueGetter2 := Object clone
+    valueGetter2 valueValue := traitRecorder value
+    traitsGetter traits atPut(keyGetter2 keyValue, valueGetter2 valueValue)
     
     traitReporter := Object clone
-    traitReporter message := "Persona " .. name .. " acquired trait: " .. traitRecorder key .. " = " .. traitRecorder value
-    writeln(traitReporter message)
-    traitReporter message
+    nameGetter := Object clone
+    nameGetter nameValue := self name
+    keyGetter3 := Object clone
+    keyGetter3 keyValue := traitRecorder key
+    valueGetter3 := Object clone
+    valueGetter3 valueValue := traitRecorder value
+    traitReporter message := "Persona " .. nameGetter nameValue .. " acquired trait: " .. keyGetter3 keyValue .. " = " .. valueGetter3 valueValue
+    messageGetter := Object clone
+    messageGetter messageValue := traitReporter message
+    writeln(messageGetter messageValue)
+    messageGetter messageValue
 )
 
 Persona rememberExperience := method(experienceObj, contextObj,
-    // Prototypal parameter handling
+    # Prototypal parameter handling
     experienceAnalyzer := Object clone
-    experienceAnalyzer experience := experienceObj
-    experienceAnalyzer context := contextObj
-    experienceAnalyzer expStr := if(experienceAnalyzer experience == nil, "", experienceAnalyzer experience asString)
-    experienceAnalyzer ctxStr := if(experienceAnalyzer context == nil, "", experienceAnalyzer context asString)
+    experienceSetter := Object clone
+    experienceSetter experienceValue := experienceObj
+    experienceAnalyzer experience := experienceSetter experienceValue
+    contextSetter := Object clone
+    contextSetter contextValue := contextObj
+    experienceAnalyzer context := contextSetter contextValue
+    experienceGetter := Object clone
+    experienceGetter currentExperience := experienceAnalyzer experience
+    contextGetter := Object clone
+    contextGetter currentContext := experienceAnalyzer context
+    expStrCalculator := Object clone
+    expStrCalculator defaultExp := ""
+    expStrCalculator expStr := if(experienceGetter currentExperience == nil, expStrCalculator defaultExp, experienceGetter currentExperience asString)
+    experienceAnalyzer expStr := expStrCalculator expStr
+    ctxStrCalculator := Object clone
+    ctxStrCalculator defaultCtx := ""
+    ctxStrCalculator ctxStr := if(contextGetter currentContext == nil, ctxStrCalculator defaultCtx, contextGetter currentContext asString)
+    experienceAnalyzer ctxStr := ctxStrCalculator ctxStr
     
-    // Create memory entry
+    # Create memory entry
     memoryRecorder := Object clone
     memoryRecorder persona := self
     memoryRecorder key := Date clone now asString
     memoryRecorder entry := Map clone
-    memoryRecorder entry atPut("experience", experienceAnalyzer expStr)
-    memoryRecorder entry atPut("context", experienceAnalyzer ctxStr)
-    memoryRecorder entry atPut("timestamp", memoryRecorder key)
+    entryGetter := Object clone
+    entryGetter entry := memoryRecorder entry
+    expStrGetter := Object clone
+    expStrGetter expStr := experienceAnalyzer expStr
+    entryGetter entry atPut("experience", expStrGetter expStr)
+    ctxStrGetter := Object clone
+    ctxStrGetter ctxStr := experienceAnalyzer ctxStr
+    entryGetter entry atPut("context", ctxStrGetter ctxStr)
+    keyGetter := Object clone
+    keyGetter keyValue := memoryRecorder key
+    entryGetter entry atPut("timestamp", keyGetter keyValue)
     
-    memoryRecorder persona experienceMemory atPut(memoryRecorder key, memoryRecorder entry)
+    memoryGetter := Object clone
+    memoryGetter memory := memoryRecorder persona experienceMemory
+    keyGetter2 := Object clone
+    keyGetter2 keyValue := memoryRecorder key
+    entryGetter2 := Object clone
+    entryGetter2 entry := memoryRecorder entry
+    memoryGetter memory atPut(keyGetter2 keyValue, entryGetter2 entry)
     
     memoryReporter := Object clone
-    memoryReporter message := "Persona " .. name .. " remembered: " .. experienceAnalyzer expStr
-    writeln(memoryReporter message)
-    memoryReporter message
+    nameGetter := Object clone
+    nameGetter nameValue := self name
+    expStrGetter2 := Object clone
+    expStrGetter2 expStr := experienceAnalyzer expStr
+    memoryReporter message := "Persona " .. nameGetter nameValue .. " remembered: " .. expStrGetter2 expStr
+    messageGetter := Object clone
+    messageGetter messageValue := memoryReporter message
+    writeln(messageGetter messageValue)
+    messageGetter messageValue
 )
 
 // === PERSONA REGISTRY ===
@@ -223,77 +380,126 @@ PersonaCodex registry := Map clone
 PersonaCodex activePersona := nil
 
 PersonaCodex register := method(personaObj,
-    // Prototypal parameter handling
+    # Prototypal parameter handling
     registryAnalyzer := Object clone
-    registryAnalyzer persona := personaObj
+    personaSetter := Object clone
+    personaSetter personaValue := personaObj
+    registryAnalyzer persona := personaSetter personaValue
+    personaGetter := Object clone
+    personaGetter currentPersona := registryAnalyzer persona
     
-    if(registryAnalyzer persona == nil,
+    if(personaGetter currentPersona == nil,
         errorReporter := Object clone
         errorReporter message := "PersonaCodex: Cannot register nil persona"
-        writeln(errorReporter message)
-        return errorReporter message
+        messageGetter := Object clone
+        messageGetter messageValue := errorReporter message
+        writeln(messageGetter messageValue)
+        return messageGetter messageValue
     )
     
-    // Register persona
+    # Register persona
     registrar := Object clone
-    registrar persona := registryAnalyzer persona
-    registrar name := registrar persona name
-    self registry atPut(registrar name, registrar persona)
+    registrar persona := personaGetter currentPersona
+    nameGetter := Object clone
+    nameGetter name := registrar persona name
+    registrar name := nameGetter name
+    registryGetter := Object clone
+    registryGetter registry := self registry
+    nameGetter2 := Object clone
+    nameGetter2 nameValue := registrar name
+    personaGetter2 := Object clone
+    personaGetter2 personaValue := registrar persona
+    registryGetter registry atPut(nameGetter2 nameValue, personaGetter2 personaValue)
     
     registrationReporter := Object clone
-    registrationReporter message := "PersonaCodex: Registered persona '" .. registrar name .. "'"
-    writeln(registrationReporter message)
-    registrationReporter message
+    nameGetter3 := Object clone
+    nameGetter3 nameValue := registrar name
+    registrationReporter message := "PersonaCodex: Registered persona '" .. nameGetter3 nameValue .. "'"
+    messageGetter2 := Object clone
+    messageGetter2 messageValue := registrationReporter message
+    writeln(messageGetter2 messageValue)
+    messageGetter2 messageValue
 )
 
 PersonaCodex get := method(nameObj,
     // Prototypal parameter handling
     lookupAnalyzer := Object clone
     lookupAnalyzer name := nameObj
-    lookupAnalyzer nameStr := if(lookupAnalyzer name == nil, "", lookupAnalyzer name asString)
+    lookupAnalyzer nameGetter := Object clone
+    lookupAnalyzer nameGetter currentName := lookupAnalyzer name
+    lookupAnalyzer nameStr := if(lookupAnalyzer nameGetter currentName == nil, "", lookupAnalyzer nameGetter currentName asString)
     
     // Retrieve persona
     retriever := Object clone
     retriever name := lookupAnalyzer nameStr
-    retriever persona := self registry at(retriever name)
+    retriever registryGetter := Object clone
+    retriever registryGetter registry := self registry
+    retriever persona := retriever registryGetter registry at(retriever name)
     retriever persona
 )
 
 PersonaCodex activate := method(nameObj,
-    // Prototypal parameter handling
+    # Prototypal parameter handling
     activationAnalyzer := Object clone
-    activationAnalyzer name := nameObj
-    activationAnalyzer nameStr := if(activationAnalyzer name == nil, "", activationAnalyzer name asString)
+    nameSetter := Object clone
+    nameSetter nameValue := nameObj
+    activationAnalyzer name := nameSetter nameValue
+    nameGetter := Object clone
+    nameGetter currentName := activationAnalyzer name
+    nameStrCalculator := Object clone
+    nameStrCalculator defaultName := ""
+    nameStrCalculator nameStr := if(nameGetter currentName == nil, nameStrCalculator defaultName, nameGetter currentName asString)
+    activationAnalyzer nameStr := nameStrCalculator nameStr
     
-    // Deactivate current persona if any
-    if(self activePersona != nil,
-        self activePersona deactivate
+    # Deactivate current persona if any
+    currentPersonaGetter := Object clone
+    currentPersonaGetter currentActive := self activePersona
+    if(currentPersonaGetter currentActive != nil,
+        activeSetter := Object clone
+        activeSetter activeValue := false
+        currentPersonaGetter currentActive active := activeSetter activeValue
     )
     
-    // Activate new persona
+    # Activate new persona
     activator := Object clone
-    activator name := activationAnalyzer nameStr
+    nameStrGetter := Object clone
+    nameStrGetter nameStr := activationAnalyzer nameStr
+    activator name := nameStrGetter nameStr
     activator persona := self get(activator name)
     
-    if(activator persona != nil,
-        activator persona activate
-        self activePersona := activator persona
+    personaGetter := Object clone
+    personaGetter persona := activator persona
+    if(personaGetter persona != nil,
+        activeSetter2 := Object clone
+        activeSetter2 activeValue := true
+        personaGetter persona active := activeSetter2 activeValue
+        self activePersona := personaGetter persona
         
         activationReporter := Object clone
-        activationReporter message := "PersonaCodex: Activated persona '" .. activator name .. "'"
-        writeln(activationReporter message)
-        return activationReporter message
+        nameGetter2 := Object clone
+        nameGetter2 nameValue := activator name
+        activationReporter message := "PersonaCodex: Activated persona '" .. nameGetter2 nameValue .. "'"
+        messageGetter := Object clone
+        messageGetter messageValue := activationReporter message
+        writeln(messageGetter messageValue)
+        return messageGetter messageValue
     ,
         errorReporter := Object clone
-        errorReporter message := "PersonaCodex: Persona '" .. activator name .. "' not found"
-        writeln(errorReporter message)
-        return errorReporter message
+        nameGetter3 := Object clone
+        nameGetter3 nameValue := activator name
+        errorReporter message := "PersonaCodex: Persona '" .. nameGetter3 nameValue .. "' not found"
+        messageGetter2 := Object clone
+        messageGetter2 messageValue := errorReporter message
+        writeln(messageGetter2 messageValue)
+        return messageGetter2 messageValue
     )
 )
 
 PersonaCodex list := method(
     lister := Object clone
-    lister names := self registry keys
+    lister registryGetter := Object clone
+    lister registryGetter registry := self registry
+    lister names := lister registryGetter registry keys
     lister count := lister names size
     
     listReporter := Object clone
@@ -304,8 +510,12 @@ PersonaCodex list := method(
 
 PersonaCodex status := method(
     statusAnalyzer := Object clone
-    statusAnalyzer registry := self registry
-    statusAnalyzer active := self activePersona
+    statusAnalyzer registryGetter := Object clone
+    statusAnalyzer registryGetter registry := self registry
+    statusAnalyzer registry := statusAnalyzer registryGetter registry
+    statusAnalyzer activeGetter := Object clone
+    statusAnalyzer activeGetter active := self activePersona
+    statusAnalyzer active := statusAnalyzer activeGetter active
     statusAnalyzer count := statusAnalyzer registry size
     statusAnalyzer activeName := if(statusAnalyzer active == nil, "none", statusAnalyzer active name)
     

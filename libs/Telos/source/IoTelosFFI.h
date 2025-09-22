@@ -97,6 +97,19 @@ void IoTelosFFI_registerMethods(IoState *state, IoObject *telosProto);
 
 // IoProxy Integration Functions
 PyObject* IoTelosFFI_forwardMessage(PyObject *self, PyObject *args, PyObject *kwargs);
-PyObject* IoTelosFFI_createProxy(IoObject *ioObj, const char *proxy_type);
+PyObject* IoTelosFFI_createPythonProxyObject(IoObject *ioObj, const char *proxy_type);
+
+// Prototypal Emulation Layer - Complete Implementation
+typedef struct TelosProxyObject TelosProxyObject;  // Forward declaration
+void IoTelosFFI_initPrototypalEmulation(void);
+TelosProxyObject* IoTelosFFI_createProxy(IoObject *ioObject);
+PyObject* IoTelosFFI_createPythonProxy(TelosProxyObject *proxy);
+void IoTelosFFI_destroyProxy(TelosProxyObject *proxy);
+
+// Transactional State Updates - WAL Consistency
+IoObject* IoTelosFFI_setProxyAttribute(IoObject *self, IoObject *locals, IoMessage *m);
+
+// Enhanced LLM Chat Integration
+IoObject* IoTelosFFI_chatWithLLM(IoObject *self, IoObject *locals, IoMessage *m);
 
 #endif // IOTELOS_FFI_H

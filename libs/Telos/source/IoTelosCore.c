@@ -7,6 +7,7 @@
 #include "IoTelosCore.h"
 #include "IoTelos.h"
 #include "IoTelosFFI.h"
+#include "IoTelosMorphic.h"
 #include "IoState.h"
 #include "IoObject.h"
 #include "Collector.h"
@@ -47,9 +48,9 @@ IoTelos *IoTelos_proto(void *state) {
         printf("TelOS Core: Setting data pointer...\n");
         IoObject_setDataPointer_(proto, proto);
         
-        printf("TelOS Core: Initializing Python subsystem...\n");
-        // Initialize Python subsystem
-        IoTelosFFI_initEnhancedPython();
+        printf("TelOS Core: Python subsystem will be initialized on first use...\n");
+        // Initialize Python subsystem lazily to avoid GC conflicts
+        // IoTelosFFI_initEnhancedPython();
         
         printf("TelOS Core: Registering prototype with state...\n");
         IoState_registerProtoWithId_(state, proto, protoId);
@@ -57,6 +58,9 @@ IoTelos *IoTelos_proto(void *state) {
         printf("TelOS Core: Registering FFI methods...\n");
         // Register methods from all modules
         IoTelosFFI_registerMethods(state, (IoObject*)proto);
+        
+        printf("TelOS Core: Registering Morphic methods...\n");
+        IoTelosMorphic_registerMethods(state, (IoObject*)proto);
         
         printf("TelOS Core: Registering core methods...\n");
         // Core methods
@@ -86,11 +90,11 @@ IoTelos *IoTelos_rawClone(IoTelos *proto) {
     }
     
     printf("TelOS Core: Clone object created, about to pin...\n");
-    
+
     // CRITICAL: Pin the cloned object to prevent GC collection
     // This prevents the GC mismatch issue identified in architectural analysis
     IoTelos_pinObject(self);
-    printf("TelOS Core: ✓ Clone completed and pinned (%p)\n", self);
+    printf("TelOS Core: ✓ Clone completed (%p) - pinning enabled\n", self);
     
     return (IoTelos*)self;
 }
@@ -112,7 +116,7 @@ void IoTelos_pinObject(IoObject *object) {
     if (!pinnedObjects) {
         pinnedObjects = List_new();
     }
-    
+
     // Use Collector retain system to prevent GC of this object
     IoState *state = IoObject_state(object);
     if (state && state->collector) {
@@ -124,11 +128,15 @@ void IoTelos_pinObject(IoObject *object) {
 
 void IoTelos_unpinObject(IoObject *object) {
     if (!pinnedObjects) return;
-    
+
     // Release from Collector retain system
     IoState *state = IoObject_state(object);
     if (state && state->collector) {
         Collector_stopRetaining_(state->collector, object);
+        // CRITICAL: Make the object white again so it can be collected
+        // This fixes the tri-color algorithm inconsistency
+        extern void Collector_makeWhite_(Collector *self, CollectorMarker *v);
+        Collector_makeWhite_(state->collector, (CollectorMarker *)object);
         List_remove_(pinnedObjects, object);
         printf("TelOS GC: Unpinned object (%p), now eligible for collection\n", object);
     }
@@ -136,17 +144,20 @@ void IoTelos_unpinObject(IoObject *object) {
 
 void IoTelos_unpinAllObjects(void) {
     if (!pinnedObjects) return;
-    
+
     printf("TelOS GC: Unpinning all objects (%d total)\n", (int)List_size(pinnedObjects));
-    
-    // Release all pinned objects
-    LIST_FOREACH(pinnedObjects, i, object,
+
+    // Release all pinned objects with proper color management
+    LIST_FOREACH(pinnedObjects, i, object, {
         IoState *state = IoObject_state((IoObject*)object);
         if (state && state->collector) {
             Collector_stopRetaining_(state->collector, object);
+            // Make white for collection
+            extern void Collector_makeWhite_(Collector *self, CollectorMarker *v);
+            Collector_makeWhite_(state->collector, (CollectorMarker *)object);
         }
-    );
-    
+    });
+
     List_free(pinnedObjects);
     pinnedObjects = NULL;
 }

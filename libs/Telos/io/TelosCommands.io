@@ -37,13 +37,14 @@ Command with := method(nameObj, descriptionObj, handlerObj,
     commandAnalyzer handler := handlerObj
     commandAnalyzer nameStr := if(commandAnalyzer name == nil, "default", commandAnalyzer name asString)
     commandAnalyzer descStr := if(commandAnalyzer description == nil, "No description", commandAnalyzer description asString)
-    
+
     commandCreator := Object clone
     commandCreator newCommand := Command clone
     commandCreator newCommand name := commandAnalyzer nameStr
     commandCreator newCommand description := commandAnalyzer descStr
     commandCreator newCommand handler := commandAnalyzer handler
-    
+
+    // Return the configured command prototype
     commandCreator newCommand
 )
 
@@ -332,7 +333,14 @@ InteractiveProcessor run := method(
         
         // Read input
         inputReader := Object clone
-        inputReader line := File standardInput readLine
+        // Non-interactive guard: skip stdin reads when disabled
+        nonInteractive := System getEnvironmentVariable("TELOS_NONINTERACTIVE")
+        if(nonInteractive and nonInteractive size > 0,
+            // In non-interactive mode, synthesize empty input to avoid hangs
+            inputReader line := ""
+        ,
+            inputReader line := File standardInput readLine
+        )
         
         if(inputReader line == nil,
             self stop

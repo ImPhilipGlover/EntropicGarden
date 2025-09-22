@@ -1,0 +1,1 @@
+writeln("MINIMAL TEST")

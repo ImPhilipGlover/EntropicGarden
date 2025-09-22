@@ -13,34 +13,32 @@ TelosMorphic loadTime := Date clone now
 
 // Extend Telos object with Morphic capabilities
 Telos do(
-    // Initialize world tracking first
+    // Initialize world tracking first - immediate usability
     world := nil
     
     // World management - create world with proper C-level access
     createWorld := method(
-        if(self world == nil,
-            // Call C-level world creation first
+        currentWorld := self world
+        if(currentWorld == nil,
+            # Call C-level world creation first
             if(self hasSlot("Telos_rawCreateWorld"),
                 self Telos_rawCreateWorld
             ,
                 writeln("Telos: Creating world (fallback)")
             )
-            // Create Io-level world object for tracking
-            self world = Object clone
-            self world morphs := List clone
-            self world id := "RootWorld"
+            # Create Io-level world object as a Morph
+            newWorld := Morph clone
+            newWorld id := "RootWorld"
+            newWorld bounds setSize(640, 480)  # Match window size
+            newWorld color setColor(0.1, 0.1, 0.1, 1.0)  # Dark background
             
-            // Add methods to world object
-            self world addMorph := method(morph,
-                self morphs append(morph)
-                ("TelOS: Added morph '" .. morph id .. "' to world") println
+            newWorld refresh := method(
+                count := self submorphs size
+                writeln("TelOS: Refreshing display with " .. count .. " morphs")
                 self
             )
             
-            self world refresh := method(
-                ("TelOS: Refreshing display with " .. self morphs size .. " morphs") println
-                self
-            )
+            self world := newWorld
         )
         self world
     )
@@ -107,13 +105,19 @@ Telos do(
     // Simple display loop for timed demonstrations
     displayFor := method(seconds,
         writeln("TelOS: Displaying content for " .. seconds .. " seconds...")
-        writeln("TelOS: Window should be responsive to close button during display")
+        writeln("TelOS: Press ESC or close window to exit early")
         iterations := (seconds * 10) floor
         
         for(i, 1, iterations,
             // CRITICAL: Process SDL2 events FIRST (including close button)
             if(self hasSlot("Telos_rawHandleEvent"),
                 self Telos_rawHandleEvent
+            )
+            
+            // Check if exit was requested
+            if(self hasSlot("shouldExit") and self shouldExit,
+                writeln("\nTelOS: Exit requested - stopping display loop")
+                break
             )
             
             self drawWorld
@@ -127,23 +131,27 @@ Telos do(
     
     // Add morph to world
     addMorph := method(morph,
-        if(self world != nil,
-            self world morphs append(morph)
-            ("TelOS: Added morph '" .. morph id .. "' to world") println
+        currentWorld := self world
+        if(currentWorld != nil,
+            currentWorld submorphs append(morph)
+            morphId := morph id
+            writeln("TelOS: Added morph '" .. morphId .. "' to world")
         )
         self
     )
     
     // Refresh display - actually draw to SDL2 window
     refresh := method(
-        ("TelOS: Refreshing display with " .. self world morphs size .. " morphs") println
+        currentWorld := self world
+        count := currentWorld morphs size
+        writeln("TelOS: Refreshing display with " .. count .. " morphs")
         
-        // CRITICAL: Process SDL2 events (including window close button)
+        # CRITICAL: Process SDL2 events (including window close button)
         if(self hasSlot("Telos_rawHandleEvent"),
             self Telos_rawHandleEvent
         )
         
-        // Call C-level drawing if available
+        # Call C-level drawing if available
         if(self hasSlot("Telos_rawDraw"),
             self Telos_rawDraw
         ,
@@ -152,26 +160,36 @@ Telos do(
         self
     )
     
-    // Draw all morphs to the window
+    // Draw world - render all morphs to SDL2 window using existing C-level drawing
     drawWorld := method(
-        writeln("TelOS: Drawing world with " .. self world morphs size .. " morphs")
+        currentWorld := self world
+        count := currentWorld submorphs size
+        writeln("TelOS: Drawing world with " .. count .. " morphs")
         
-        // Draw each morph to the SDL2 window
-        self world morphs foreach(morph,
-            self drawMorph(morph)
+        # Use the C-level world drawing directly (this works!)
+        if(self hasSlot("Telos_rawDraw"),
+            self Telos_rawDraw
+        ,
+            writeln("TelOS: No C-level drawing available - using fallback")
         )
-        
-        // Present the rendered frame
-        self presentFrame
+        self
     )
     
     // Draw individual morph (calls C-level drawing)
     drawMorph := method(morph,
-        if(self hasSlot("Telos_rawCreateMorph"),
-            // Use C-level morph creation/drawing
-            self Telos_rawCreateMorph
+        if(self hasSlot("Telos_rawDrawMorph"),
+            // Use C-level morph drawing
+            self Telos_rawDrawMorph(morph)
         ,
-            writeln("TelOS: Drawing morph '" .. morph id .. "' at (" .. morph x .. "," .. morph y .. ")")
+            morphId := morph id
+            morphX := morph x
+            morphY := morph y
+            writeln("TelOS: Drawing morph '" .. morphId .. "' at (" .. morphX .. "," .. morphY .. ")")
+            
+            // Call C-level fallback if available
+            if(self hasSlot("drawRect"),
+                self drawRect(morphX, morphY, morph width, morph height, morph color)
+            )
         )
     )
     
@@ -180,58 +198,146 @@ Telos do(
         if(self hasSlot("Telos_rawDraw"),
             self Telos_rawDraw
         ,
-            writeln("TelOS: Presenting frame (fallback)")
+            framePresenter := Object clone
+            framePresenter message := "TelOS: Presenting frame (fallback)"
+            writeln(framePresenter message)
         )
     )
 )
 
 // === MORPHIC OBJECT PROTOTYPES ===
+// Based on "Morphic UI Framework Training Guide Extension.txt"
+// Implements proper scene graph with owner/submorphs relationships
 
-// RectangleMorph - Basic rectangular visual object
-RectangleMorph := Object clone
-RectangleMorph do(
-    // Initialize with default properties
-    x := 0
-    y := 0  
-    width := 100
-    height := 100
-    color := list(0.5, 0.5, 0.5, 1.0)  // Default gray
-    id := "defaultRect"
+// Base Morph prototype - the universal graphical primitive
+Morph := Object clone do(
+    // Core slots for state (as documented)
+    bounds := Object clone do(
+        x := 0; y := 0; width := 50; height := 50
+        setPosition := method(newX, newY, x = newX; y = newY; self)
+        setSize := method(newW, newH, width = newW; height = newH; self)
+    )
+    color := Object clone do(
+        r := 0.5; g := 0.5; b := 0.8; a := 1.0  // Default blue
+        setColor := method(newR, newG, newB, newA,
+            r = newR; g = newG; b = newB
+            if(newA, a = newA, a = 1.0)
+            self
+        )
+    )
+    submorphs := List clone
+    owner := nil
+    id := "morph_" .. Date now asString
     
+    // Core behavior slots (as documented)
+    drawOn := method(canvas,
+        // Draw self first, then recursively draw all submorphs on top
+        self drawSelfOn(canvas)
+        self submorphs foreach(submorph, submorph drawOn(canvas))
+        self
+    )
+    
+    drawSelfOn := method(canvas,
+        // Default: draw as a simple rectangle
+        canvas fillRectangle(bounds, color)
+        self
+    )
+    
+    addMorph := method(aMorph,
+        // Proper ownership management (as documented)
+        if(aMorph owner, aMorph owner removeMorph(aMorph))
+        self submorphs append(aMorph)
+        aMorph owner = self
+        self
+    )
+    
+    removeMorph := method(aMorph,
+        self submorphs remove(aMorph)
+        if(aMorph owner == self, aMorph owner = nil)
+        self
+    )
+    
+    // Event handling (message-based as documented)
+    handleEvent := method(event,
+        // Events "fall through" the hierarchy 
+        eventHandled := false
+        
+        # Check if this morph handles the event
+        handlerName := event type
+        if(self hasSlot(handlerName),
+            result := self performWithArguments(handlerName, list(event))
+            if(result != dropThroughMarker, eventHandled = true)
+        )
+        
+        # If not handled, pass to submorphs (front to back)
+        if(eventHandled not,
+            self submorphs reverseForeach(submorph,
+                if(eventHandled not,
+                    if(submorph handleEvent(event), eventHandled = true)
+                )
+            )
+        )
+        
+        eventHandled
+    )
+)
+
+// RectangleMorph - Inherits from Morph (as documented)
+RectangleMorph := Morph clone
+RectangleMorph do(
     // Prototypal clone method
     clone := method(
         newRect := resend
         newRect id := "rect_" .. Date now asString
         newRect
     )
+    
+    // Convenience methods using new Morph structure
+    setPosition := method(newX, newY,
+        self bounds setPosition(newX, newY)
+        self
+    )
+    
+    setSize := method(newW, newH,
+        self bounds setSize(newW, newH)
+        self
+    )
+    
+    setBounds := method(newX, newY, newW, newH,
+        self bounds setPosition(newX, newY) setSize(newW, newH)
+        self
+    )
+    
+    setColor := method(r, g, b, a,
+        self color setColor(r, g, b, a)
+        self
+    )
 )
 
-// TextMorph - Text display object
-TextMorph := Object clone  
+// TextMorph - Text display object (inherits from Morph)
+TextMorph := Morph clone
 TextMorph do(
-    x := 0
-    y := 0
-    width := 200
-    height := 30
-    color := list(1.0, 1.0, 1.0, 1.0)  // Default white
     text := "Default Text"
-    id := "defaultText"
     
     // Prototypal clone method
     clone := method(
         newText := resend
         newText id := "text_" .. Date now asString
+        newText text := "Default Text"
         newText
+    )
+    
+    // Override drawSelfOn to draw text instead of rectangle
+    drawSelfOn := method(canvas,
+        canvas drawText(self text, bounds, color)
+        self
     )
 )
 
-// CircleMorph - Circular visual object
-CircleMorph := Object clone
+// CircleMorph - Circular visual object (inherits from Morph)
+CircleMorph := Morph clone
 CircleMorph do(
-    x := 0
-    y := 0
-    radius := 50
-    color := list(0.2, 0.8, 0.2, 1.0)  // Default green
+    radius := 25  // Default radius
     id := "defaultCircle"
     
     // Prototypal clone method
@@ -240,40 +346,303 @@ CircleMorph do(
         newCircle id := "circle_" .. Date now asString
         newCircle
     )
+    
+    // Override drawSelfOn to draw circle instead of rectangle
+    drawSelfOn := method(canvas,
+        canvas fillCircle(bounds, radius, color)
+        self
+    )
+    
+    setRadius := method(newRadius,
+        radiusAssigner := Object clone
+        radiusAssigner value := if(newRadius == nil, 25, newRadius)
+        self radius := radiusAssigner value
+        self
+    )
+)
+
+// Canvas - Abstraction layer for drawing operations (as documented)
+Canvas := Object clone do(
+    // Drawing methods that delegate to C-level implementations
+    fillRectangle := method(bounds, color,
+        // Extract bounds and color data for C-level call
+        x := bounds x
+        y := bounds y
+        width := bounds width
+        height := bounds height
+        r := color r
+        g := color g
+        b := color b
+        a := color a
+        
+        # Call C-level drawing
+        if(Telos hasSlot("Telos_rawDrawRect"),
+            Telos Telos_rawDrawRect(x, y, width, height, r, g, b, a)
+        ,
+            writeln("Canvas: Drawing rectangle at (" .. x .. "," .. y .. ") size " .. width .. "x" .. height)
+        )
+        self
+    )
+    
+    fillCircle := method(bounds, radius, color,
+        # Calculate circle center from bounds
+        centerX := bounds x + (bounds width / 2)
+        centerY := bounds y + (bounds height / 2)
+        r := color r
+        g := color g  
+        b := color b
+        a := color a
+        
+        # Call C-level circle drawing
+        if(Telos hasSlot("Telos_rawDrawCircle"),
+            Telos Telos_rawDrawCircle(centerX, centerY, radius, r, g, b, a)
+        ,
+            writeln("Canvas: Drawing circle at (" .. centerX .. "," .. centerY .. ") radius " .. radius)
+        )
+        self
+    )
+    
+    drawText := method(text, bounds, color,
+        x := bounds x
+        y := bounds y
+        r := color r
+        g := color g
+        b := color b
+        a := color a
+        
+        # Call C-level text drawing
+        if(Telos hasSlot("Telos_rawDrawText"),
+            Telos Telos_rawDrawText(text, x, y, r, g, b, a)
+        ,
+            writeln("Canvas: Drawing text '" .. text .. "' at (" .. x .. "," .. y .. ")")
+        )
+        self
+    )
 )
 
 // Register Morphic objects in global Lobby namespace immediately
-Lobby setSlot("RectangleMorph", RectangleMorph)
-Lobby setSlot("TextMorph", TextMorph)
-Lobby setSlot("CircleMorph", CircleMorph)
+Lobby Morph := Morph
+Lobby Canvas := Canvas
+Lobby RectangleMorph := RectangleMorph
+Lobby TextMorph := TextMorph
+Lobby CircleMorph := CircleMorph
 
-// Load method required by TelosCore
-TelosMorphic load := method(
-    writeln("TelOS Morphic: Direct Manipulation UI module loaded - visual interface ready")
-    writeln("TelOS Morphic: SDL2 window support enabled")
-    writeln("TelOS Morphic: Morphic objects registered globally: RectangleMorph, TextMorph, CircleMorph")
-    self
-)
+
 
 // Add captureScreenshot method to Telos
 Telos captureScreenshot := method(
-    if(world == nil, return "[no world]")
+    currentWorld := self world
+    if(currentWorld == nil, return "[no world]")
     describe := method(m, indent,
-        name := m type ifNil("Morph")
-        idStr := if(m hasSlot("id"), m id, "?")
-        zStr := if(m hasSlot("zIndex"), m zIndex, 0)
-        line := indent .. name .. "#" .. idStr .. " @(" .. m x .. "," .. m y .. ") " .. m width .. "x" .. m height .. " z=" .. zStr
-        if(m hasSlot("color"),
-            c := m color; line = line .. " color=[" .. c atIfAbsent(0,0) .. "," .. c atIfAbsent(1,0) .. "," .. c atIfAbsent(2,0) .. "," .. c atIfAbsent(3,1) .. "]"
+        morphType := m type ifNil("Morph")
+        hasId := m hasSlot("id")
+        morphId := if(hasId, m id, "?")
+        hasZIndex := m hasSlot("zIndex")
+        zIndex := if(hasZIndex, m zIndex, 0)
+        morphX := m x
+        morphY := m y
+        morphWidth := m width
+        morphHeight := m height
+        line := indent .. morphType .. "#" .. morphId .. " @(" .. morphX .. "," .. morphY .. ") " .. morphWidth .. "x" .. morphHeight .. " z=" .. zIndex
+        hasColor := m hasSlot("color")
+        if(hasColor,
+            morphColor := m color
+            r := morphColor atIfAbsent(0,0)
+            g := morphColor atIfAbsent(1,0)
+            b := morphColor atIfAbsent(2,0)
+            a := morphColor atIfAbsent(3,1)
+            line = line .. " color=[" .. r .. "," .. g .. "," .. b .. "," .. a .. "]"
         )
-        if(m hasSlot("text"), line = line .. " text='" .. m text .. "'")
+        hasText := m hasSlot("text")
+        if(hasText, 
+            morphText := m text
+            line = line .. " text='" .. morphText .. "'"
+        )
         line
     )
     
-    lines := list("World(" .. world morphs size .. " morphs):")
-    world morphs foreach(m, lines append(describe(m, "  ")))
+    lines := List clone
+    submorphs := currentWorld submorphs
+    count := submorphs size
+    lines append("World(" .. count .. " morphs):")
+    submorphs foreach(m, lines append(describe(m, "  ")))
     lines join("\n")
 )
 
+
+
+// WAL-integrated morph creation with state logging
+Telos createMorphWithLogging := method(morphType, x, y, width, height,
+    // Create morph instance
+    morphCreator := Object clone
+    morphCreator type := if(morphType == nil, "RectangleMorph", morphType asString)
+    morphCreator morph := Lobby getSlot(morphCreator type) ifNil(RectangleMorph) clone
+    
+    // Set properties with WAL logging
+    morphCreator morph x := if(x == nil, 100, x)
+    morphCreator morph y := if(y == nil, 100, y)
+    morphCreator morph width := if(width == nil, 100, width)
+    morphCreator morph height := if(height == nil, 100, height)
+    
+    // Log morphic state change to WAL
+    if(Telos hasSlot("walAppend"),
+        morphState := Object clone
+        morphState id := morphCreator morph id
+        morphState type := morphCreator type
+        morphState x := morphCreator morph x
+        morphState y := morphCreator morph y
+        morphState width := morphCreator morph width
+        morphState height := morphCreator morph height
+        
+        walEntry := "MORPH_CREATE {\"id\":\"" .. morphState id .. "\",\"type\":\"" .. morphState type .. "\",\"x\":" .. morphState x .. ",\"y\":" .. morphState y .. ",\"width\":" .. morphState width .. ",\"height\":" .. morphState height .. "}"
+        Telos walAppend(walEntry)
+        writeln("TelOS Morphic: Logged morph creation to WAL - " .. morphState id)
+    )
+    
+    // Add to world and trigger C-level rendering
+    if(self world != nil,
+        self world addMorph(morphCreator morph)
+        self createMorph  // Trigger C-level rendering
+    )
+    
+    morphCreator morph
+)
+
+// BYPASS MODULE LOADING: Attach createMorphWithLogging directly to Telos during file load
+// This works around the module loading system failure
+Telos createMorphWithLogging := method(morphType, x, y, width, height,
+    // Create morph instance using prototypal pattern
+    morphCreator := Object clone
+    morphCreator resolvedType := if(morphType == nil, "RectangleMorph", morphType asString)
+    morphCreator morph := Lobby getSlot(morphCreator resolvedType) ifNil(RectangleMorph) clone
+    
+    // Set properties with prototypal assignments
+    posX := if(x == nil, 100, x)
+    posY := if(y == nil, 100, y)
+    sizeW := if(width == nil, 100, width)
+    sizeH := if(height == nil, 100, height)
+    
+    morphCreator morph x := posX
+    morphCreator morph y := posY
+    morphCreator morph width := sizeW
+    morphCreator morph height := sizeH
+    
+    // Log morphic state change to WAL
+    if(Telos hasSlot("walAppend"),
+        stateCapture := Object clone
+        stateCapture id := morphCreator morph id
+        stateCapture type := morphCreator resolvedType
+        stateCapture x := posX
+        stateCapture y := posY
+        stateCapture width := sizeW
+        stateCapture height := sizeH
+        
+        walEntryText := "MORPH_CREATE {\"id\":\"" .. stateCapture id .. "\",\"type\":\"" .. stateCapture type .. "\",\"x\":" .. stateCapture x .. ",\"y\":" .. stateCapture y .. ",\"width\":" .. stateCapture width .. ",\"height\":" .. stateCapture height .. "}"
+        Telos walAppend(walEntryText)
+        writeln("TelOS Morphic: Logged morph creation to WAL - " .. stateCapture id)
+    )
+    
+    // Add to world and trigger C-level rendering
+    if(self world != nil,
+        self world addMorph(morphCreator morph)
+        self createMorph  // Trigger C-level rendering
+    )
+    
+    morphCreator morph
+)
+
+writeln("TelOS Morphic: WAL-integrated createMorphWithLogging attached to Telos")
+
+// Module load method for system integration (working around module loading failure)
+TelosMorphic load := method(
+    writeln("TelosMorphic: Direct Manipulation UI module loaded - visual interface ready")
+    writeln("TelosMorphic: SDL2 window support enabled")
+    writeln("TelosMorphic: Morphic objects registered globally: RectangleMorph, TextMorph, CircleMorph")
+    writeln("TelosMorphic: WAL integration enabled for state persistence")
+    
+    // Mark load in WAL if available
+    if(Telos hasSlot("walAppend"), Telos walAppend("MARK morphic.load {}"))
+    
+    // Return self to indicate successful load
+    self
+)
+
+// === AUTOPOIETIC MORPHIC EVOLUTION ===
+// Enable morphs to grow new capabilities through doesNotUnderstand protocol
+
+MorphicAutopoiesis := Object clone
+MorphicAutopoiesis synthesizeMorphicCapability := method(morphType, unknownMessage,
+    # Create synthesis context
+    synthContext := Object clone
+    synthContext morphType := morphType
+    synthContext requestedMessage := unknownMessage name
+    synthContext timestamp := System time
+    
+    writeln("🧬 MORPHIC SYNTHESIS: Creating ", synthContext requestedMessage, " for ", synthContext morphType)
+    
+    # Route to capability synthesizer based on message pattern
+    if(synthContext requestedMessage beginsWithSeq("draw"),
+        # Drawing capability synthesis
+        drawingSynthesizer := Object clone
+        drawingSynthesizer newMethod := method(
+            writeln("🎨 Auto-synthesized drawing method: ", synthContext requestedMessage)
+            # Placeholder behavior - future LLM will generate actual drawing logic
+        )
+        return drawingSynthesizer newMethod
+    )
+    
+    if(synthContext requestedMessage beginsWithSeq("animate"),
+        # Animation capability synthesis  
+        animationSynthesizer := Object clone
+        animationSynthesizer newMethod := method(
+            writeln("✨ Auto-synthesized animation method: ", synthContext requestedMessage)
+            # Placeholder behavior - future LLM will generate actual animation logic
+        )
+        return animationSynthesizer newMethod
+    )
+    
+    # Default synthesis for unknown patterns
+    defaultSynthesizer := Object clone
+    defaultSynthesizer newMethod := method(
+        writeln("🌱 Auto-synthesized morphic method: ", synthContext requestedMessage)
+        writeln("   This capability emerged through autopoietic evolution!")
+        self
+    )
+    defaultSynthesizer newMethod
+)
+
+# Install autopoietic forward on morphic prototypes
+if(Lobby hasSlot("RectangleMorph"),
+    RectangleMorph forward := method(
+        capability := MorphicAutopoiesis synthesizeMorphicCapability("RectangleMorph", call message)
+        # Install the synthesized capability
+        self setSlot(call message name, capability)
+        # Execute it immediately
+        self performWithArgList(call message name, call message arguments)
+    )
+    writeln("TelOS Morphic: Autopoietic forward installed on RectangleMorph")
+)
+
+if(Lobby hasSlot("TextMorph"),
+    TextMorph forward := method(
+        capability := MorphicAutopoiesis synthesizeMorphicCapability("TextMorph", call message)
+        self setSlot(call message name, capability)
+        self performWithArgList(call message name, call message arguments)
+    )
+    writeln("TelOS Morphic: Autopoietic forward installed on TextMorph")
+)
+
+if(Lobby hasSlot("CircleMorph"),
+    CircleMorph forward := method(
+        capability := MorphicAutopoiesis synthesizeMorphicCapability("CircleMorph", call message)
+        self setSlot(call message name, capability)
+        self performWithArgList(call message name, call message arguments)
+    )
+    writeln("TelOS Morphic: Autopoietic forward installed on CircleMorph")
+)
+
 writeln("TelOS Morphic: Full SDL2 implementation loaded")
-writeln("TelOS Morphic: Objects registered in global namespace")
+writeln("TelOS Morphic: Objects registered in global namespace") 
+writeln("TelOS Morphic: WAL integration enabled for state persistence")
+writeln("TelOS Morphic: Autopoietic evolution enabled for all morphs")
+writeln("TelOS Morphic: Module load method registered")

@@ -17,6 +17,7 @@ SET(IoTelos_SRCS
 	source/IoTelos.c
 	source/IoTelosCore.c
 	source/IoTelosFFI.c
+	source/IoTelosMorphic.c
 	source/PrototypalFFI.c
 )
 
@@ -24,14 +25,15 @@ SET(IoTelos_HDRS
 	source/IoTelos.h
 	source/IoTelosCore.h
 	source/IoTelosFFI.h
+	source/IoTelosMorphic.h
 )
 
 include_directories(
     ${CMAKE_SOURCE_DIR}/libs/basekit/source
     ${CMAKE_SOURCE_DIR}/libs/iovm/source
+    ${CMAKE_SOURCE_DIR}/libs/coroutine/source
+    ${CMAKE_SOURCE_DIR}/libs/garbagecollector/source
     ${PYTHON_INCLUDE_DIRS}
-    # ${GLUT_INCLUDE_DIRS}
-    # ${OPENGL_INCLUDE_DIRS}
 )
 
 add_library(IoTelos SHARED ${IoTelos_SRCS} ${IoTelos_HDRS})
@@ -41,8 +43,6 @@ target_link_libraries(IoTelos
     iovmall
     ${PYTHON_LIBRARIES}
     ${SDL2_LIBRARIES}
-    # ${GLUT_LIBRARIES}
-    # ${OPENGL_LIBRARIES}
 )
 
 # Also build a static version for the static executable
@@ -53,8 +53,6 @@ target_link_libraries(IoTelos_static
     iovmall_static
     ${PYTHON_LIBRARIES}
     ${SDL2_LIBRARIES}
-    # ${GLUT_LIBRARIES}
-    # ${OPENGL_LIBRARIES}
 )
 
 # Optional SDL2 integration (best-effort)

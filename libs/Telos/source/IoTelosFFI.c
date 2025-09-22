@@ -17,8 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <pthread.h>
+// Forward declarations for functions defined later in the file
+IoObject* IoTelosFFI_createProxyIo(IoObject *self, IoObject *locals, IoMessage *m);
+IoObject* IoTelosFFI_destroyProxyIo(IoObject *self, IoObject *locals, IoMessage *m);
 
 // Global state management for enhanced synaptic bridge
 static SynapticBridge synapticBridge = {0};
@@ -27,6 +28,19 @@ static CrossLanguageHandle *handles = NULL;
 static int maxHandles = 1000;
 static int handleCount = 0;
 static int isPythonInitialized = 0;
+
+// Prototypal Emulation Layer - Core data structures for behavioral mirroring
+struct TelosProxyObject {
+    IoObject *ioObject;        // The master Io object
+    PyObject *pythonProxy;     // The Python proxy object
+    char *handleId;            // Unique identifier for cross-language reference
+    int isPinned;              // GC pinning status
+};
+
+// Proxy object registry for behavioral mirroring
+static TelosProxyObject *proxyRegistry = NULL;
+static int maxProxies = 1000;
+static int proxyCount = 0;
 
 // Forward message function implementation for IoProxy delegation
 PyObject* IoTelosFFI_forwardMessage(PyObject *self, PyObject *args, PyObject *kwargs) {
@@ -83,7 +97,7 @@ static PyMethodDef forward_message_method = {
 };
 
 // Create IoProxy instance using our Python implementation
-PyObject* IoTelosFFI_createProxy(IoObject *ioObj, const char *proxy_type) {
+PyObject* IoTelosFFI_createPythonProxyObject(IoObject *ioObj, const char *proxy_type) {
     if (!isPythonInitialized) {
         printf("FFI Error: Python not initialized for proxy creation\n");
         return NULL;
@@ -202,12 +216,14 @@ void IoTelosFFI_initEnhancedPython(void) {
         pthread_mutex_init(&globalBridge->mutex, NULL);
     }
     
+    // Pause GC during Python initialization to prevent interference
     if (!Py_IsInitialized()) {
         Py_Initialize();
         if (!Py_IsInitialized()) {
-            fprintf(stderr, "Failed to initialize Python interpreter\n");
+            fprintf(stderr, "TelOS FFI: Failed to initialize Python interpreter\n");
             return;
         }
+        printf("TelOS FFI: Python interpreter initialized successfully\n");
     }
     
     // Python 3.12+ automatically handles threading - no manual initialization needed
@@ -242,12 +258,14 @@ void IoTelosFFI_initEnhancedPython(void) {
     globalBridge->isInitialized = 1;
     isPythonInitialized = 1;
     
-    // Register cleanup function
-    atexit(IoTelosFFI_cleanupEnhancedPython);
+    // Don't register atexit cleanup - let Io handle cleanup lifecycle
+    // atexit() can interfere with Io's garbage collector shutdown sequence
 }
 
 void IoTelosFFI_cleanupEnhancedPython(void) {
     if (!isPythonInitialized) return;
+    
+    printf("TelOS FFI: Beginning Python cleanup...\n");
     
     // Clean up all handles
     if (handles) {
@@ -260,10 +278,10 @@ void IoTelosFFI_cleanupEnhancedPython(void) {
         handles = NULL;
     }
     
-    // Clean up global bridge
+    // Clean up global bridge (safely)
     if (globalBridge) {
         if (globalBridge->processPool) {
-            // Shutdown process pool
+            // Try to shutdown process pool, but don't crash if it fails
             PyObject *shutdown = PyObject_GetAttrString(globalBridge->processPool, "shutdown");
             if (shutdown) {
                 PyObject *args = PyTuple_New(1);
@@ -284,10 +302,9 @@ void IoTelosFFI_cleanupEnhancedPython(void) {
         globalBridge = NULL;
     }
     
-    // Finalize Python interpreter
-    if (Py_IsInitialized()) {
-        Py_Finalize();
-    }
+    // Don't finalize Python - let the process handle that
+    // Py_Finalize() can cause GC issues during process shutdown
+    printf("TelOS FFI: Python cleanup completed\n");
     
     isPythonInitialized = 0;
 }
@@ -331,15 +348,16 @@ PyObject* IoTelosFFI_marshalIoToPython_helper(IoObject *ioObj) {
         PyObject *pyDict = PyDict_New();
         IoMap *ioMap = ioObj;
         IoList *keys = IoMap_rawKeys(ioMap);
+        List *keyList = IoList_rawList(keys);
         
-        LIST_FOREACH(keys, i, ioKey,
-            IoObject *ioValue = IoMap_rawAt(ioMap, ioKey);
-            PyObject *pyKey = IoTelosFFI_marshalIoToPython_helper(ioKey);
+        LIST_FOREACH(keyList, i, ioKey, {
+            IoObject *ioValue = IoMap_rawAt(ioMap, (IoObject*)ioKey);
+            PyObject *pyKey = IoTelosFFI_marshalIoToPython_helper((IoObject*)ioKey);
             PyObject *pyValue = IoTelosFFI_marshalIoToPython_helper(ioValue);
             PyDict_SetItem(pyDict, pyKey, pyValue);
             Py_DECREF(pyKey);
             Py_DECREF(pyValue);
-        );
+        });
         return pyDict;
     }
     
@@ -752,12 +770,302 @@ void IoTelosFFI_registerMethods(IoState *state, IoObject *telosProto) {
     // Register raw version for low-level access
     IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "Telos_rawPyEval"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelosFFI_pyEval, NULL, "0"));
+    
+    // Register prototypal emulation and chat functions
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "setProxyAttribute"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelosFFI_setProxyAttribute, NULL, "setProxyAttribute"));
+    
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "chatWithLLM"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelosFFI_chatWithLLM, NULL, "chatWithLLM"));
+    
+    // Register proxy management functions
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "createProxy"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelosFFI_createProxyIo, NULL, "createProxy"));
+    
+    IoObject_setSlot_to_(telosProto, IoState_symbolWithCString_(state, "destroyProxy"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelosFFI_destroyProxyIo, NULL, "destroyProxy"));
 }
 
 void IoTelosFFI_registerPrototype(IoState *state) {
-    // Initialize Python subsystem
-    IoTelosFFI_initEnhancedPython();
+    // Initialize Python lazily only when actually needed for FFI operations
+    // IoTelosFFI_initEnhancedPython();
+    
+    // Initialize prototypal emulation layer (lightweight)
+    IoTelosFFI_initPrototypalEmulation();
     
     // Create and register any FFI-specific prototypes here
     // For now, FFI methods are registered on the main Telos prototype
+    printf("TelOS FFI: Prototype registration complete (Python init deferred)\n");
+}
+
+// =============================================================================
+// PROTOTYPAL EMULATION LAYER - Complete Implementation
+// Enables behavioral mirroring between Io objects and Python proxies
+// Based on architectural analysis preventing GC mismatch and state split-brain
+// =============================================================================
+
+void IoTelosFFI_initPrototypalEmulation(void) {
+    if (!proxyRegistry) {
+        proxyRegistry = calloc(maxProxies, sizeof(TelosProxyObject));
+        printf("FFI: Initialized prototypal emulation layer (max %d proxies)\n", maxProxies);
+    }
+}
+
+TelosProxyObject* IoTelosFFI_createProxy(IoObject *ioObject) {
+    if (proxyCount >= maxProxies) {
+        printf("FFI Error: Proxy registry full (%d max)\n", maxProxies);
+        return NULL;
+    }
+    
+    // Generate unique handle ID
+    char handleId[64];
+    snprintf(handleId, sizeof(handleId), "proxy_%d_%p", proxyCount, ioObject);
+    
+    // Find free slot in registry
+    TelosProxyObject *proxy = NULL;
+    for (int i = 0; i < maxProxies; i++) {
+        if (!proxyRegistry[i].ioObject) {
+            proxy = &proxyRegistry[i];
+            break;
+        }
+    }
+    
+    if (!proxy) {
+        printf("FFI Error: No free proxy slots available\n");
+        return NULL;
+    }
+    
+    // Initialize proxy object
+    proxy->ioObject = ioObject;
+    proxy->handleId = strdup(handleId);
+    proxy->isPinned = 0;
+    proxy->pythonProxy = NULL;
+    
+    // CRITICAL: Pin the Io object to prevent GC collection
+    // This addresses the garbage collection mismatch identified in architectural analysis
+    extern void IoTelos_pinObject(IoObject *object);  // From IoTelosCore.c
+    IoTelos_pinObject(ioObject);
+    proxy->isPinned = 1;
+    
+    printf("FFI: Created proxy (%s) for Io object (%p)\n", handleId, ioObject);
+    proxyCount++;
+    
+    return proxy;
+}
+
+PyObject* IoTelosFFI_createPythonProxy(TelosProxyObject *proxy) {
+    if (!proxy || !isPythonInitialized) {
+        return NULL;
+    }
+    
+    // Import enhanced io_proxy module
+    PyObject* io_proxy_module = PyImport_ImportModule("io_proxy");
+    if (!io_proxy_module) {
+        printf("FFI Error: Failed to import io_proxy module\n");
+        PyErr_Print();
+        return NULL;
+    }
+    
+    // Get IoProxy class
+    PyObject* IoProxy_class = PyObject_GetAttrString(io_proxy_module, "IoProxy");
+    if (!IoProxy_class) {
+        printf("FFI Error: IoProxy class not found\n");
+        PyErr_Print();
+        Py_DECREF(io_proxy_module);
+        return NULL;
+    }
+    
+    // Create proxy instance with handle ID
+    PyObject* handle_str = PyUnicode_FromString(proxy->handleId);
+    PyObject* args = PyTuple_New(1);
+    PyTuple_SetItem(args, 0, handle_str);
+    
+    PyObject* python_proxy = PyObject_CallObject(IoProxy_class, args);
+    if (!python_proxy) {
+        printf("FFI Error: Failed to create Python proxy\n");
+        PyErr_Print();
+        Py_DECREF(args);
+        Py_DECREF(IoProxy_class);
+        Py_DECREF(io_proxy_module);
+        return NULL;
+    }
+    
+    // Store reference in proxy object
+    proxy->pythonProxy = python_proxy;
+    Py_INCREF(python_proxy);  // Keep reference
+    
+    printf("FFI: Created Python proxy for handle %s\n", proxy->handleId);
+    
+    Py_DECREF(args);
+    Py_DECREF(IoProxy_class);
+    Py_DECREF(io_proxy_module);
+    
+    return python_proxy;
+}
+
+void IoTelosFFI_destroyProxy(TelosProxyObject *proxy) {
+    if (!proxy) return;
+    
+    printf("FFI: Destroying proxy %s\n", proxy->handleId ? proxy->handleId : "unknown");
+    
+    // CRITICAL: Unpin the Io object to allow GC collection
+    if (proxy->isPinned && proxy->ioObject) {
+        extern void IoTelos_unpinObject(IoObject *object);  // From IoTelosCore.c
+        IoTelos_unpinObject(proxy->ioObject);
+        proxy->isPinned = 0;
+    }
+    
+    // Release Python proxy reference
+    if (proxy->pythonProxy) {
+        Py_DECREF(proxy->pythonProxy);
+        proxy->pythonProxy = NULL;
+    }
+    
+    // Free handle ID
+    if (proxy->handleId) {
+        free(proxy->handleId);
+        proxy->handleId = NULL;
+    }
+    
+    // Clear proxy object
+    proxy->ioObject = NULL;
+    proxyCount--;
+}
+
+// Transactional state update system - ensures WAL consistency
+// Implements the synchronous __setattr__ mechanism identified in architectural analysis
+IoObject* IoTelosFFI_setProxyAttribute(IoObject *self, IoObject *locals, IoMessage *m) {
+    IoSeq *attrName = IoMessage_locals_seqArgAt_(m, locals, 0);
+    IoObject *attrValue = IoMessage_locals_valueArgAt_(m, locals, 1);
+    
+    if (!attrName || !attrValue) {
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: setProxyAttribute requires attribute name and value");
+    }
+    
+    char *attrNameStr = IoSeq_asCString(attrName);
+    printf("FFI: Setting proxy attribute '%s' with transactional WAL update\n", attrNameStr);
+    
+    // TODO: Implement WAL transaction logging here
+    // This ensures single source of truth as identified in architectural analysis
+    
+    // Set attribute on Io object
+    IoObject_setSlot_to_(self, IoState_symbolWithCString_(IoObject_state(self), attrNameStr), attrValue);
+    
+    // TODO: Send attribute change notification to Python proxy
+    // This completes the behavioral mirroring
+    
+    return self;
+}
+
+// Enhanced LLM integration function for chat interface
+IoObject* IoTelosFFI_chatWithLLM(IoObject *self, IoObject *locals, IoMessage *m) {
+    IoSeq *message = IoMessage_locals_seqArgAt_(m, locals, 0);
+    
+    if (!message) {
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: chatWithLLM requires message string");
+    }
+    
+    char *messageStr = IoSeq_asCString(message);
+    printf("FFI: Processing chat message: '%s'\n", messageStr);
+    
+    if (!isPythonInitialized) {
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: Python not initialized");
+    }
+    
+    // Create Python proxy for this chat session
+    TelosProxyObject *chatProxy = IoTelosFFI_createProxy(self);
+    if (!chatProxy) {
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: Failed to create chat proxy");
+    }
+    
+    PyObject *pythonProxy = IoTelosFFI_createPythonProxy(chatProxy);
+    if (!pythonProxy) {
+        IoTelosFFI_destroyProxy(chatProxy);
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: Failed to create Python proxy");
+    }
+    
+    // Call Python LLM backend
+    PyObject *llm_module = PyImport_ImportModule("prototypal_neural_backend");
+    if (!llm_module) {
+        printf("FFI Error: Failed to import prototypal_neural_backend\n");
+        PyErr_Print();
+        IoTelosFFI_destroyProxy(chatProxy);
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: Neural backend not available");
+    }
+    
+    PyObject *chat_func = PyObject_GetAttrString(llm_module, "process_chat_message");
+    if (!chat_func) {
+        printf("FFI Error: process_chat_message function not found\n");
+        PyErr_Print();
+        Py_DECREF(llm_module);
+        IoTelosFFI_destroyProxy(chatProxy);
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: Chat function not found");
+    }
+    
+    // Call with message and proxy context
+    PyObject *args = PyTuple_New(2);
+    PyTuple_SetItem(args, 0, PyUnicode_FromString(messageStr));
+    PyTuple_SetItem(args, 1, pythonProxy);
+    
+    PyObject *result = PyObject_CallObject(chat_func, args);
+    if (!result) {
+        printf("FFI Error: Chat processing failed\n");
+        PyErr_Print();
+        Py_DECREF(args);
+        Py_DECREF(chat_func);
+        Py_DECREF(llm_module);
+        IoTelosFFI_destroyProxy(chatProxy);
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: Chat processing failed");
+    }
+    
+    // Convert result back to Io string
+    const char *resultStr = PyUnicode_AsUTF8(result);
+    IoSeq *ioResult = IoSeq_newWithCString_(IoObject_state(self), resultStr ? resultStr : "Error: Invalid response");
+    
+    // Cleanup
+    Py_DECREF(result);
+    Py_DECREF(args);
+    Py_DECREF(chat_func);
+    Py_DECREF(llm_module);
+    IoTelosFFI_destroyProxy(chatProxy);
+    
+    return ioResult;
+}
+
+// Io wrapper for proxy creation
+IoObject* IoTelosFFI_createProxyIo(IoObject *self, IoObject *locals, IoMessage *m) {
+    IoObject *ioObj = IoMessage_locals_valueArgAt_(m, locals, 0);
+    
+    if (!ioObj) {
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: createProxy requires an Io object");
+    }
+    
+    TelosProxyObject *proxy = IoTelosFFI_createProxy(ioObj);
+    if (!proxy) {
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: Failed to create proxy");
+    }
+    
+    // Return the handle ID as a string for Io to use
+    return IoSeq_newWithCString_(IoObject_state(self), proxy->handleId);
+}
+
+// Io wrapper for proxy destruction
+IoObject* IoTelosFFI_destroyProxyIo(IoObject *self, IoObject *locals, IoMessage *m) {
+    IoSeq *handleId = IoMessage_locals_seqArgAt_(m, locals, 0);
+    
+    if (!handleId) {
+        return IoSeq_newWithCString_(IoObject_state(self), "Error: destroyProxy requires a handle ID");
+    }
+    
+    const char *handleStr = IoSeq_asCString(handleId);
+    
+    // Find and destroy the proxy
+    for (int i = 0; i < maxProxies; i++) {
+        if (proxyRegistry[i].handleId && strcmp(proxyRegistry[i].handleId, handleStr) == 0) {
+            IoTelosFFI_destroyProxy(&proxyRegistry[i]);
+            return IoSeq_newWithCString_(IoObject_state(self), "Proxy destroyed successfully");
+        }
+    }
+    
+    return IoSeq_newWithCString_(IoObject_state(self), "Error: Proxy not found");
 }

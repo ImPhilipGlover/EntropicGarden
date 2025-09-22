@@ -7,6 +7,7 @@
 #include "IoTelos.h"
 #include "IoTelosCore.h"
 #include "IoTelosFFI.h"
+#include "IoTelosMorphic.h"
 #include "IoState.h"
 #include "IoObject.h"
 #include "IoSeq.h"
@@ -19,6 +20,9 @@ void IoTelosInit(IoState *state, IoObject *context) {
     
     // Initialize core system (coordinates all modules)
     IoTelosCore_Init(state);
+    
+    // Initialize Morphic module
+    IoTelosMorphic_Init(state);
     
     // Get the registered Telos prototype
     printf("TelOS Init: Getting Telos prototype...\n");
@@ -35,9 +39,36 @@ void IoTelosInit(IoState *state, IoObject *context) {
         printf("TelOS Init: ✓ Telos slot set\n");
     }
     
-    // TODO: Fix autoload mechanism - currently causes segfault
-    // Temporarily disabled to prove modular C architecture works
-    printf("TelOS Init: Skipping autoload for now (modular C architecture working)\n");
+    // Load Io-level modules now that C architecture is stable
+    printf("TelOS Init: Loading Io-level modules...\n");
+    
+    // Load TelosCore.io which coordinates all Io module loading
+    const char *candidates[] = {
+        "/mnt/c/EntropicGarden/libs/Telos/io/TelosCore.io",        // WSL absolute path
+        "c:/EntropicGarden/libs/Telos/io/TelosCore.io",           // Windows absolute
+        "../../libs/Telos/io/TelosCore.io",                       // Relative from build/bin
+        "../libs/Telos/io/TelosCore.io",                          // Relative from tools binary
+        "libs/Telos/io/TelosCore.io",                             // Relative from repo root
+        NULL
+    };
+
+    int loaded = 0;
+    for (int i = 0; candidates[i] != NULL; i++) {
+        const char *path = candidates[i];
+        FILE *f = fopen(path, "r");
+        if (f) {
+            fclose(f);
+            printf("TelOS Init: Loading core from %s...\n", path);
+            IoState_doFile_(state, path);
+            printf("TelOS Init: ✓ Loaded Io modules successfully\n");
+            loaded = 1;
+            break;
+        }
+    }
+    
+    if (!loaded) {
+        printf("TelOS Init: WARNING - Could not find TelosCore.io, Morphic not available\n");
+    }
     
     printf("TelOS: ✓ Modular architecture initialized - Core, FFI, Morphic, Persistence, Memory, Persona\n");
 }

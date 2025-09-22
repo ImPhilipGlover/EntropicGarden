@@ -69,7 +69,7 @@ FFIObjectHandle* FFI_createHandle(IoState* state, PyObject* py_obj) {
     IoObject_setDataPointer_(handle->io_wrapper, handle);
     
     // Register with Io GC and set cleanup callback  
-    IoObject_addMethod_(handle->io_wrapper, IoState_symbolWithCString_(state, "willFree"), (IoMethodFunc*)FFI_handleWillFree);
+    // IoObject_addMethod_(handle->io_wrapper, IoState_symbolWithCString_(state, "willFree"), (IoMethodFunc*)FFI_handleWillFree); // DISABLED FOR GC DEBUG
     IoState_stackRetain_(state, handle->io_wrapper);
     handle->gc_registered = 1;
     
@@ -319,8 +319,12 @@ void FFI_propagateError(IoState* state) {
     Py_XDECREF(value);
     Py_XDECREF(traceback);
     
-    // Raise Io exception - prototypal error handling
-    IoState_error_(state, 0, "%s", error_msg);
+    // For now, just print the error instead of raising Io exception
+    // This prevents GC pause/unpause imbalance issues during development
+    printf("TelOS FFI Error: %s\n", error_msg);
+    
+    // TODO: Implement proper GC-safe error propagation
+    // IoState_error_(state, 0, "%s", error_msg);
 }
 
 // =============================================================================

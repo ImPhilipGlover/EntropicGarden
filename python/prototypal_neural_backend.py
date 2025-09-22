@@ -471,6 +471,84 @@ def set_global_backend(backend_instance):
     _global_backend_instance = backend_instance
 
 
+# =============================================================================
+# ENHANCED CHAT PROCESSING - For Interactive Morphic LLM Interface
+# Integrates with prototypal emulation layer for seamless Io<->Python bridge
+# =============================================================================
+
+def process_chat_message(message, io_proxy=None):
+    """
+    Process chat message with full prototypal neural backend integration.
+    
+    Args:
+        message (str): User's chat message
+        io_proxy: IoProxy object for behavioral mirroring (optional)
+    
+    Returns:
+        str: Processed response from neural backend
+    """
+    print(f"Neural Backend: Processing chat message: '{message}'")
+    
+    try:
+        # Create neural backend if not exists
+        if not hasattr(process_chat_message, '_backend'):
+            print("Neural Backend: Initializing prototypal backend...")
+            process_chat_message._backend = create_neural_backend()
+        
+        backend = process_chat_message._backend
+        
+        # Enhanced processing with VSA encoding
+        print("Neural Backend: Encoding message with VSA...")
+        vsa_result = backend.vsa_encode_concept(message, {"context": "chat", "type": "user_message"})
+        
+        if not vsa_result['success']:
+            return "Error: Failed to encode message with VSA"
+        
+        # Persona synthesis for multi-faceted response
+        print("Neural Backend: Synthesizing persona facets...")
+        facets = backend.synthesize_persona_facets(message)
+        
+        # Generate internal monologue
+        print("Neural Backend: Generating internal monologue...")
+        monologue = backend.generate_internal_monologue(facets)
+        
+        # Simple response generation (can be enhanced with actual LLM)
+        response_parts = []
+        response_parts.append(f"🧠 Processed your message with {len(facets['facets'])} persona facets.")
+        
+        # Add insights from persona analysis
+        for persona, facet_data in list(facets['facets'].items())[:2]:  # Top 2 personas
+            if facet_data['memory_results']:
+                top_memory = facet_data['memory_results'][0]
+                response_parts.append(f"📚 {persona}: Relates to {top_memory['concept']} (confidence: {top_memory['similarity']:.3f})")
+        
+        # Add coherence insight
+        coherence = monologue.get('synthesis_coherence', 0.0)
+        if coherence > 0.7:
+            response_parts.append("✨ High cognitive coherence - strong conceptual synthesis.")
+        elif coherence > 0.4:
+            response_parts.append("🔄 Moderate cognitive coherence - partial conceptual alignment.")
+        else:
+            response_parts.append("🌟 Low cognitive coherence - exploring novel conceptual territory.")
+        
+        response = "\n".join(response_parts)
+        
+        # If we have an IoProxy, demonstrate behavioral mirroring
+        if io_proxy:
+            print("Neural Backend: Updating IoProxy state with chat context...")
+            # This would trigger transactional state updates in real implementation
+            # io_proxy.last_message = message
+            # io_proxy.last_response = response
+        
+        print(f"Neural Backend: Generated response ({len(response)} chars)")
+        return response
+        
+    except Exception as e:
+        error_msg = f"❌ Neural Backend Error: {str(e)}"
+        print(error_msg)
+        return error_msg
+
+
 # Test function for validation
 def test_prototypal_neural_backend():
     """Test the prototypal neural backend implementation."""

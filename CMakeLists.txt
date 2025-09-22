@@ -35,8 +35,10 @@ endif()
 # spaces, or anything silly like that please.
 project(IoLanguage C)
 
-# Find Python for FFI Bridge
+# Find Python for FFI Bridge - try modern approach first, fall back to legacy
+cmake_policy(SET CMP0148 OLD)  # Allow legacy FindPythonLibs for compatibility
 find_package(PythonLibs REQUIRED)
+find_package(PythonInterp REQUIRED)
 include_directories(${PYTHON_INCLUDE_DIRS})
 
 # Enable ASM language for ARM64 coroutine support

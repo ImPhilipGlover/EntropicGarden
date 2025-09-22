@@ -49,7 +49,8 @@ PrototypalPurityEnforcer createObjectWrapper := method(value, description,
 )
 
 // Adopt the C-level Telos as prototype (registered on Lobby Protos)
-Telos := Lobby Protos Telos clone
+// NOTE: TelosCore.io already created this, so we modify the existing prototype
+// Telos := Lobby Protos Telos clone
 
 // Minimal JSON stringify for Maps/Lists/Numbers/Strings/Booleans/nil
 Telos json := Object clone

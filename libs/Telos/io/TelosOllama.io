@@ -538,11 +538,11 @@ FractalConsciousnessUI do(
 )
 
 // Register globals
-Lobby setSlot("TelosOllama", TelosOllama)
-Lobby setSlot("FractalPersona", FractalPersona)
-Lobby setSlot("PersonaMorph", PersonaMorph)
-Lobby setSlot("DialogueMorph", DialogueMorph)
-Lobby setSlot("FractalConsciousnessUI", FractalConsciousnessUI)
+Lobby TelosOllama := TelosOllama
+Lobby FractalPersona := FractalPersona
+Lobby PersonaMorph := PersonaMorph
+Lobby DialogueMorph := DialogueMorph
+Lobby FractalConsciousnessUI := FractalConsciousnessUI
 
 writeln("TelOS Ollama: Fractal AI Communication Interface loaded")
 writeln("TelOS Ollama: Intrapersona monologue & interpersona dialogue ready")

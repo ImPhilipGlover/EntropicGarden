@@ -1,330 +1,86 @@
 /*
-   TelosFFI.io - Synaptic Bridge: Io→C→Python Foreign Function Interface
-   The neural highway: mind commanding muscle through pure prototypal interfaces
-   
-   This module provides:
-   - Python evaluation bridge with async process pool support
-   - Cross-language marshalling with prototypal purity
-   - Error propagation and exception handling
-   - Embedded Python runtime management
-   
-   Roadmap Alignment: Phase 4 (Synaptic Bridge Maturation)
+   TelosFFI.io - Prototypal Io→C→Python Bridge (Io layer)
+
+   Purpose:
+   - Extend the Telos prototype with a minimal, safe `pyEval` seam that
+	 calls into the C bridge when available and degrades gracefully when not.
+   - Follow strict prototypal purity: parameters and variables are objects,
+	 no init methods, immediate usability after cloning.
+
+   Roadmap Alignment: Phase 4 (Synaptic Bridge maturation)
 */
 
-// === PYTHON BRIDGE OPERATIONS ===
-// All Python interaction follows prototypal object patterns
+// Use the existing Telos prototype installed by TelosCore (do not override)
 
+// Guarded bridge call to the raw C function if available
 Telos pyEval := method(codeParam,
-    pythonProcessor := Object clone
-    pythonProcessor code := codeParam asString
-    pythonProcessor logEntry := Map clone
-    
-    // Log the operation
-    pythonProcessor logEntry atPut("tool", "pyEval")
-    pythonProcessor logEntry atPut("code", pythonProcessor code)
-    pythonProcessor logEntry atPut("timestamp", Date now asNumber)
-    
-    try(
-        # Call the raw C bridge - this will be implemented in IoTelos.c
-        pythonProcessor result := Telos Telos_rawPyEval(pythonProcessor code)
-        pythonProcessor logEntry atPut("result", pythonProcessor result)
-        pythonProcessor logEntry atPut("status", "success")
-        
-        # WAL persistence of the operation
-        Telos walAppend("MARK pyEval.success {code:\"" .. pythonProcessor code .. "\"}")
-        
-        return pythonProcessor result,
-        
-        exception,
-        pythonProcessor logEntry atPut("error", exception description)
-        pythonProcessor logEntry atPut("status", "error")
-        
-        # WAL persistence of the error
-        Telos walAppend("MARK pyEval.error {error:\"" .. exception description .. "\"}")
-        
-        writeln("TelOS FFI: Python eval failed: " .. exception description)
-        return ""
-    )
+	// Parameters are objects accessed via message passing
+	param := Object clone
+	param code := codeParam
+
+	// Result container as object
+	resultObj := Object clone
+	resultObj value := ""
+
+	// Check for C-level raw bridge
+	hasRaw := self hasSlot("Telos_rawPyEval")
+
+	if(hasRaw,
+		// Delegate to C bridge (expected to return a Sequence or Number)
+		// Use explicit receiver to avoid accidental Lobby dispatch
+		resultObj value := self Telos_rawPyEval(param code asString)
+	,
+		// Degrade gracefully: return empty string
+		resultObj value := ""
+	)
+
+	// Coerce to string via prototypal path
+	return resultObj value asString
 )
 
-// === ASYNC PROCESS POOL INTERFACE ===
-// Prototypal wrapper for async Python operations
-
-Telos processPool := Object clone
-Telos processPool execute := method(codeParam, callbackParam,
-    taskProcessor := Object clone
-    taskProcessor code := codeParam asString
-    taskProcessor callback := callbackParam
-    taskProcessor taskId := "task_" .. Date now asNumber
-    
-    writeln("TelOS FFI: Submitting async task: " .. taskProcessor taskId)
-    
-    # For now, execute synchronously - async implementation will come later
-    taskProcessor result := Telos pyEval(taskProcessor code)
-    
-    # If callback provided, call it with the result
-    if(taskProcessor callback != nil,
-        callbackProcessor := Object clone
-        callbackProcessor result := taskProcessor result
-        callbackProcessor taskId := taskProcessor taskId
-        taskProcessor callback call(callbackProcessor result, callbackProcessor taskId)
-    )
-    
-    return taskProcessor result
+// Optional async stub (no-op placeholder seeded for later phases)
+// Returns immediate placeholder string; real async handled in C/Python later
+Telos pyEvalAsync := method(codeParam,
+	asyncParam := Object clone
+	asyncParam code := codeParam
+	placeholder := Object clone
+	placeholder message := "[pyEvalAsync placeholder]"
+	placeholder message
 )
 
-// === CROSS-LANGUAGE MARSHALLING ===
-// Prototypal data conversion between Io and Python
+// Small helper: evaluate a list of snippets and return List of strings
+Telos pyEvalMany := method(codeListParam,
+	listParam := Object clone
+	listParam codes := codeListParam
 
-Telos marshal := Object clone
+	out := List clone
 
-Telos marshal ioToPython := method(valueParam,
-    marshaller := Object clone
-    marshaller value := valueParam
-    marshaller pythonCode := ""
-    
-    typeAnalyzer := Object clone
-    typeAnalyzer valueType := marshaller value type
-    
-    if(typeAnalyzer valueType == "Number",
-        marshaller pythonCode := marshaller value asString
-    )
-    if(typeAnalyzer valueType == "Sequence",
-        escapeProcessor := Object clone
-        escapeProcessor escaped := marshaller value asMutable replaceSeq("\"", "\\\"")
-        marshaller pythonCode := "\"" .. escapeProcessor escaped .. "\""
-    )
-    if(typeAnalyzer valueType == "List",
-        listProcessor := Object clone
-        listProcessor items := List clone
-        marshaller value foreach(item,
-            listProcessor items append(Telos marshal ioToPython(item))
-        )
-        marshaller pythonCode := "[" .. listProcessor items join(", ") .. "]"
-    )
-    if(typeAnalyzer valueType == "Map",
-        mapProcessor := Object clone
-        mapProcessor pairs := List clone
-        marshaller value foreach(key, val,
-            keyConverter := Object clone
-            keyConverter python := Telos marshal ioToPython(key)
-            valConverter := Object clone
-            valConverter python := Telos marshal ioToPython(val)
-            mapProcessor pairs append(keyConverter python .. ": " .. valConverter python)
-        )
-        marshaller pythonCode := "{" .. mapProcessor pairs join(", ") .. "}"
-    )
-    
-    # Default case
-    if(marshaller pythonCode == "",
-        marshaller pythonCode := "\"" .. marshaller value asString .. "\""
-    )
-    
-    return marshaller pythonCode
+	// Defensive checks using message passing
+	typeAnalyzer := Object clone
+	typeAnalyzer isList := listParam codes type == "List"
+	if(typeAnalyzer isList not, return out)
+
+	i := 0
+	while(i < listParam codes size,
+		snippet := listParam codes at(i)
+		out append(self pyEval(snippet))
+		i := i + 1
+	)
+	out
 )
 
-Telos marshal pythonToIo := method(pythonResultParam,
-    resultProcessor := Object clone
-    resultProcessor pythonResult := pythonResultParam asString
-    
-    # Simple parsing - could be enhanced with proper JSON parsing
-    if(resultProcessor pythonResult == "None", return nil)
-    if(resultProcessor pythonResult == "True", return true)
-    if(resultProcessor pythonResult == "False", return false)
-    
-    # Try to parse as number
-    numberParser := Object clone
-    numberParser value := resultProcessor pythonResult asNumber
-    if(numberParser value != 0 or resultProcessor pythonResult == "0",
-        return numberParser value
-    )
-    
-    # Default to string
-    return resultProcessor pythonResult
-)
-
-// === NEURAL BACKEND INTERFACE ===
-// High-level interface for complex Python operations
-
-Telos neuralBackend := Object clone
-
-Telos neuralBackend call := method(functionNameParam, argsParam,
-    backendProcessor := Object clone
-    backendProcessor functionName := functionNameParam asString
-    backendProcessor args := if(argsParam == nil, List clone, argsParam)
-    
-    # Convert arguments to Python format
-    argumentProcessor := Object clone
-    argumentProcessor pythonArgs := List clone
-    backendProcessor args foreach(arg,
-        argumentProcessor pythonArgs append(Telos marshal ioToPython(arg))
-    )
-    
-    # Build Python function call
-    pythonCallBuilder := Object clone
-    pythonCallBuilder argsString := argumentProcessor pythonArgs join(", ")
-    pythonCallBuilder code := backendProcessor functionName .. "(" .. pythonCallBuilder argsString .. ")"
-    
-    writeln("TelOS FFI: Neural backend call: " .. pythonCallBuilder code)
-    
-    # Execute the call
-    backendProcessor result := Telos pyEval(pythonCallBuilder code)
-    
-    # Convert result back to Io
-    return Telos marshal pythonToIo(backendProcessor result)
-)
-
-// === ERROR HANDLING AND RECOVERY ===
-
-Telos ffiError := Object clone
-
-)
-
-// === PROTOTYPAL FFI PROXY CREATION ===
-// Implements the Prototypal FFI Mandate for unified behavior across layers
-
-Telos createPrototypalProxy := method(ioObjectParam,
-    proxyCreator := Object clone
-    proxyCreator sourceObject := ioObjectParam
-    proxyCreator objectId := "proxy_" .. ioObjectParam uniqueId asString
-    
-    writeln("TelosFFI: Creating prototypal proxy for ", proxyCreator sourceObject type)
-    
-    try(
-        // Create C-level TelosFFIObject proxy using our new implementation
-        proxyCreator cProxy := Telos Telos_createFFIProxy(proxyCreator sourceObject)
-        
-        if(proxyCreator cProxy,
-            writeln("  ✓ C bridge TelosFFIObject created")
-            
-            // Create Python IoProxy ambassador
-            ambassadorCode := """
-import sys
-sys.path.append('python')
-from uvm_object import UvmObject
-
-# Create IoProxy ambassador with full delegation
-ambassador = UvmObject(
-    name='""" .. proxyCreator sourceObject name .. """',
-    type='""" .. proxyCreator sourceObject type .. """',
-    layer='python_ambassador',
-    proxy_id='""" .. proxyCreator objectId .. """'
-)
-
-# Set up IoVM reference for unified state authority
-ambassador.set_io_vm_reference('""" .. proxyCreator objectId .. """')
-
-# Test ambassador creation
-print(f"IoProxy ambassador: {ambassador._slots['name']}")
-ambassador_id = id(ambassador)
-"""
-            
-            proxyCreator pythonResult := Telos pyEval(ambassadorCode)
-            if(proxyCreator pythonResult,
-                writeln("  ✓ Python IoProxy ambassador created")
-                
-                // Create unified proxy wrapper
-                unifiedProxy := Object clone
-                unifiedProxy sourceObject := proxyCreator sourceObject
-                unifiedProxy cProxy := proxyCreator cProxy
-                unifiedProxy pythonAmbassador := proxyCreator pythonResult
-                unifiedProxy objectId := proxyCreator objectId
-                
-                // Add behavioral delegation methods
-                unifiedProxy getSlot := method(slotName,
-                    // Try local first, then delegate to C bridge, then Python
-                    localValue := self sourceObject getSlot(slotName)
-                    if(localValue, return localValue)
-                    
-                    // This would call TelosFFIObject_getValueFor
-                    return nil  // Placeholder for C bridge call
-                )
-                
-                unifiedProxy setSlot := method(slotName, value,
-                    // Update all layers maintaining state authority
-                    self sourceObject setSlot(slotName, value)
-                    
-                    // This would call TelosFFIObject_setValueFor  
-                    // This would call Python ambassador setattr
-                    
-                    // Log to WAL for single source of truth
-                    logEntry := Map clone
-                    logEntry atPut("operation", "unified_slot_change")
-                    logEntry atPut("proxy_id", self objectId)
-                    logEntry atPut("slot", slotName)
-                    logEntry atPut("value", value asString)
-                    logEntry atPut("timestamp", Date now asNumber)
-                    
-                    Telos walAppend("MARK unified_proxy.slot_change " .. Telos json stringify(logEntry))
-                )
-                
-                writeln("  ✓ Unified prototypal proxy created with behavioral delegation")
-                return unifiedProxy
-            ,
-                writeln("  ✗ Python IoProxy ambassador failed")
-                return nil
-            )
-        ,
-            writeln("  ✗ C bridge TelosFFIObject failed")
-            return nil
-        ),
-        
-        exception,
-        writeln("TelosFFI: Prototypal proxy creation failed: ", exception description)
-        return nil
-    )
-)
-
-Telos ffiError handle := method(errorParam, contextParam,
-    errorHandler := Object clone
-    errorHandler error := errorParam
-    errorHandler context := if(contextParam == nil, "unknown", contextParam asString)
-    
-    writeln("TelOS FFI Error [" .. errorHandler context .. "]: " .. errorHandler error asString)
-    
-    # Log error to WAL
-    errorDetails := Map clone
-    errorDetails atPut("error", errorHandler error asString)
-    errorDetails atPut("context", errorHandler context)
-    errorDetails atPut("timestamp", Date now asNumber)
-    
-    Telos walAppend("MARK ffi.error " .. Telos json stringify(errorDetails))
-    
-    # Attempt recovery strategies
-    recoveryProcessor := Object clone
-    recoveryProcessor success := false
-    
-    # Basic recovery: try to reinitialize Python bridge
-    if(errorHandler context == "python_bridge",
-        writeln("TelOS FFI: Attempting Python bridge recovery...")
-        try(
-            # This would reinitialize the embedded Python runtime
-            recoveryProcessor success := true
-        )
-    )
-    
-    return recoveryProcessor success
-)
-
-// === MODULE HEALTH CHECKS ===
-
+// Minimal health indicator for the bridge
 Telos ffiHealth := method(
-    healthChecker := Object clone
-    healthChecker status := Map clone
-    
-    # Test basic Python functionality
-    try(
-        testResult := Telos pyEval("2 + 2")
-        healthChecker status atPut("pythonBridge", testResult == "4")
-        healthChecker status atPut("lastError", nil),
-        
-        exception,
-        healthChecker status atPut("pythonBridge", false)
-        healthChecker status atPut("lastError", exception description)
-    )
-    
-    healthChecker status atPut("timestamp", Date now asNumber)
-    return healthChecker status
+	health := Map clone
+	health atPut("hasRawPyEval", self hasSlot("Telos_rawPyEval"))
+	health atPut("pyEvalAvailable", self hasSlot("pyEval"))
+	health
 )
 
-writeln("TelOS FFI: Synaptic Bridge module loaded - Python interface ready")
+// Module loaded banner (kept terse for DOE smokes)
+"TelosFFI.io: Io layer FFI slots installed (pyEval, pyEvalAsync, pyEvalMany, ffiHealth)" println
+
+// Provide a load method placeholder (optional)
+TelosFFI := Object clone
+TelosFFI load := method(self)
+

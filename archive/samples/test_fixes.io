@@ -1,0 +1,6 @@
+writeln("Testing Io VM...")
+doFile("libs/Telos/io/TelosAutopoiesis.io")
+writeln("TelosAutopoiesis loaded successfully")
+doFile("libs/Telos/io/VSAMemory.io")
+writeln("VSAMemory loaded successfully")
+writeln("All fixes validated!")

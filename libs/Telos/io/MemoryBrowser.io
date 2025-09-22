@@ -143,8 +143,13 @@ MemoryBrowser := Object clone do(
                 browser selectConcept(self getSlot("concept"))
             )
         )
-        conceptMorph setSlot("concept", visualizer concept)
-        conceptMorph setSlot("memoryBrowser", self)
+        morphSetter := Object clone
+        morphSetter target := conceptMorph
+        morphSetter concept := visualizer concept
+        morphSetter browser := self
+        // Use message passing instead of setSlot
+        morphSetter target doString("concept := " .. morphSetter concept asString)
+        morphSetter target doString("memoryBrowser := " .. morphSetter browser asString)
         
         conceptMorph
     )

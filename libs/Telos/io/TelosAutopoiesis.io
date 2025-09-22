@@ -21,6 +21,31 @@ TelosAutopoiesis initialize := method(
 
 // Enhanced Forward Protocol - Transform unknown messages into creative mandates
 TelosAutopoiesis forward := method(messageName,
+    // Prevent infinite recursion by checking if we're already processing this message
+    recursionGuard := Object clone
+    recursionGuard messageKey := messageName asString
+    recursionGuard processingKey := "processing_" .. recursionGuard messageKey
+    
+    // Check processing state through message passing
+    processingState := self getSlot(recursionGuard processingKey)
+    if(processingState == true,
+        // Already processing this message, return placeholder to break recursion
+        placeholderResponse := Object clone
+        placeholderResponse message := "Recursive call detected for " .. recursionGuard messageKey .. ", returning placeholder"
+        placeholderResponse timestamp := Date now
+        return placeholderResponse
+    )
+    
+    // Mark this message as being processed through message passing
+    processingMarker := Object clone
+    processingMarker target := self
+    processingMarker key := recursionGuard processingKey
+    processingMarker value := true
+    processingMarker slotSetter := Object clone
+    processingMarker slotSetter slotName := processingMarker key
+    processingMarker slotSetter slotValue := processingMarker value
+    processingMarker target setSlot(processingMarker slotSetter slotName, processingMarker slotSetter slotValue)
+    
     creativeMandateProcessor := Object clone
     creativeMandateProcessor messageName := messageName
     creativeMandateProcessor arguments := call message arguments
@@ -36,22 +61,21 @@ TelosAutopoiesis forward := method(messageName,
     mandateRecord arguments := creativeMandateProcessor arguments map(arg, arg asString)
     mandateRecord timestamp := creativeMandateProcessor timestamp
     
-    # Route to BABS for autonomous capability synthesis
-    synthesisRequest := Object clone
-    synthesisRequest capability := creativeMandateProcessor messageName
-    synthesisRequest context := creativeMandateProcessor targetObject type
-    synthesisRequest priority := self calculateCreativePriority(mandateRecord)
-    synthesisRequest mandateId := System uniqueId
-    
-    writeln("[Autopoiesis] Routing synthesis request to BABS WING: " .. synthesisRequest capability)
-    
-    # Generate capability via BABS research cycle
-    synthesizedCapability := self synthesizeCapabilityViaBabs(synthesisRequest)
+    # For now, use simple placeholder synthesis instead of complex BABS loop
+    # to avoid infinite loop issues during development
+    synthesizedCapability := self generateSimpleCapability(synthesisRequest)
     
     if(synthesizedCapability != nil,
-        # Install capability dynamically
-        self setSlot(creativeMandateProcessor messageName, synthesizedCapability)
-        writeln("[Autopoiesis] Successfully synthesized and installed capability: " .. creativeMandateProcessor messageName)
+        # Install capability dynamically through message passing
+        capabilityInstaller := Object clone
+        capabilityInstaller target := self
+        capabilityInstaller name := creativeMandateProcessor messageName
+        capabilityInstaller value := synthesizedCapability
+        capabilityInstaller slotSetter := Object clone
+        capabilityInstaller slotSetter slotName := capabilityInstaller name
+        capabilityInstaller slotSetter slotValue := capabilityInstaller value
+        capabilityInstaller target setSlot(capabilityInstaller slotSetter slotName, capabilityInstaller slotSetter slotValue)
+        writeln("[Autopoiesis] Successfully synthesized and installed capability: " .. capabilityInstaller name)
         
         # Record synthesis for learning
         self synthesizedCapabilities atPut(creativeMandateProcessor messageName, synthesizedCapability)
@@ -59,8 +83,10 @@ TelosAutopoiesis forward := method(messageName,
         # Update entropy metrics
         self updateCompositeEntropyMetric(synthesizedCapability)
         
-        # Persist creative mandate completion
-        Telos writeWAL("AUTOPOIETIC_SYNTHESIS:" .. creativeMandateProcessor messageName .. ":" .. synthesisRequest mandateId)
+        # Persist creative mandate completion (safely)
+        if(Telos != nil and Telos hasSlot("writeWAL"),
+            Telos writeWAL("AUTOPOIETIC_SYNTHESIS:" .. creativeMandateProcessor messageName .. ":" .. "simple_synthesis")
+        )
     ,
         writeln("[Autopoiesis] Failed to synthesize capability: " .. creativeMandateProcessor messageName)
         
@@ -70,8 +96,25 @@ TelosAutopoiesis forward := method(messageName,
             nil
         )
         
-        self setSlot(creativeMandateProcessor messageName, placeholderCapability)
+        placeholderInstaller := Object clone
+        placeholderInstaller target := self
+        placeholderInstaller name := creativeMandateProcessor messageName
+        placeholderInstaller value := placeholderCapability
+        placeholderInstaller slotSetter := Object clone
+        placeholderInstaller slotSetter slotName := placeholderInstaller name
+        placeholderInstaller slotSetter slotValue := placeholderInstaller value
+        placeholderInstaller target setSlot(placeholderInstaller slotSetter slotName, placeholderInstaller slotSetter slotValue)
     )
+    
+    # Clear the processing flag through message passing
+    processingCleaner := Object clone
+    processingCleaner target := self
+    processingCleaner key := recursionGuard processingKey
+    processingCleaner value := nil
+    processingCleaner slotSetter := Object clone
+    processingCleaner slotSetter slotName := processingCleaner key
+    processingCleaner slotSetter slotValue := processingCleaner value
+    processingCleaner target setSlot(processingCleaner slotSetter slotName, processingCleaner slotSetter slotValue)
     
     self
 )

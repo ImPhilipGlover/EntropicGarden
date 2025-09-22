@@ -1,0 +1,1 @@
+doFile("libs/Telos/io/TelosMorphic.io"); if(TelosMorphic == nil, writeln("TelosMorphic is nil"), writeln("TelosMorphic found: " .. TelosMorphic type)); if(TelosMorphic hasSlot("load"), writeln("load method found"), writeln("load method missing"))

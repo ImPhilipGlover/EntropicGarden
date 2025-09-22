@@ -6,9 +6,11 @@
 
 **BEFORE ANY ACTION:** Every AI agent MUST first read and integrate these foundational training documents that define the project's architectural DNA:
 
-1. **`Building TelOS with Io and Morphic.txt`** - The definitive architectural blueprint for neuro-symbolic prototypal intelligence migration from Python to Io
-2. **`Io Prototype Programming Training Guide.txt`** - Foundational principles of prototypal programming, Self/Smalltalk philosophy, essential for proper Io implementation
-3. **`Morphic UI Framework Training Guide Extension.txt`** - Direct manipulation philosophy, liveness principles, morphic architecture fundamentals
+1.  **`Building TelOS with Io and Morphic.txt`** - The definitive architectural blueprint for neuro-symbolic prototypal intelligence migration from Python to Io
+2.  **`Io Prototype Programming Training Guide.txt`** - Foundational principles of prototypal programming, Self/Smalltalk philosophy, essential for proper Io implementation
+3.  **`Morphic UI Framework Training Guide Extension.txt`** - Direct manipulation philosophy, liveness principles, morphic architecture fundamentals
+4.  **`docs/TelOS-Io_Development_Roadmap.md`** - The living roadmap defining phase goals, acceptance criteria, and cross-phase seams.
+5.  **`TELOS_AUTONOMY_TODO.md`** - The current runbook tracking progress, todo items, and decisions for each development slice.
 
 **Enhanced Intelligence Integration:**
 - **`Enhanced_Copilot_Agent_Workflow_v2.md`** - Next-generation automated intelligence synthesis and autonomous operation
@@ -18,13 +20,23 @@
 
 **These documents are not optional reading - they are the operational DNA that must guide every architectural decision and implementation choice.**
 
+### AUTONOMOUS DOCUMENTATION INGESTION
+- Before every action or decision, agents MUST scan and parse all documentation under `docs/`, onboarding any new or updated content as ground truth.
+- Agents should maintain an internal index of document changes and self-educate on newly introduced requirements, use-cases, and architectural decisions without human prompting.
+
+### AUTONOMOUS DEMOING PROTOCOL
+- Agents MUST identify or generate a minimal runnable sample under `samples/telos/` that exercises the current feature or slice, including UI heartbeat, FFI pipeline, and persistence snapshot.
+- Execute the sample in the WSL environment using the repository's `io` binary, capture the output (heartbeat logs, snapshot file, WAL entries), and report only the invocation and test completion status.
+- On test failures, agents should autonomously debug up to three targeted fixes, then report remaining failures with exact errors.
+
 ## THE AUTONOMOUS DEVELOPMENT MANDATE
 
-**DEFAULT MODE: CONTINUOUS AUTONOMOUS CONSTRUCTION**
+-**DEFAULT MODE: CONTINUOUS AUTONOMOUS CONSTRUCTION**
 - Proceed autonomously without waiting for human prompts unless genuinely blocked by major architectural ambiguity
 - Build as much as possible, assuming approval for all reasonable actions aligned with the covenant
 - Only pause for fundamental philosophical conflicts or when the vision becomes unclear
-- Treat this as refining a dynamic system toward higher resolution achievement of the BAT OS Development vision
+- - Treat this as refining a dynamic system toward higher resolution achievement of the BAT OS Development vision
+- - Narrate each action and next development steps without pausing or requesting further direction; continue autonomously until explicitly stopped by the user
 
 ## CORE OPERATIONAL PRINCIPLES
 

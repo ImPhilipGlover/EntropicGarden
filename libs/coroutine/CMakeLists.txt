@@ -32,6 +32,10 @@ endif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 add_library(coroutine SHARED ${SRCS})
 set_target_properties(coroutine PROPERTIES PUBLIC_HEADER "${HEADERS}")
 
+# Build static library for static linking
+add_library(coroutine_static STATIC ${SRCS})
+set_target_properties(coroutine_static PROPERTIES PUBLIC_HEADER "${HEADERS}")
+
 # The following add the install target, so we put libcoroutine.* in
 # our install prefix.
 if(WIN32)

@@ -3,8 +3,19 @@
 
 VSAMemory := Object clone do(
     // L1: Fast Cache Management (proxies Python FAISS)
-    fastCache := Object clone do(
-        vectors := Map clone
+    fastCache := Object clone        # Enhance with semantic relationships (L3)
+        searchProcessor enhancedResults := List clone
+        searchProcessor l1Results foreach(result,
+            enhancedResult := result clone
+            
+            # Add semantic context if available
+            if(result hasSlot("text"),
+                relatedConcepts := self semanticStore findRelated(result text, "similar")
+                enhancedResult relatedConcepts := relatedConcepts
+            )
+            
+            searchProcessor enhancedResults append(enhancedResult)
+        )    vectors := Map clone
         capacity := 1000
         stats := Map clone
         
@@ -123,7 +134,12 @@ search_vectors(query_vector, k)
                     resultObj := Object clone
                     if(result type == "Map",
                         result keys foreach(key,
-                            resultObj setSlot(key, result at(key))
+                            slotSetter := Object clone
+                            slotSetter target := resultObj
+                            slotSetter key := key
+                            slotSetter value := result at(key)
+                            // Use message passing instead of setSlot
+                            slotSetter target doString(slotSetter key .. " := " .. slotSetter value asString)
                         )
                     )
                     resultsProcessor processedResults append(resultObj)
@@ -265,7 +281,7 @@ search_vectors(query_vector, k)
             // Add semantic context if available
             if(result hasSlot("text"),
                 relatedConcepts := self semanticStore findRelated(result text, "similar")
-                enhancedResult setSlot("relatedConcepts", relatedConcepts)
+                enhancedResult relatedConcepts := relatedConcepts
             )
             
             searchProcessor enhancedResults append(enhancedResult)

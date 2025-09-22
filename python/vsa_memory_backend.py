@@ -207,6 +207,159 @@ def test_memory_operations():
         "stats": get_memory_stats()
     }
 
+# FHRR VSA Operations - Fourier Holographic Reduced Representations
+# Based on torchhd.FHRRTensor for complex-valued vector symbolic operations
+
+def fhrr_generate_vector(seed):
+    """Generate FHRR hypervector from seed"""
+    try:
+        import torchhd
+        import torch
+        
+        # Use seed for reproducible generation
+        torch.manual_seed(seed)
+        
+        # Generate FHRR vector
+        vector = torchhd.FHRRTensor.random(1024)  # Standard FHRR dimension
+        
+        return vector.tolist()
+        
+    except ImportError:
+        # Fallback: generate pseudo-random complex vector
+        import random
+        random.seed(seed)
+        
+        # Generate complex-valued vector (real + imaginary parts)
+        real_part = [random.gauss(0, 1) for _ in range(512)]
+        imag_part = [random.gauss(0, 1) for _ in range(512)]
+        
+        # Normalize
+        magnitude = sum(r*r + i*i for r, i in zip(real_part, imag_part)) ** 0.5
+        real_part = [r/magnitude for r in real_part]
+        imag_part = [i/magnitude for i in imag_part]
+        
+        # Return as complex numbers string representation
+        complex_vector = [complex(r, i) for r, i in zip(real_part, imag_part)]
+        return str(complex_vector)
+
+def fhrr_bind(vec_a_str, vec_b_str):
+    """Bind two FHRR vectors using element-wise complex multiplication"""
+    try:
+        import torchhd
+        import torch
+        
+        # Parse vectors (handle both torchhd and fallback formats)
+        if isinstance(vec_a_str, str) and vec_a_str.startswith('['):
+            # Fallback format - parse complex numbers
+            vec_a = [complex(x.strip('()')) for x in vec_a_str.strip('[]').split(',')]
+            vec_b = [complex(x.strip('()')) for x in vec_b_str.strip('[]').split(',')]
+            vec_a = torch.tensor(vec_a, dtype=torch.complex64)
+            vec_b = torch.tensor(vec_b, dtype=torch.complex64)
+        else:
+            # Assume torchhd tensors
+            vec_a = torchhd.FHRRTensor(vec_a_str)
+            vec_b = torchhd.FHRRTensor(vec_b_str)
+        
+        # FHRR binding: element-wise complex multiplication
+        bound = vec_a * vec_b
+        
+        return bound.tolist()
+        
+    except ImportError:
+        # Fallback: simple complex multiplication
+        vec_a = [complex(x.strip('()')) for x in vec_a_str.strip('[]').split(',')]
+        vec_b = [complex(x.strip('()')) for x in vec_b_str.strip('[]').split(',')]
+        
+        bound = [a * b for a, b in zip(vec_a, vec_b)]
+        return str(bound)
+
+def fhrr_bundle(vector_list_str):
+    """Bundle multiple FHRR vectors using superposition"""
+    try:
+        import torchhd
+        import torch
+        
+        # Parse vector list
+        vectors = []
+        for vec_str in vector_list_str.strip('[]').split("','"):
+            if vec_str.startswith('['):
+                vec = [complex(x.strip('()')) for x in vec_str.strip('[]').split(',')]
+                vec = torch.tensor(vec, dtype=torch.complex64)
+            else:
+                vec = torchhd.FHRRTensor(vec_str)
+            vectors.append(vec)
+        
+        # FHRR bundling: sum all vectors
+        bundled = torch.stack(vectors).sum(dim=0)
+        
+        return bundled.tolist()
+        
+    except ImportError:
+        # Fallback: sum complex vectors
+        all_vectors = []
+        for vec_str in vector_list_str.strip('[]').split("','"):
+            vec = [complex(x.strip('()')) for x in vec_str.strip('[]').split(',')]
+            all_vectors.append(vec)
+        
+        # Sum corresponding elements
+        bundled = []
+        for i in range(len(all_vectors[0])):
+            sum_val = sum(vec[i] for vec in all_vectors)
+            bundled.append(sum_val)
+        
+        return str(bundled)
+
+def fhrr_unbind(bound_vec_str, role_vec_str):
+    """Unbind FHRR vector to recover original (produces noisy result)"""
+    try:
+        import torchhd
+        import torch
+        
+        # Parse vectors
+        if isinstance(bound_vec_str, str) and bound_vec_str.startswith('['):
+            bound_vec = [complex(x.strip('()')) for x in bound_vec_str.strip('[]').split(',')]
+            role_vec = [complex(x.strip('()')) for x in role_vec_str.strip('[]').split(',')]
+            bound_vec = torch.tensor(bound_vec, dtype=torch.complex64)
+            role_vec = torch.tensor(role_vec, dtype=torch.complex64)
+        else:
+            bound_vec = torchhd.FHRRTensor(bound_vec_str)
+            role_vec = torchhd.FHRRTensor(role_vec_str)
+        
+        # FHRR unbinding: element-wise complex division
+        unbound = bound_vec / role_vec
+        
+        return unbound.tolist()
+        
+    except ImportError:
+        # Fallback: complex division
+        bound_vec = [complex(x.strip('()')) for x in bound_vec_str.strip('[]').split(',')]
+        role_vec = [complex(x.strip('()')) for x in role_vec_str.strip('[]').split(',')]
+        
+        unbound = [b / r for b, r in zip(bound_vec, role_vec)]
+        return str(unbound)
+
+def fhrr_cleanup(noisy_vec_str):
+    """Clean up noisy FHRR vector using neural network ANN search"""
+    try:
+        import torchhd
+        import torch
+        import torch.nn as nn
+        
+        # Parse noisy vector
+        if isinstance(noisy_vec_str, str) and noisy_vec_str.startswith('['):
+            noisy_vec = [complex(x.strip('()')) for x in noisy_vec_str.strip('[]').split(',')]
+            noisy_vec = torch.tensor(noisy_vec, dtype=torch.complex64)
+        else:
+            noisy_vec = torchhd.FHRRTensor(noisy_vec_str)
+        
+        # For now, return the vector as-is (ANN cleanup would require training data)
+        # In a full implementation, this would use a trained autoencoder or similarity search
+        return noisy_vec.tolist()
+        
+    except ImportError:
+        # Fallback: return as-is
+        return noisy_vec_str
+
 if __name__ == "__main__":
     # Standalone test
     test_result = test_memory_operations()

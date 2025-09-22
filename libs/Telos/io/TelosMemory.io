@@ -20,18 +20,26 @@ TelosMemory initVSA := method(params,
     // Prototypal parameter handling
     paramAnalyzer := Object clone
     paramAnalyzer params := params
-    paramAnalyzer vecDim := if(paramAnalyzer params == nil, 512, paramAnalyzer params atIfAbsent("dimensions", 512))
-    paramAnalyzer cleanup := if(paramAnalyzer params == nil, true, paramAnalyzer params atIfAbsent("cleanup", true))
+    
+    # Wrap dimension value in object
+    vecDimObj := Object clone
+    vecDimObj value := if(paramAnalyzer params == nil, 512, paramAnalyzer params atIfAbsent("dimensions", 512))
+    paramAnalyzer vecDim := vecDimObj
+    
+    # Wrap cleanup flag in object
+    cleanupObj := Object clone
+    cleanupObj value := if(paramAnalyzer params == nil, true, paramAnalyzer params atIfAbsent("cleanup", true))
+    paramAnalyzer cleanup := cleanupObj
     
     // Memory system configuration
     memoryConfig := Object clone
-    memoryConfig dimensions := paramAnalyzer vecDim
-    memoryConfig cleanupEnabled := paramAnalyzer cleanup
+    memoryConfig dimensions := paramAnalyzer vecDim value
+    memoryConfig cleanupEnabled := paramAnalyzer cleanup value
     memoryConfig vectors := Map clone
     memoryConfig associations := Map clone
     memoryConfig queryLog := List clone
     
-    Telos setSlot("vsaMemory", memoryConfig)
+    Telos vsaMemory := memoryConfig
     
     statusReporter := Object clone
     statusReporter message := "TelOS Memory: VSA initialized with " .. memoryConfig dimensions .. " dimensions"
@@ -44,8 +52,15 @@ TelosMemory bind := method(keyObj, valueObj,
     bindingAnalyzer := Object clone
     bindingAnalyzer key := keyObj
     bindingAnalyzer value := valueObj
-    bindingAnalyzer keyStr := if(bindingAnalyzer key == nil, "nil", bindingAnalyzer key asString)
-    bindingAnalyzer valueStr := if(bindingAnalyzer value == nil, "nil", bindingAnalyzer value asString)
+    
+    # Wrap string values in objects
+    keyStrObj := Object clone
+    keyStrObj value := if(bindingAnalyzer key == nil, "nil", bindingAnalyzer key asString)
+    bindingAnalyzer keyStr := keyStrObj
+    
+    valueStrObj := Object clone
+    valueStrObj value := if(bindingAnalyzer value == nil, "nil", bindingAnalyzer value asString)
+    bindingAnalyzer valueStr := valueStrObj
     
     // Check VSA system
     vsaChecker := Object clone
@@ -58,8 +73,8 @@ TelosMemory bind := method(keyObj, valueObj,
     // Store binding
     bindingRecorder := Object clone
     bindingRecorder memory := vsaChecker memory
-    bindingRecorder binding := bindingAnalyzer keyStr .. " -> " .. bindingAnalyzer valueStr
-    bindingRecorder memory vectors atPut(bindingAnalyzer keyStr, bindingAnalyzer valueStr)
+    bindingRecorder binding := bindingAnalyzer keyStr value .. " -> " .. bindingAnalyzer valueStr value
+    bindingRecorder memory vectors atPut(bindingAnalyzer keyStr value, bindingAnalyzer valueStr value)
     
     resultReporter := Object clone
     resultReporter message := "TelOS Memory: VSA binding stored: " .. bindingRecorder binding
@@ -72,8 +87,15 @@ TelosMemory search := method(queryObj, limitObj,
     searchAnalyzer := Object clone
     searchAnalyzer query := queryObj
     searchAnalyzer limit := limitObj
-    searchAnalyzer queryStr := if(searchAnalyzer query == nil, "", searchAnalyzer query asString)
-    searchAnalyzer maxResults := if(searchAnalyzer limit == nil, 5, searchAnalyzer limit)
+    
+    # Wrap string and number values in objects
+    queryStrObj := Object clone
+    queryStrObj value := if(searchAnalyzer query == nil, "", searchAnalyzer query asString)
+    searchAnalyzer queryStr := queryStrObj
+    
+    maxResultsObj := Object clone
+    maxResultsObj value := if(searchAnalyzer limit == nil, 5, searchAnalyzer limit)
+    searchAnalyzer maxResults := maxResultsObj
     
     // Check VSA system
     vsaChecker := Object clone
@@ -87,29 +109,51 @@ TelosMemory search := method(queryObj, limitObj,
     queryProcessor := Object clone
     queryProcessor memory := vsaChecker memory
     queryProcessor results := List clone
-    queryProcessor query := searchAnalyzer queryStr
-    queryProcessor maxResults := searchAnalyzer maxResults
+    queryProcessor query := searchAnalyzer queryStr value
+    queryProcessor maxResults := searchAnalyzer maxResults value
     
     // Simple substring search for now (placeholder for neural similarity)
     searchExecutor := Object clone
     searchExecutor memory := queryProcessor memory
     searchExecutor query := queryProcessor query
     searchExecutor results := List clone
-    searchExecutor count := 0
+    
+    # Wrap counter in object
+    countObj := Object clone
+    countObj value := 0
+    searchExecutor count := countObj
     
     searchExecutor memory vectors keys foreach(key,
         searchMatcher := Object clone
         searchMatcher key := key
         searchMatcher value := searchExecutor memory vectors at(searchMatcher key)
-        searchMatcher matches := if(searchExecutor query size == 0, true,
-            searchMatcher key containsSeq(searchExecutor query) or searchMatcher value containsSeq(searchExecutor query)
-        )
         
-        if(searchMatcher matches and searchExecutor count < queryProcessor maxResults,
+        # Wrap match check in object
+        queryLengthObj := Object clone
+        queryLengthObj value := searchExecutor query size
+        matchChecker := Object clone
+        matchChecker isEmptyQuery := queryLengthObj value == 0
+        matchChecker hasKeyMatch := searchMatcher key containsSeq(searchExecutor query)
+        matchChecker hasValueMatch := searchMatcher value containsSeq(searchExecutor query)
+        matchChecker matches := if(matchChecker isEmptyQuery, true, matchChecker hasKeyMatch or matchChecker hasValueMatch)
+        searchMatcher matches := matchChecker
+        
+        # Wrap count comparison in object
+        countComparator := Object clone
+        countComparator currentCount := searchExecutor count value
+        countComparator maxAllowed := queryProcessor maxResults
+        countComparator canAdd := countComparator currentCount < countComparator maxAllowed
+        countComparator shouldAdd := searchMatcher matches value and countComparator canAdd
+        
+        if(countComparator shouldAdd,
             searchResult := Object clone
             searchResult item := searchMatcher key .. " -> " .. searchMatcher value
             searchExecutor results append(searchResult item)
-            searchExecutor count = searchExecutor count + 1
+            
+            # Increment counter through message passing
+            newCountObj := Object clone
+            newCountObj value := searchExecutor count value + 1
+            searchExecutor count := newCountObj
         )
     )
     
@@ -130,16 +174,23 @@ TelosMemory neuralCleanup := method(vectorObj, iterationsObj,
     cleanupAnalyzer := Object clone
     cleanupAnalyzer vector := vectorObj
     cleanupAnalyzer iterations := iterationsObj
-    cleanupAnalyzer vectorStr := if(cleanupAnalyzer vector == nil, "nil", cleanupAnalyzer vector asString)
-    cleanupAnalyzer iterCount := if(cleanupAnalyzer iterations == nil, 10, cleanupAnalyzer iterations)
+    
+    # Wrap string and number values in objects
+    vectorStrObj := Object clone
+    vectorStrObj value := if(cleanupAnalyzer vector == nil, "nil", cleanupAnalyzer vector asString)
+    cleanupAnalyzer vectorStr := vectorStrObj
+    
+    iterCountObj := Object clone
+    iterCountObj value := if(cleanupAnalyzer iterations == nil, 10, cleanupAnalyzer iterations)
+    cleanupAnalyzer iterCount := iterCountObj
     
     // Neural processing via FFI
     neuralProcessor := Object clone
-    neuralProcessor command := "neural_cleanup('" .. cleanupAnalyzer vectorStr .. "', " .. cleanupAnalyzer iterCount .. ")"
+    neuralProcessor command := "neural_cleanup('" .. cleanupAnalyzer vectorStr value .. "', " .. cleanupAnalyzer iterCount value .. ")"
     neuralProcessor result := Telos rawPyEval(neuralProcessor command)
     
     resultReporter := Object clone
-    resultReporter message := "TelOS Memory: Neural cleanup processed vector with " .. cleanupAnalyzer iterCount .. " iterations"
+    resultReporter message := "TelOS Memory: Neural cleanup processed vector with " .. cleanupAnalyzer iterCount value .. " iterations"
     writeln(resultReporter message)
     neuralProcessor result
 )
@@ -149,16 +200,23 @@ TelosMemory neuralEmbed := method(textObj, dimensionsObj,
     embedAnalyzer := Object clone
     embedAnalyzer text := textObj
     embedAnalyzer dimensions := dimensionsObj
-    embedAnalyzer textStr := if(embedAnalyzer text == nil, "", embedAnalyzer text asString)
-    embedAnalyzer dims := if(embedAnalyzer dimensions == nil, 512, embedAnalyzer dimensions)
+    
+    # Wrap string and number values in objects
+    textStrObj := Object clone
+    textStrObj value := if(embedAnalyzer text == nil, "", embedAnalyzer text asString)
+    embedAnalyzer textStr := textStrObj
+    
+    dimsObj := Object clone
+    dimsObj value := if(embedAnalyzer dimensions == nil, 512, embedAnalyzer dimensions)
+    embedAnalyzer dims := dimsObj
     
     // Neural embedding via FFI
     embedProcessor := Object clone
-    embedProcessor command := "neural_embed('" .. embedAnalyzer textStr .. "', " .. embedAnalyzer dims .. ")"
+    embedProcessor command := "neural_embed('" .. embedAnalyzer textStr value .. "', " .. embedAnalyzer dims value .. ")"
     embedProcessor result := Telos rawPyEval(embedProcessor command)
     
     resultReporter := Object clone
-    resultReporter message := "TelOS Memory: Neural embedding generated for text of length " .. embedAnalyzer textStr size
+    resultReporter message := "TelOS Memory: Neural embedding generated for text of length " .. embedAnalyzer textStr value size
     writeln(resultReporter message)
     embedProcessor result
 )
@@ -171,18 +229,25 @@ TelosMemory integratedStore := method(conceptObj, contextObj,
     storeAnalyzer := Object clone
     storeAnalyzer concept := conceptObj
     storeAnalyzer context := contextObj
-    storeAnalyzer conceptStr := if(storeAnalyzer concept == nil, "", storeAnalyzer concept asString)
-    storeAnalyzer contextStr := if(storeAnalyzer context == nil, "", storeAnalyzer context asString)
+    
+    # Wrap string values in objects
+    conceptStrObj := Object clone
+    conceptStrObj value := if(storeAnalyzer concept == nil, "", storeAnalyzer concept asString)
+    storeAnalyzer conceptStr := conceptStrObj
+    
+    contextStrObj := Object clone
+    contextStrObj value := if(storeAnalyzer context == nil, "", storeAnalyzer context asString)
+    storeAnalyzer contextStr := contextStrObj
     
     // Create neural embedding
     embeddingCreator := Object clone
-    embeddingCreator concept := storeAnalyzer conceptStr
+    embeddingCreator concept := storeAnalyzer conceptStr value
     embeddingCreator vector := TelosMemory neuralEmbed(embeddingCreator concept, 512)
     
     // Store in VSA system
     vsaStorer := Object clone
-    vsaStorer key := storeAnalyzer conceptStr
-    vsaStorer value := storeAnalyzer contextStr .. " [neural:" .. embeddingCreator vector .. "]"
+    vsaStorer key := storeAnalyzer conceptStr value
+    vsaStorer value := storeAnalyzer contextStr value .. " [neural:" .. embeddingCreator vector .. "]"
     vsaResult := TelosMemory bind(vsaStorer key, vsaStorer value)
     
     # Persist to WAL if available
@@ -190,14 +255,14 @@ TelosMemory integratedStore := method(conceptObj, contextObj,
         walRecorder := Object clone
         walRecorder entry := Map clone
         walRecorder entry atPut("type", "memory.store")
-        walRecorder entry atPut("concept", storeAnalyzer conceptStr)
-        walRecorder entry atPut("context", storeAnalyzer contextStr)
+        walRecorder entry atPut("concept", storeAnalyzer conceptStr value)
+        walRecorder entry atPut("context", storeAnalyzer contextStr value)
         walRecorder entry atPut("timestamp", Date clone now asString)
         Telos walAppend(walRecorder entry)
     )
     
     resultReporter := Object clone
-    resultReporter message := "TelOS Memory: Integrated storage complete for concept: " .. storeAnalyzer conceptStr
+    resultReporter message := "TelOS Memory: Integrated storage complete for concept: " .. storeAnalyzer conceptStr value
     writeln(resultReporter message)
     resultReporter message
 )
@@ -207,18 +272,25 @@ TelosMemory integratedQuery := method(queryObj, limitObj,
     queryAnalyzer := Object clone
     queryAnalyzer query := queryObj
     queryAnalyzer limit := limitObj
-    queryAnalyzer queryStr := if(queryAnalyzer query == nil, "", queryAnalyzer query asString)
-    queryAnalyzer maxResults := if(queryAnalyzer limit == nil, 5, queryAnalyzer limit)
+    
+    # Wrap string and number values in objects
+    queryStrObj := Object clone
+    queryStrObj value := if(queryAnalyzer query == nil, "", queryAnalyzer query asString)
+    queryAnalyzer queryStr := queryStrObj
+    
+    maxResultsObj := Object clone
+    maxResultsObj value := if(queryAnalyzer limit == nil, 5, queryAnalyzer limit)
+    queryAnalyzer maxResults := maxResultsObj
     
     // Generate query embedding
     embeddingCreator := Object clone
-    embeddingCreator query := queryAnalyzer queryStr
+    embeddingCreator query := queryAnalyzer queryStr value
     embeddingCreator vector := TelosMemory neuralEmbed(embeddingCreator query, 512)
     
     # Enhanced search combining VSA and neural similarity
     vsaSearcher := Object clone
-    vsaSearcher query := queryAnalyzer queryStr
-    vsaSearcher results := TelosMemory search(vsaSearcher query, queryAnalyzer maxResults)
+    vsaSearcher query := queryAnalyzer queryStr value
+    vsaSearcher results := TelosMemory search(vsaSearcher query, queryAnalyzer maxResults value)
     
     # Cleanup results with neural processing
     resultsProcessor := Object clone
@@ -233,7 +305,7 @@ TelosMemory integratedQuery := method(queryObj, limitObj,
     )
     
     resultReporter := Object clone
-    resultReporter message := "TelOS Memory: Integrated query processed: " .. queryAnalyzer queryStr .. " (" .. resultsProcessor cleanedResults size .. " results)"
+    resultReporter message := "TelOS Memory: Integrated query processed: " .. queryAnalyzer queryStr value .. " (" .. resultsProcessor cleanedResults size .. " results)"
     writeln(resultReporter message)
     resultsProcessor cleanedResults
 )

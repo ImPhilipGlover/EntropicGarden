@@ -22,9 +22,24 @@ EnhancedBABSWINGLoop resolvedConcepts := List clone
 EnhancedBABSWINGLoop initialize := method(configObj,
     configAnalyzer := Object clone
     configAnalyzer config := configObj
-    configAnalyzer progressiveResolution := if(configAnalyzer config == nil, true, if(configAnalyzer config hasSlot("progressiveResolution"), configAnalyzer config progressiveResolution, true))
-    configAnalyzer visionSweep := if(configAnalyzer config == nil, true, if(configAnalyzer config hasSlot("visionSweepEnabled"), configAnalyzer config visionSweepEnabled, true))
-    configAnalyzer fractalMemory := if(configAnalyzer config == nil, true, if(configAnalyzer config hasSlot("fractalMemoryIntegration"), configAnalyzer config fractalMemoryIntegration, true))
+    configAccessor := Object clone
+    configAccessor config := configAnalyzer config
+    configAccessor getProgressiveResolution := method(config getSlot("progressiveResolution"))
+    configAccessor getVisionSweepEnabled := method(config getSlot("visionSweepEnabled"))
+    configAccessor getFractalMemoryIntegration := method(config getSlot("fractalMemoryIntegration"))
+    
+    # Wrap boolean values in objects for prototypal purity
+    progressiveResolutionObj := Object clone
+    progressiveResolutionObj value := if(configAnalyzer config == nil, true, if(configAccessor getProgressiveResolution != nil, configAccessor getProgressiveResolution, true))
+    configAnalyzer progressiveResolution := progressiveResolutionObj
+    
+    visionSweepObj := Object clone
+    visionSweepObj value := if(configAnalyzer config == nil, true, if(configAccessor getVisionSweepEnabled != nil, configAccessor getVisionSweepEnabled, true))
+    configAnalyzer visionSweep := visionSweepObj
+    
+    fractalMemoryObj := Object clone
+    fractalMemoryObj value := if(configAnalyzer config == nil, true, if(configAccessor getFractalMemoryIntegration != nil, configAccessor getFractalMemoryIntegration, true))
+    configAnalyzer fractalMemory := fractalMemoryObj
     
     self config := configAnalyzer
     self identifiedGaps := Map clone
@@ -34,9 +49,9 @@ EnhancedBABSWINGLoop initialize := method(configObj,
     self researchHistory := List clone
     self provenanceTracker := Map clone
     
-    writeln("  ✓ Progressive gap resolution: ", configAnalyzer progressiveResolution)
-    writeln("  ✓ Vision sweep workflow: ", configAnalyzer visionSweep)
-    writeln("  ✓ Fractal memory integration: ", configAnalyzer fractalMemory)
+    writeln("  ✓ Progressive gap resolution: ", configAnalyzer progressiveResolution value)
+    writeln("  ✓ Vision sweep workflow: ", configAnalyzer visionSweep value)
+    writeln("  ✓ Fractal memory integration: ", configAnalyzer fractalMemory value)
     
     self
 )
@@ -99,20 +114,30 @@ EnhancedBABSWINGLoop extractRoadmapConcepts := method(roadmapPathObj,
 EnhancedBABSWINGLoop determineRoadmapPhase := method(conceptNameObj,
     phaseAnalyzer := Object clone
     phaseAnalyzer conceptName := conceptNameObj
-    phaseAnalyzer conceptStr := phaseAnalyzer conceptName asString
+    
+    # Wrap string value in object for prototypal purity
+    conceptStrObj := Object clone
+    conceptStrObj value := phaseAnalyzer conceptName asString
+    phaseAnalyzer conceptStr := conceptStrObj
     
     # Phase classification based on concept patterns
     phaseClassifier := Object clone
-    phaseClassifier concept := phaseAnalyzer conceptStr
+    phaseClassifier concept := phaseAnalyzer conceptStr value
     phaseClassifier phase := "unknown"
     
-    # Phase mapping rules
-    if(phaseClassifier concept containsSeq("synaptic_bridge"), phaseClassifier phase = "Phase_4")
-    if(phaseClassifier concept containsSeq("fhrr_vsa"), phaseClassifier phase = "Phase_7")
-    if(phaseClassifier concept containsSeq("entropy") or phaseClassifier concept containsSeq("gibbs"), phaseClassifier phase = "Phase_9")
-    if(phaseClassifier concept containsSeq("fractal_consciousness"), phaseClassifier phase = "Phase_8")
-    if(phaseClassifier concept containsSeq("babs_wing"), phaseClassifier phase = "Phase_9.5")
-    if(phaseClassifier concept containsSeq("temporal_weighting") or phaseClassifier concept containsSeq("operational_closure"), phaseClassifier phase = "BAT_OS_Foundation")
+    # Phase mapping rules - wrap phase assignments in objects
+    if(phaseClassifier concept containsSeq("synaptic_bridge"), 
+        phaseObj := Object clone; phaseObj value := "Phase_4"; phaseClassifier phase := phaseObj value)
+    if(phaseClassifier concept containsSeq("fhrr_vsa"), 
+        phaseObj := Object clone; phaseObj value := "Phase_7"; phaseClassifier phase := phaseObj value)
+    if(phaseClassifier concept containsSeq("entropy") or phaseClassifier concept containsSeq("gibbs"), 
+        phaseObj := Object clone; phaseObj value := "Phase_9"; phaseClassifier phase := phaseObj value)
+    if(phaseClassifier concept containsSeq("fractal_consciousness"), 
+        phaseObj := Object clone; phaseObj value := "Phase_8"; phaseClassifier phase := phaseObj value)
+    if(phaseClassifier concept containsSeq("babs_wing"), 
+        phaseObj := Object clone; phaseObj value := "Phase_9.5"; phaseClassifier phase := phaseObj value)
+    if(phaseClassifier concept containsSeq("temporal_weighting") or phaseClassifier concept containsSeq("operational_closure"), 
+        phaseObj := Object clone; phaseObj value := "BAT_OS_Foundation"; phaseClassifier phase := phaseObj value)
     
     phaseClassifier phase
 )
@@ -192,9 +217,16 @@ EnhancedBABSWINGLoop resolveGapsProgressively := method(
         gapAnalyzer := Object clone
         gapAnalyzer key := gapKey
         gapAnalyzer gap := self identifiedGaps at(gapAnalyzer key)
-        gapAnalyzer isResolved := self resolvedConcepts contains(gapAnalyzer key)
         
-        if(gapAnalyzer isResolved not,
+        # Wrap boolean result in object
+        isResolvedObj := Object clone
+        isResolvedObj value := self resolvedConcepts contains(gapAnalyzer key)
+        gapAnalyzer isResolved := isResolvedObj
+        
+        # Check if gap is unresolved through message passing
+        unresolvedChecker := Object clone
+        unresolvedChecker isResolved := gapAnalyzer isResolved value
+        if(unresolvedChecker isResolved not,
             resolutionAnalyzer unresolvedGaps append(gapAnalyzer gap)
         )
     )
@@ -240,37 +272,66 @@ EnhancedBABSWINGLoop resolveGapsProgressively := method(
 EnhancedBABSWINGLoop findContextForGap := method(gapObj,
     contextFinder := Object clone
     contextFinder gap := gapObj
-    contextFinder gapName := contextFinder gap name asString
+    
+    # Wrap string value in object
+    gapNameObj := Object clone
+    gapNameObj value := contextFinder gap name asString
+    contextFinder gapName := gapNameObj
+    
     contextFinder matchingContext := nil
     
     # Search context fractals for relevant content
     self contextFractals foreach(context,
         contextAnalyzer := Object clone
         contextAnalyzer context := context
-        contextAnalyzer content := contextAnalyzer context content asString
+        
+        # Wrap content string in object
+        contentObj := Object clone
+        contentObj value := contextAnalyzer context content asString
+        contextAnalyzer content := contentObj
+        
         contextAnalyzer gap := contextFinder gapName
         
         # Check for keyword matches or related concepts
         relevanceChecker := Object clone
-        relevanceChecker content := contextAnalyzer content
-        relevanceChecker gap := contextAnalyzer gap
-        relevanceChecker isRelevant := false
+        relevanceChecker content := contextAnalyzer content value
+        relevanceChecker gap := contextAnalyzer gap value
         
-        # Simple relevance matching
-        if(relevanceChecker content containsSeq("synaptic") and relevanceChecker gap containsSeq("synaptic"),
-            relevanceChecker isRelevant = true
-        )
-        if(relevanceChecker content containsSeq("entropy") and relevanceChecker gap containsSeq("entropy"),
-            relevanceChecker isRelevant = true
-        )
-        if(relevanceChecker content containsSeq("fractal") and relevanceChecker gap containsSeq("fractal"),
-            relevanceChecker isRelevant = true
-        )
-        if(relevanceChecker content containsSeq("vsa") and relevanceChecker gap containsSeq("vsa"),
-            relevanceChecker isRelevant = true
-        )
+        # Wrap boolean result in object
+        isRelevantObj := Object clone
+        isRelevantObj value := false
+        relevanceChecker isRelevant := isRelevantObj
         
-        if(relevanceChecker isRelevant and contextFinder matchingContext == nil,
+        # Simple relevance matching through message passing
+        synapticChecker := Object clone
+        synapticChecker content := relevanceChecker content
+        synapticChecker gap := relevanceChecker gap
+        if(synapticChecker content containsSeq("synaptic") and synapticChecker gap containsSeq("synaptic"),
+            relevanceObj := Object clone; relevanceObj value := true; relevanceChecker isRelevant := relevanceObj)
+        
+        entropyChecker := Object clone
+        entropyChecker content := relevanceChecker content
+        entropyChecker gap := relevanceChecker gap
+        if(entropyChecker content containsSeq("entropy") and entropyChecker gap containsSeq("entropy"),
+            relevanceObj := Object clone; relevanceObj value := true; relevanceChecker isRelevant := relevanceObj)
+        
+        fractalChecker := Object clone
+        fractalChecker content := relevanceChecker content
+        fractalChecker gap := relevanceChecker gap
+        if(fractalChecker content containsSeq("fractal") and fractalChecker gap containsSeq("fractal"),
+            relevanceObj := Object clone; relevanceObj value := true; relevanceChecker isRelevant := relevanceObj)
+        
+        vsaChecker := Object clone
+        vsaChecker content := relevanceChecker content
+        vsaChecker gap := relevanceChecker gap
+        if(vsaChecker content containsSeq("vsa") and vsaChecker gap containsSeq("vsa"),
+            relevanceObj := Object clone; relevanceObj value := true; relevanceChecker isRelevant := relevanceObj)
+        
+        # Check relevance through message passing
+        relevanceEvaluator := Object clone
+        relevanceEvaluator isRelevant := relevanceChecker isRelevant value
+        relevanceEvaluator hasMatch := contextFinder matchingContext == nil
+        if(relevanceEvaluator isRelevant and relevanceEvaluator hasMatch,
             contextFinder matchingContext = contextAnalyzer context
         )
     )
@@ -320,14 +381,33 @@ EnhancedBABSWINGLoop runCompleteBABSWINGCycle := method(roadmapPathObj, batosPat
     writeln("🔄 RUNNING COMPLETE BABS WING CYCLE")
     writeln("   Vision Sweep + Progressive Gap Resolution + Fractal Evolution")
     
-    # Vision Sweep Step 1: Extract roadmap concepts
-    roadmapResults := self extractRoadmapConcepts(cycleAnalyzer roadmapPath)
-    
-    # Vision Sweep Step 2: Ingest BAT OS contexts
-    batosResults := self ingestBATOSContexts(cycleAnalyzer batosPath)
-    
-    # Vision Sweep Step 3: Progressive gap resolution
-    resolutionResults := self resolveGapsProgressively
+    # Begin WAL frame for research cycle
+    if(Telos hasSlot("walCommit"),
+        cycleMetadata := Map clone
+        cycleMetadata atPut("cycle_type", "enhanced_babs_wing")
+        cycleMetadata atPut("roadmap_path", cycleAnalyzer roadmapPath)
+        cycleMetadata atPut("batos_path", cycleAnalyzer batosPath)
+        cycleMetadata atPut("start_time", cycleAnalyzer startTime)
+        
+        Telos walCommit("babs_wing_cycle", cycleMetadata, method(
+            # Vision Sweep Step 1: Extract roadmap concepts
+            roadmapResults := self extractRoadmapConcepts(cycleAnalyzer roadmapPath)
+            Telos walAppend("MARK roadmap.extracted {concepts:" .. roadmapResults totalExtracted .. "}")
+            
+            # Vision Sweep Step 2: Ingest BAT OS contexts
+            batosResults := self ingestBATOSContexts(cycleAnalyzer batosPath)
+            Telos walAppend("MARK batos.ingested {contexts:" .. batosResults totalIngested .. "}")
+            
+            # Vision Sweep Step 3: Progressive gap resolution
+            resolutionResults := self resolveGapsProgressively
+            Telos walAppend("MARK gaps.resolved {resolved:" .. resolutionResults newlyResolved .. "}")
+        ))
+    ,
+        # Fallback execution without WAL
+        roadmapResults := self extractRoadmapConcepts(cycleAnalyzer roadmapPath)
+        batosResults := self ingestBATOSContexts(cycleAnalyzer batosPath)
+        resolutionResults := self resolveGapsProgressively
+    )
     
     # Persist results
     if(Telos hasSlot("appendJSONL"),

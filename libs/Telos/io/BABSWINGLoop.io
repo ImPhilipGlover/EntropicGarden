@@ -28,7 +28,10 @@ BABSWINGLoop identifyGaps := method(currentFractals,
         // Use Vision Sweep for progressive gap analysis
         gapAnalyzer := Object clone
         gapAnalyzer fractals := currentFractals
-        gapAnalyzer previousGaps := if(self hasSlot("lastGaps"), self lastGaps, List clone)
+        selfAccessor := Object clone
+        selfAccessor self := self
+        selfAccessor getLastGaps := method(self getSlot("lastGaps"))
+        gapAnalyzer previousGaps := if(selfAccessor getLastGaps != nil, selfAccessor getLastGaps, List clone)
         
         // Perform full vision sweep
         visionResult := VisionSweepEngine performFullSweep(

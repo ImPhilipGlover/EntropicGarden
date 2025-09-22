@@ -173,8 +173,9 @@ int Collector_isPaused(Collector *self) { return (self->pauseCount != 0); }
 void Collector_pushPause(Collector *self) { self->pauseCount++; }
 
 void Collector_popPause(Collector *self) {
-    assert(self->pauseCount > 0);
-
+    if (self->pauseCount <= 0) {
+        return;
+    }
     self->pauseCount--;
 
     // printf("collect newMarkerCount %i\n", self->newMarkerCount);

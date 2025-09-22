@@ -23,10 +23,17 @@ CompositeEntropySystem := Object clone
 CompositeEntropySystem initialize := method(configObj,
     configAnalyzer := Object clone
     configAnalyzer config := configObj
-    configAnalyzer alpha := if(configAnalyzer config == nil, 0.4, if(configAnalyzer config hasSlot("entropyWeight"), configAnalyzer config entropyWeight, 0.4))
-    configAnalyzer beta := if(configAnalyzer config == nil, 0.3, if(configAnalyzer config hasSlot("coherenceWeight"), configAnalyzer config coherenceWeight, 0.3))
-    configAnalyzer gamma := if(configAnalyzer config == nil, 0.2, if(configAnalyzer config hasSlot("costWeight"), configAnalyzer config costWeight, 0.2))
-    configAnalyzer delta := if(configAnalyzer config == nil, 0.1, if(configAnalyzer config hasSlot("noveltyWeight"), configAnalyzer config noveltyWeight, 0.1))
+    configAccessor := Object clone
+    configAccessor config := configAnalyzer config
+    configAccessor getEntropyWeight := method(config getSlot("entropyWeight"))
+    configAccessor getCoherenceWeight := method(config getSlot("coherenceWeight"))
+    configAccessor getCostWeight := method(config getSlot("costWeight"))
+    configAccessor getNoveltyWeight := method(config getSlot("noveltyWeight"))
+    
+    configAnalyzer alpha := if(configAnalyzer config == nil, 0.4, if(configAccessor getEntropyWeight != nil, configAccessor getEntropyWeight, 0.4))
+    configAnalyzer beta := if(configAnalyzer config == nil, 0.3, if(configAccessor getCoherenceWeight != nil, configAccessor getCoherenceWeight, 0.3))
+    configAnalyzer gamma := if(configAnalyzer config == nil, 0.2, if(configAccessor getCostWeight != nil, configAccessor getCostWeight, 0.2))
+    configAnalyzer delta := if(configAnalyzer config == nil, 0.1, if(configAccessor getNoveltyWeight != nil, configAccessor getNoveltyWeight, 0.1))
     
     # Store weights for Gibbs free energy calculation
     self weights := Object clone
