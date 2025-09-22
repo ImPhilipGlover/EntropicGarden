@@ -71,14 +71,12 @@ void IoTelosFFI_releaseHandle(char *handleId);
 // Marshalling Functions (Bidirectional Object Conversion)
 PyObject* IoTelosFFI_marshalIoToPython_helper(IoObject *ioObj);
 IoObject* IoTelosFFI_marshalPythonToIo_helper(PyObject *pyObj, IoState *state);
-IoObject* IoTelosFFI_marshalIoToPython(IoTelos *self, IoObject *locals, IoMessage *m);
-IoObject* IoTelosFFI_marshalPythonToIo(IoTelos *self, IoObject *locals, IoMessage *m);
 
 // Core FFI Execution Functions  
 IoObject* IoTelosFFI_pyEval(IoObject *self, IoObject *locals, IoObject *m);
 IoObject* IoTelosFFI_executeAsync(IoObject *self, IoObject *locals, IoObject *m);
 
-// Marshalling Functions (Bidirectional Object Conversion)
+// Marshalling Functions (Bidirectional Object Conversion) - Exposed to Io
 IoObject* IoTelosFFI_marshalIoToPython(IoObject *self, IoObject *locals, IoObject *m);
 IoObject* IoTelosFFI_marshalPythonToIo(IoObject *self, IoObject *locals, IoObject *m);
 

@@ -9,6 +9,39 @@ TelosMorphic := Object clone
 TelosMorphic version := "1.0.0 (modular-prototypal)"
 TelosMorphic loadTime := Date clone now
 
+// === EVENT SYSTEM FOR MORPHIC INTERACTION ===
+
+// Event prototype - represents user input events from SDL2
+Event := Object clone do(
+    type := "unknown"
+    x := 0
+    y := 0
+    button := 0
+    timestamp := 0
+    
+    // Factory method for mouse events
+    mouseEvent := method(eventType, mouseX, mouseY, mouseButton,
+        newEvent := self clone
+        newEvent type = eventType
+        newEvent x = mouseX
+        newEvent y = mouseY  
+        newEvent button = mouseButton
+        newEvent timestamp = Date now asNumber
+        newEvent
+    )
+    
+    // Check if point is within bounds (for hit testing)
+    isWithinBounds := method(bounds,
+        (self x >= bounds x) and 
+        (self x <= (bounds x + bounds width)) and
+        (self y >= bounds y) and 
+        (self y <= (bounds y + bounds height))
+    )
+)
+
+// Register Event globally for system use
+Lobby Event := Event
+
 // === MORPHIC UI IMPLEMENTATION ===
 
 // Extend Telos object with Morphic capabilities
@@ -16,7 +49,7 @@ Telos do(
     // Initialize world tracking first - immediate usability
     world := nil
     
-    // World management - create world with proper C-level access
+    // World management - create world with proper C-level access and event delegation
     createWorld := method(
         currentWorld := self world
         if(currentWorld == nil,
@@ -26,11 +59,56 @@ Telos do(
             ,
                 writeln("Telos: Creating world (fallback)")
             )
-            # Create Io-level world object as a Morph
+            # Create Io-level world object as a Morph with event handling
             newWorld := Morph clone
             newWorld id := "RootWorld"
             newWorld bounds setSize(640, 480)  # Match window size
             newWorld color setColor(0.1, 0.1, 0.1, 1.0)  # Dark background
+            
+            # CRITICAL: World event delegation implementation
+            newWorld handleMouseEvent := method(event,
+                writeln("World: Handling mouse event " .. event type .. " at (" .. event x .. "," .. event y .. ")")
+                
+                # Delegate to submorphs in reverse order (front to back for proper occlusion)
+                eventHandled := false
+                morphIndex := self submorphs size - 1
+                
+                while(morphIndex >= 0 and eventHandled not,
+                    morph := self submorphs at(morphIndex)
+                    
+                    # Check if event is within morph bounds
+                    if(event isWithinBounds(morph bounds),
+                        writeln("World: Event within bounds of morph " .. morph id)
+                        
+                        # Send appropriate message to morph based on event type
+                        if(event type == "mouseDown",
+                            if(morph hasSlot("leftMouseDown"),
+                                result := morph leftMouseDown(event)
+                                if(result != nil, eventHandled = true)
+                            )
+                        )
+                        if(event type == "mouseUp",
+                            if(morph hasSlot("leftMouseUp"),
+                                result := morph leftMouseUp(event)  
+                                if(result != nil, eventHandled = true)
+                            )
+                        )
+                        if(event type == "mouseMoved",
+                            if(morph hasSlot("mouseMoved"),
+                                result := morph mouseMoved(event)
+                                if(result != nil, eventHandled = true)
+                            )
+                        )
+                    )
+                    morphIndex = morphIndex - 1
+                )
+                
+                if(eventHandled not,
+                    writeln("World: Event not handled by any morph - background click at (" .. event x .. "," .. event y .. ")")
+                )
+                
+                eventHandled
+            )
             
             newWorld refresh := method(
                 count := self submorphs size
@@ -56,17 +134,18 @@ Telos do(
         self
     )
     
-    // Close window - call C-level SDL2 close
-    closeWindow := method(  
-        writeln("TelOS: Closing SDL2 window...")
+    // Close window gracefully - set exit flag and let display loop handle C-level close
+    closeWindowGracefully := method(  
+        writeln("TelOS: Requesting graceful window close...")
         
-        // Call C-level closeWindow from method table (not raw function)
-        if(self getSlot("closeWindow") != nil and self getSlot("closeWindow") != self closeWindow,
-            // This calls the C-level closeWindow function from the method table
-            self performWithArguments("closeWindow", list())
-        ,
-            writeln("UI: Window closed (fallback)")
+        // Set exit flag to stop any running loops
+        if(self hasSlot("shouldExit"), 
+            self shouldExit := true
+            writeln("TelOS: Exit flag set - display loops will terminate")
         )
+        
+        // The actual C-level closeWindow should be called by the main loop
+        // or when the system shuts down to avoid race conditions
         self
     )
     
@@ -143,7 +222,7 @@ Telos do(
     // Refresh display - actually draw to SDL2 window
     refresh := method(
         currentWorld := self world
-        count := currentWorld morphs size
+        count := currentWorld submorphs size
         writeln("TelOS: Refreshing display with " .. count .. " morphs")
         
         # CRITICAL: Process SDL2 events (including window close button)
@@ -203,13 +282,31 @@ Telos do(
             writeln(framePresenter message)
         )
     )
+    
+    // CRITICAL: Bridge method for C-level to dispatch events to World
+    dispatchMouseEvent := method(eventType, x, y, button,
+        writeln("Telos: Dispatching mouse event " .. eventType .. " at (" .. x .. "," .. y .. ")")
+        
+        currentWorld := self world
+        if(currentWorld != nil,
+            # Create Event object from C-level parameters
+            event := Event mouseEvent(eventType, x, y, button)
+            
+            # Dispatch to World for delegation to morphs
+            currentWorld handleMouseEvent(event)
+        ,
+            writeln("Telos: No world available for event dispatch")
+        )
+        
+        self
+    )
 )
 
 // === MORPHIC OBJECT PROTOTYPES ===
 // Based on "Morphic UI Framework Training Guide Extension.txt"
 // Implements proper scene graph with owner/submorphs relationships
 
-// Base Morph prototype - the universal graphical primitive
+// Base Morph prototype - the universal graphical primitive with event handling
 Morph := Object clone do(
     // Core slots for state (as documented)
     bounds := Object clone do(
@@ -228,6 +325,45 @@ Morph := Object clone do(
     submorphs := List clone
     owner := nil
     id := "morph_" .. Date now asString
+    
+    // INTERACTIVE BEHAVIOR: Event handling methods
+    leftMouseDown := method(event,
+        writeln("Morph " .. self id .. ": Received leftMouseDown at (" .. event x .. "," .. event y .. ")")
+        
+        # Default behavior: change color to indicate selection
+        self color setColor(0.9, 0.7, 0.7, 1.0)  # Light red to show interaction
+        
+        # Log state change to WAL if available
+        if(Telos hasSlot("walAppend"),
+            walEntry := "MORPH_INTERACT {\"id\":\"" .. self id .. "\",\"event\":\"leftMouseDown\",\"x\":" .. event x .. ",\"y\":" .. event y .. "}"
+            Telos walAppend(walEntry)
+        )
+        
+        # Return self to indicate event was handled
+        self
+    )
+    
+    leftMouseUp := method(event,
+        writeln("Morph " .. self id .. ": Received leftMouseUp at (" .. event x .. "," .. event y .. ")")
+        
+        # Default behavior: restore original color  
+        self color setColor(0.5, 0.5, 0.8, 1.0)  # Back to default blue
+        
+        # Log state change to WAL if available
+        if(Telos hasSlot("walAppend"),
+            walEntry := "MORPH_INTERACT {\"id\":\"" .. self id .. "\",\"event\":\"leftMouseUp\",\"x\":" .. event x .. ",\"y\":" .. event y .. "}"
+            Telos walAppend(walEntry)
+        )
+        
+        # Return self to indicate event was handled
+        self
+    )
+    
+    mouseMoved := method(event,
+        # Default: only handle if mouse is down (dragging)
+        # Subclasses can override for hover effects
+        nil  # Return nil to indicate event not handled by default
+    )
     
     // Core behavior slots (as documented)
     drawOn := method(canvas,
@@ -257,19 +393,32 @@ Morph := Object clone do(
         self
     )
     
-    // Event handling (message-based as documented)
+    // Event handling (message-based as documented) - delegates to specific event methods
     handleEvent := method(event,
-        // Events "fall through" the hierarchy 
+        // Events "fall through" the hierarchy via message delegation
         eventHandled := false
         
-        # Check if this morph handles the event
-        handlerName := event type
-        if(self hasSlot(handlerName),
-            result := self performWithArguments(handlerName, list(event))
-            if(result != dropThroughMarker, eventHandled = true)
+        # Map generic event to specific mouse message  
+        if(event type == "mouseDown",
+            if(self hasSlot("leftMouseDown"),
+                result := self leftMouseDown(event)
+                if(result != nil, eventHandled = true)
+            )
+        )
+        if(event type == "mouseUp",
+            if(self hasSlot("leftMouseUp"),
+                result := self leftMouseUp(event)
+                if(result != nil, eventHandled = true)
+            )
+        )
+        if(event type == "mouseMoved",
+            if(self hasSlot("mouseMoved"),
+                result := self mouseMoved(event)
+                if(result != nil, eventHandled = true)
+            )
         )
         
-        # If not handled, pass to submorphs (front to back)
+        # If not handled, pass to submorphs (front to back for proper occlusion)
         if(eventHandled not,
             self submorphs reverseForeach(submorph,
                 if(eventHandled not,
@@ -508,50 +657,7 @@ Telos createMorphWithLogging := method(morphType, x, y, width, height,
     morphCreator morph
 )
 
-// BYPASS MODULE LOADING: Attach createMorphWithLogging directly to Telos during file load
-// This works around the module loading system failure
-Telos createMorphWithLogging := method(morphType, x, y, width, height,
-    // Create morph instance using prototypal pattern
-    morphCreator := Object clone
-    morphCreator resolvedType := if(morphType == nil, "RectangleMorph", morphType asString)
-    morphCreator morph := Lobby getSlot(morphCreator resolvedType) ifNil(RectangleMorph) clone
-    
-    // Set properties with prototypal assignments
-    posX := if(x == nil, 100, x)
-    posY := if(y == nil, 100, y)
-    sizeW := if(width == nil, 100, width)
-    sizeH := if(height == nil, 100, height)
-    
-    morphCreator morph x := posX
-    morphCreator morph y := posY
-    morphCreator morph width := sizeW
-    morphCreator morph height := sizeH
-    
-    // Log morphic state change to WAL
-    if(Telos hasSlot("walAppend"),
-        stateCapture := Object clone
-        stateCapture id := morphCreator morph id
-        stateCapture type := morphCreator resolvedType
-        stateCapture x := posX
-        stateCapture y := posY
-        stateCapture width := sizeW
-        stateCapture height := sizeH
-        
-        walEntryText := "MORPH_CREATE {\"id\":\"" .. stateCapture id .. "\",\"type\":\"" .. stateCapture type .. "\",\"x\":" .. stateCapture x .. ",\"y\":" .. stateCapture y .. ",\"width\":" .. stateCapture width .. ",\"height\":" .. stateCapture height .. "}"
-        Telos walAppend(walEntryText)
-        writeln("TelOS Morphic: Logged morph creation to WAL - " .. stateCapture id)
-    )
-    
-    // Add to world and trigger C-level rendering
-    if(self world != nil,
-        self world addMorph(morphCreator morph)
-        self createMorph  // Trigger C-level rendering
-    )
-    
-    morphCreator morph
-)
-
-writeln("TelOS Morphic: WAL-integrated createMorphWithLogging attached to Telos")
+// Note: createMorphWithLogging defined once above
 
 // Module load method for system integration (working around module loading failure)
 TelosMorphic load := method(

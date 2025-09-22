@@ -3,23 +3,7 @@
    The zygote's first breath: establishing prototypal purity and system harmony
    
    This module provides:
-   - Base Telos prototype establishment with immediate         if(fileChecker exists,
-            outputProcessor loadFileMessage := "TelOS Core: Loading file: " .. moduleContext modulePath
-            writeln(outputProcessor loadFileMessage)
-            
-            # DIAGNOSTIC: Add explicit doFile call logging
-            preLoadLogger := Object clone
-            preLoadLogger message := "TelOS Core: About to call doFile for " .. moduleContext moduleName
-            writeln(preLoadLogger message)
-            
-            doFile(moduleContext modulePath)
-            
-            postLoadLogger := Object clone
-            postLoadLogger message := "TelOS Core: doFile completed for " .. moduleContext moduleName
-            writeln(postLoadLogger message)
-            
-            outputProcessor loadedMessage := "TelOS Core: File loaded successfully for " .. moduleContext moduleName
-            writeln(outputProcessor loadedMessage)ity
+   - Base Telos prototype establishment with immediate prototypal purity
    - Prototypal purity enforcement system 
    - Fundamental utilities (JSON, helpers, maps, lists)
    - System initialization and module loading coordination
@@ -108,6 +92,7 @@ Telos version := "1.0.0"
 Telos architecture := "modular-prototypal"
 Telos buildDate := Date now
 Telos modules := List clone
+Telos selfCheck := true  // Enable prototypal purity checks by default
 
 // === JSON UTILITIES ===
 // Pure prototypal JSON handling with proper object message passing
@@ -502,6 +487,25 @@ Telos checkModuleHealth := method(
     healthChecker report
 )
 
+Telos listModules := method(
+    moduleReporter := Object clone
+    moduleReporter totalCount := Telos loadedModules size
+    
+    writeln("TelOS Loaded Modules (" .. moduleReporter totalCount .. " total):")
+    writeln("═" repeated(50))
+    
+    Telos loadedModules foreach(moduleName, status,
+        statusIndicator := Object clone
+        statusIndicator symbol := if(status, "✓", "✗")
+        statusIndicator color := if(status, "[OK]", "[FAIL]")
+        
+        writeln("  " .. statusIndicator symbol .. " " .. moduleName .. " " .. statusIndicator color)
+    )
+    
+    writeln("═" repeated(50))
+    writeln("System Status: " .. if(Telos loadedModules size == 11, "All modules operational", "Some modules missing"))
+)
+
 // === LLM INTERFACE FORWARDING ===
 
 Telos llmCall := method(spec,
@@ -552,11 +556,24 @@ Telos handleError := method(errorParam, contextParam,
     return recoveryAttempt success
 )
 
-// === AUTOPOIETIC FORWARD PROTOCOL (TEMPORARILY DISABLED) ===
-// Forward protocol implementation removed to debug system hang
-// Will re-implement after fixing initialization issues
+// === SLOT INITIALIZATION ===
+// Initialize expected slots that may be accessed before modules define them
 
-writeln("TelOS Core: Forward protocol temporarily disabled for debugging")
+// Initialize core slots for graceful module loading
+if(Telos hasSlot("morphs") not,
+    Telos morphs := List clone
+)
+
+if(Telos hasSlot("walPath") not,
+    Telos walPath := "/mnt/c/EntropicGarden/telos.wal"
+)
+
+if(Telos hasSlot("world") not,
+    Telos world := Object clone
+    Telos world submorphs := List clone
+)
+
+
 
 // Automatic initialization when module loads - prototypal style
 writeln("TelOS Core: Foundation module loaded - initializing system...")

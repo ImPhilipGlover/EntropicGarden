@@ -5,8 +5,10 @@
 #ifndef IONUMBER_DEFINED
 #define IONUMBER_DEFINED 1
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1 // for NAN macro, round
+#endif
 #include <math.h>
-#define _GNU_SOURCE // for NAN macro, round
 #include <sys/types.h>
 
 #include "IoVMApi.h"

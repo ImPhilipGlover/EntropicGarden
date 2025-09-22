@@ -61,6 +61,11 @@ IoObject *IoTelos_createMorph(IoTelos *self, IoObject *locals, IoMessage *m);
 IoObject *IoTelos_checkEvents(IoTelos *self, IoObject *locals, IoMessage *m);
 IoObject *IoTelos_shouldExit(IoTelos *self, IoObject *locals, IoMessage *m);
 
+// Additional raw drawing primitives to align with Io-level Canvas
+IoObject *IoTelos_drawRect(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_drawCircle(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_drawText(IoTelos *self, IoObject *locals, IoMessage *m);
+
 // World management
 MorphicWorld *IoTelosMorphic_getGlobalWorld(void);
 void IoTelosMorphic_setGlobalWorld(MorphicWorld *world);

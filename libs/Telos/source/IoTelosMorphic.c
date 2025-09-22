@@ -66,6 +66,14 @@ void IoTelosMorphic_registerMethods(IoState *state, IoObject *proto) {
     
     IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawCreateMorph"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_createMorph, NULL, "Telos_rawCreateMorph"));
+
+    // Register additional raw draw primitives used by Io Canvas
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawDrawRect"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_drawRect, NULL, "Telos_rawDrawRect"));
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawDrawCircle"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_drawCircle, NULL, "Telos_rawDrawCircle"));
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawDrawText"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_drawText, NULL, "Telos_rawDrawText"));
     
     // Register event handling methods
     IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "checkEvents"),
@@ -300,6 +308,45 @@ IoObject *IoTelos_handleEvent(IoTelos *self, IoObject *locals, IoMessage *m)
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 printf("TelOS Morphic: Mouse click at (%d, %d)\n", event.button.x, event.button.y);
+                // CRITICAL: Bridge to Io-level event dispatch
+                {
+                    IoState *state = IoObject_state(self);
+                    IoSymbol *dispatchSym = IoState_symbolWithCString_(state, "dispatchMouseEvent");
+                    IoObject *xArg = IONUMBER(event.button.x);
+                    IoObject *yArg = IONUMBER(event.button.y);
+                    IoObject *buttonArg = IONUMBER(event.button.button);
+                    IoObject *eventTypeArg = IoState_symbolWithCString_(state, "mouseDown");
+                    
+                    // Call: self dispatchMouseEvent("mouseDown", x, y, button)
+                    IoMessage *msg = IoMessage_newWithName_label_(state, dispatchSym, dispatchSym);
+                    IoMessage_addArg_(msg, eventTypeArg);
+                    IoMessage_addArg_(msg, xArg);
+                    IoMessage_addArg_(msg, yArg);
+                    IoMessage_addArg_(msg, buttonArg);
+                    
+                    IoObject_perform(self, self, msg);
+                }
+                break;
+            case SDL_MOUSEBUTTONUP:
+                printf("TelOS Morphic: Mouse release at (%d, %d)\n", event.button.x, event.button.y);
+                // CRITICAL: Bridge to Io-level event dispatch
+                {
+                    IoState *state = IoObject_state(self);
+                    IoSymbol *dispatchSym = IoState_symbolWithCString_(state, "dispatchMouseEvent");
+                    IoObject *xArg = IONUMBER(event.button.x);
+                    IoObject *yArg = IONUMBER(event.button.y);
+                    IoObject *buttonArg = IONUMBER(event.button.button);
+                    IoObject *eventTypeArg = IoState_symbolWithCString_(state, "mouseUp");
+                    
+                    // Call: self dispatchMouseEvent("mouseUp", x, y, button)
+                    IoMessage *msg = IoMessage_newWithName_label_(state, dispatchSym, dispatchSym);
+                    IoMessage_addArg_(msg, eventTypeArg);
+                    IoMessage_addArg_(msg, xArg);
+                    IoMessage_addArg_(msg, yArg);
+                    IoMessage_addArg_(msg, buttonArg);
+                    
+                    IoObject_perform(self, self, msg);
+                }
                 break;
             // Add more event types as needed
         }
@@ -561,5 +608,58 @@ IoObject *IoTelos_mainLoop(IoTelos *self, IoObject *locals, IoMessage *m)
     printf("TelOS Morphic: Main loop (fallback mode)\n");
 #endif
     
+    return self;
+}
+
+// --- Raw drawing primitives to support Io Canvas ---
+
+IoObject *IoTelos_drawRect(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+#ifdef TELOS_HAVE_SDL2
+    if (!globalWorld || !globalWorld->sdlRenderer) return self;
+    SDL_Renderer *renderer = (SDL_Renderer*)globalWorld->sdlRenderer;
+    // Extract args: x, y, w, h, r, g, b, a
+    int x = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 0));
+    int y = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 1));
+    int w = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 2));
+    int h = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 3));
+    int r = (int)(IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 4)) * 255.0);
+    int g = (int)(IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 5)) * 255.0);
+    int b = (int)(IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 6)) * 255.0);
+    int a = (int)(IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 7)) * 255.0);
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    SDL_Rect rect = {x, y, w, h};
+    SDL_RenderFillRect(renderer, &rect);
+#endif
+    return self;
+}
+
+IoObject *IoTelos_drawCircle(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+#ifdef TELOS_HAVE_SDL2
+    if (!globalWorld || !globalWorld->sdlRenderer) return self;
+    SDL_Renderer *renderer = (SDL_Renderer*)globalWorld->sdlRenderer;
+    int cx = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 0));
+    int cy = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 1));
+    int radius = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 2));
+    int r = (int)(IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 3)) * 255.0);
+    int g = (int)(IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 4)) * 255.0);
+    int b = (int)(IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 5)) * 255.0);
+    int a = (int)(IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 6)) * 255.0);
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    // Simple filled circle via midpoint algorithm approximation
+    for (int dy = -radius; dy <= radius; ++dy) {
+        int dx = (int)sqrt(radius * radius - dy * dy);
+        SDL_RenderDrawLine(renderer, cx - dx, cy + dy, cx + dx, cy + dy);
+    }
+#endif
+    return self;
+}
+
+IoObject *IoTelos_drawText(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    // Placeholder: text rendering requires a font library; log and no-op
+    // Args: text, x, y, r, g, b, a
+    printf("TelOS Morphic: drawText placeholder invoked\n");
     return self;
 }
