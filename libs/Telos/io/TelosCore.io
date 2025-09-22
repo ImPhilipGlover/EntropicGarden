@@ -281,6 +281,32 @@ Telos checkModuleHealth := method(
     healthChecker report
 )
 
+// === LLM INTERFACE FORWARDING ===
+
+Telos llmCall := method(spec,
+    // Forward LLM calls to TelosOllama module with proper prototypal handling
+    llmProcessor := Object clone
+    llmProcessor spec := spec
+    
+    // Extract parameters from spec using prototypal message passing
+    paramExtractor := Object clone
+    paramExtractor model := if(llmProcessor spec hasSlot("model"), llmProcessor spec model, "llama3.2:latest")
+    paramExtractor prompt := if(llmProcessor spec hasSlot("prompt"), llmProcessor spec prompt, "")
+    paramExtractor system := if(llmProcessor spec hasSlot("system"), llmProcessor spec system, "")
+    
+    // Combine system and prompt if both exist
+    fullPromptBuilder := Object clone
+    fullPromptBuilder combined := if(paramExtractor system isEmpty,
+        paramExtractor prompt,
+        paramExtractor system .. "\n\n" .. paramExtractor prompt
+    )
+    
+    // Call TelosOllama with proper parameters
+    result := TelosOllama sendToOllama(paramExtractor model, fullPromptBuilder combined)
+    
+    result
+)
+
 // === GRACEFUL ERROR HANDLING ===
 
 Telos handleError := method(errorParam, contextParam,

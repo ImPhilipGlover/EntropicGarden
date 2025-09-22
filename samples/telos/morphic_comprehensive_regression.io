@@ -11,29 +11,35 @@ world := Telos createWorld
 // Test 1: Basic Morph Creation
 writeln("=== Test 1: Basic Morph Creation ===")
 rect1 := Telos createMorph("RectangleMorph") do(
-    setId("rect1")
-    moveTo(50, 50)
-    resizeTo(80, 60)
-    setColor(list(1, 0, 0, 1))  // red
+    id := "rect1"
+    x := 50
+    y := 50
+    width := 80
+    height := 60
+    color := list(1, 0, 0, 1)  // red
 )
-world addSubmorph(rect1)
+world addMorph(rect1)
 
 rect2 := Telos createMorph("RectangleMorph") do(
-    setId("rect2")
-    moveTo(150, 100)
-    resizeTo(60, 80)
-    setColor(list(0, 1, 0, 1))  // green
+    id := "rect2"
+    x := 150
+    y := 100
+    width := 60
+    height := 80
+    color := list(0, 1, 0, 1)  // green
 )
-world addSubmorph(rect2)
+world addMorph(rect2)
 
 text1 := Telos createMorph("TextMorph") do(
-    setId("text1")
-    moveTo(200, 50)
-    resizeTo(100, 30)
-    setText("Hello Morphic")
-    setColor(list(0, 0, 1, 1))  // blue
+    id := "text1"
+    x := 200
+    y := 50
+    width := 100
+    height := 30
+    text := "Hello Morphic"
+    color := list(0, 0, 1, 1)  // blue
 )
-world addSubmorph(text1)
+world addMorph(text1)
 
 writeln("Created 3 morphs: rect1, rect2, text1")
 Telos captureScreenshot

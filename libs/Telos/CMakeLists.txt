@@ -15,11 +15,15 @@ SET(IoTelos_VERSION "${IoTelos_VERSION_MAJOR}.${IoTelos_VERSION_MINOR}")
 
 SET(IoTelos_SRCS
 	source/IoTelos.c
+	source/IoTelosCore.c
+	source/IoTelosFFI.c
 	source/PrototypalFFI.c
 )
 
 SET(IoTelos_HDRS
 	source/IoTelos.h
+	source/IoTelosCore.h
+	source/IoTelosFFI.h
 )
 
 include_directories(

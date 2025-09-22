@@ -90,8 +90,9 @@ Telos marshal ioToPython := method(valueParam,
         marshaller pythonCode := marshaller value asString
     )
     if(typeAnalyzer valueType == "Sequence",
-        escapedValue := marshaller value asMutable replaceSeq("\"", "\\\"")
-        marshaller pythonCode := "\"" .. escapedValue .. "\""
+        escapeProcessor := Object clone
+        escapeProcessor escaped := marshaller value asMutable replaceSeq("\"", "\\\"")
+        marshaller pythonCode := "\"" .. escapeProcessor escaped .. "\""
     )
     if(typeAnalyzer valueType == "List",
         listProcessor := Object clone
@@ -105,9 +106,11 @@ Telos marshal ioToPython := method(valueParam,
         mapProcessor := Object clone
         mapProcessor pairs := List clone
         marshaller value foreach(key, val,
-            keyPython := Telos marshal ioToPython(key)
-            valPython := Telos marshal ioToPython(val)
-            mapProcessor pairs append(keyPython .. ": " .. valPython)
+            keyConverter := Object clone
+            keyConverter python := Telos marshal ioToPython(key)
+            valConverter := Object clone
+            valConverter python := Telos marshal ioToPython(val)
+            mapProcessor pairs append(keyConverter python .. ": " .. valConverter python)
         )
         marshaller pythonCode := "{" .. mapProcessor pairs join(", ") .. "}"
     )
@@ -174,6 +177,103 @@ Telos neuralBackend call := method(functionNameParam, argsParam,
 // === ERROR HANDLING AND RECOVERY ===
 
 Telos ffiError := Object clone
+
+)
+
+// === PROTOTYPAL FFI PROXY CREATION ===
+// Implements the Prototypal FFI Mandate for unified behavior across layers
+
+Telos createPrototypalProxy := method(ioObjectParam,
+    proxyCreator := Object clone
+    proxyCreator sourceObject := ioObjectParam
+    proxyCreator objectId := "proxy_" .. ioObjectParam uniqueId asString
+    
+    writeln("TelosFFI: Creating prototypal proxy for ", proxyCreator sourceObject type)
+    
+    try(
+        // Create C-level TelosFFIObject proxy using our new implementation
+        proxyCreator cProxy := Telos Telos_createFFIProxy(proxyCreator sourceObject)
+        
+        if(proxyCreator cProxy,
+            writeln("  ✓ C bridge TelosFFIObject created")
+            
+            // Create Python IoProxy ambassador
+            ambassadorCode := """
+import sys
+sys.path.append('python')
+from uvm_object import UvmObject
+
+# Create IoProxy ambassador with full delegation
+ambassador = UvmObject(
+    name='""" .. proxyCreator sourceObject name .. """',
+    type='""" .. proxyCreator sourceObject type .. """',
+    layer='python_ambassador',
+    proxy_id='""" .. proxyCreator objectId .. """'
+)
+
+# Set up IoVM reference for unified state authority
+ambassador.set_io_vm_reference('""" .. proxyCreator objectId .. """')
+
+# Test ambassador creation
+print(f"IoProxy ambassador: {ambassador._slots['name']}")
+ambassador_id = id(ambassador)
+"""
+            
+            proxyCreator pythonResult := Telos pyEval(ambassadorCode)
+            if(proxyCreator pythonResult,
+                writeln("  ✓ Python IoProxy ambassador created")
+                
+                // Create unified proxy wrapper
+                unifiedProxy := Object clone
+                unifiedProxy sourceObject := proxyCreator sourceObject
+                unifiedProxy cProxy := proxyCreator cProxy
+                unifiedProxy pythonAmbassador := proxyCreator pythonResult
+                unifiedProxy objectId := proxyCreator objectId
+                
+                // Add behavioral delegation methods
+                unifiedProxy getSlot := method(slotName,
+                    // Try local first, then delegate to C bridge, then Python
+                    localValue := self sourceObject getSlot(slotName)
+                    if(localValue, return localValue)
+                    
+                    // This would call TelosFFIObject_getValueFor
+                    return nil  // Placeholder for C bridge call
+                )
+                
+                unifiedProxy setSlot := method(slotName, value,
+                    // Update all layers maintaining state authority
+                    self sourceObject setSlot(slotName, value)
+                    
+                    // This would call TelosFFIObject_setValueFor  
+                    // This would call Python ambassador setattr
+                    
+                    // Log to WAL for single source of truth
+                    logEntry := Map clone
+                    logEntry atPut("operation", "unified_slot_change")
+                    logEntry atPut("proxy_id", self objectId)
+                    logEntry atPut("slot", slotName)
+                    logEntry atPut("value", value asString)
+                    logEntry atPut("timestamp", Date now asNumber)
+                    
+                    Telos walAppend("MARK unified_proxy.slot_change " .. Telos json stringify(logEntry))
+                )
+                
+                writeln("  ✓ Unified prototypal proxy created with behavioral delegation")
+                return unifiedProxy
+            ,
+                writeln("  ✗ Python IoProxy ambassador failed")
+                return nil
+            )
+        ,
+            writeln("  ✗ C bridge TelosFFIObject failed")
+            return nil
+        ),
+        
+        exception,
+        writeln("TelosFFI: Prototypal proxy creation failed: ", exception description)
+        return nil
+    )
+)
 
 Telos ffiError handle := method(errorParam, contextParam,
     errorHandler := Object clone

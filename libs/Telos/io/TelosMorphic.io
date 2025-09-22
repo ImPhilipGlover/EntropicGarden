@@ -255,5 +255,25 @@ TelosMorphic load := method(
     self
 )
 
+// Add captureScreenshot method to Telos
+Telos captureScreenshot := method(
+    if(world == nil, return "[no world]")
+    describe := method(m, indent,
+        name := m type ifNil("Morph")
+        idStr := if(m hasSlot("id"), m id, "?")
+        zStr := if(m hasSlot("zIndex"), m zIndex, 0)
+        line := indent .. name .. "#" .. idStr .. " @(" .. m x .. "," .. m y .. ") " .. m width .. "x" .. m height .. " z=" .. zStr
+        if(m hasSlot("color"),
+            c := m color; line = line .. " color=[" .. c atIfAbsent(0,0) .. "," .. c atIfAbsent(1,0) .. "," .. c atIfAbsent(2,0) .. "," .. c atIfAbsent(3,1) .. "]"
+        )
+        if(m hasSlot("text"), line = line .. " text='" .. m text .. "'")
+        line
+    )
+    
+    lines := list("World(" .. world morphs size .. " morphs):")
+    world morphs foreach(m, lines append(describe(m, "  ")))
+    lines join("\n")
+)
+
 writeln("TelOS Morphic: Full SDL2 implementation loaded")
 writeln("TelOS Morphic: Objects registered in global namespace")
