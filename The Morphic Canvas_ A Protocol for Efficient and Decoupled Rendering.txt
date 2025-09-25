@@ -1,0 +1,112 @@
+﻿The Morphic Canvas: A Protocol for Efficient and Decoupled Rendering
+
+
+
+
+The Canvas as an Abstraction Layer
+
+
+In the Morphic architecture, the Canvas object is a critical abstraction that serves as the sole intermediary between the world of graphical objects (Morphs) and the low-level rendering engine (SDL2).1 A Morph never directly interacts with the screen or the underlying graphics hardware. This separation is a deliberate and fundamental design principle that ensures the portability and conceptual integrity of the system. A Morph's responsibility is not to know
+how to render pixels on a specific device, but only to know how to describe its appearance by sending a series of high-level, abstract drawing commands to a Canvas.1
+This design decouples the visual logic of the UI components from the implementation details of the graphics backend. The same Morph prototype could be rendered to an SDL2 window, an HTML5 canvas, or a PostScript printer simply by providing a different Canvas object that translates the abstract commands into the appropriate low-level calls.1 This mirrors the message-passing philosophy of the Io language itself, where the sender of a message is ignorant of the receiver's implementation, creating a profound architectural uniformity from core logic to graphical rendering.1
+
+
+The drawOn: Protocol
+
+
+The primary mechanism for rendering is the drawOn: protocol. Every object that wishes to have a visual representation must implement a drawOn: method, which accepts a single argument: the Canvas object it should draw onto.1
+The core responsibility of a composite morph's drawOn: method is twofold:
+1. Draw its own appearance first (e.g., its background color and border).
+2. Recursively instruct each of its submorphs, in back-to-front order, to also draw themselves on the same canvas.1
+This recursive process ensures that the visual hierarchy is correctly maintained, with parent morphs appearing behind their children.
+
+
+Code snippet
+
+
+
+
+// A simplified implementation of the base Morph's drawOn: method
+Morph drawOn := method(canvas,
+   // 1. Draw self. Send an abstract command to the canvas.
+   canvas drawRectangle(self bounds, self color)
+
+   // 2. Recursively command submorphs to draw on top.
+   self submorphs foreach(submorph,
+       submorph drawOn(canvas)
+   )
+)
+
+This protocol ensures that the rendering logic is distributed throughout the object graph, with each morph being responsible for its own appearance.
+
+
+The Rendering Cycle and Damage Invalidation
+
+
+To achieve the "liveness" and responsiveness central to the Morphic philosophy, the system must be able to update the display efficiently.1 Redrawing the entire screen every frame is computationally expensive and unnecessary, especially when only small parts of the UI have changed. Morphic systems solve this through a process of damage invalidation.
+When a morph changes its state in a visually significant way (e.g., it moves, its color changes, or it is resized), it is responsible for declaring that the area of the screen it previously occupied is now "damaged" or "invalid." This invalid rectangle is added to a global list of "damage rectangles" for the current frame.
+The main application loop does not blindly redraw the entire scene. Instead, it performs the following steps in each iteration:
+1. Process Events: Handle user input, which may cause morphs to change and register damage.
+2. Step Morphs: Run any animations or simulations, which may also cause morphs to register damage.
+3. Render Damage: If the damage list is not empty, initiate the rendering process only for the affected regions.
+This ensures that rendering work is only performed when and where it is needed, preserving system resources and maintaining a high frame rate.
+
+
+Clipping and Optimized Drawing
+
+
+The list of damage rectangles is used to perform a critical optimization during the rendering phase. Before drawing begins, the system iterates through each damage rectangle and uses it to configure the Canvas.
+1. Set Clipping Region: For each damage rectangle, the Canvas sets a "clipping region" in the underlying SDL2 renderer. This is a hardware-accelerated feature that instructs the GPU to discard any drawing operations that fall outside of the specified rectangle.
+2. Initiate Full Draw: The system then sends the drawOn: message to the root of the scene graph, the World morph.1
+3. Recursive, Clipped Drawing: The drawOn: message propagates recursively through the entire morph hierarchy as described before. However, because the clipping region is active, only the portions of morphs that actually intersect with the current damage rectangle will result in pixels being written to the frame buffer. A morph that is entirely outside the clipping rectangle can execute its drawOn: method, but all of its drawing commands will be instantly discarded by the GPU at minimal cost.
+This process is repeated for every rectangle in the damage list, ensuring that all invalid regions of the screen are correctly redrawn.
+
+
+Double Buffering and the present Command
+
+
+To prevent visual artifacts such as flickering, all drawing operations are performed on an off-screen buffer, a technique known as double buffering.3 The user continues to see the last completed frame while the next frame is being constructed in this hidden buffer.
+After the rendering loop has processed all the damage rectangles and the off-screen buffer has been fully updated, a final command is sent to the Canvas. In our implementation, this is the present message. This message maps directly to the SDL_RenderPresent() function.3 This single call instructs the graphics hardware to atomically swap the hidden buffer with the visible one. The newly rendered frame appears on the screen all at once, resulting in a smooth, flicker-free visual update.
+The complete, optimized rendering cycle for a single frame can be summarized as follows:
+
+
+Code snippet
+
+
+
+
+// Simplified main loop logic
+loop(
+   // 1. Process events and step animations.
+   // This populates the 'damageList'.
+
+   // 2. If there is damage, render it.
+   if(damageList isNotEmpty,
+       // 3. For each damaged area...
+       damageList foreach(damageRect,
+           // 4. Set the clipping region on the canvas.
+           theCanvas clipTo(damageRect)
+
+           // 5. Trigger a full, recursive draw from the root.
+           // The clipping region will ensure only necessary work is done.
+           World drawOn(theCanvas)
+       )
+
+       // 6. After all damaged areas are redrawn to the back buffer,
+       // swap it to the screen.
+       theCanvas present
+
+       // 7. Clear the damage list for the next frame.
+       damageList empty
+   )
+
+   // Yield to other coroutines.
+   Scheduler runNextCoroutine
+)
+
+This architecture, centered on the Canvas abstraction, fulfills the Morphic paradigm's requirements. It decouples object logic from rendering technology, distributes rendering responsibility, and leverages damage invalidation with hardware-accelerated clipping to provide an efficient foundation for a live, direct-manipulation interface.
+Works cited
+1. Morphic UI Framework Training Guide Extension
+2. Io Prototype Programming Training Guide
+3. Getting Started with SDL and C | Learn C Games Programming Blog, accessed September 25, 2025, https://learncgames.com/tutorials/getting-started-with-sdl-and-c/
+4. SDL2 main game loop - c++ - Stack Overflow, accessed September 25, 2025, https://stackoverflow.com/questions/30738868/sdl2-main-game-loop

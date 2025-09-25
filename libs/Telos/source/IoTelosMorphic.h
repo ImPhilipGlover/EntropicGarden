@@ -71,7 +71,7 @@ MorphicWorld *IoTelosMorphic_getGlobalWorld(void);
 void IoTelosMorphic_setGlobalWorld(MorphicWorld *world);
 
 // Morph rendering helpers
-void IoTelosMorphic_drawSubmorphs(SDL_Renderer *renderer, MorphicMorph *worldMorph);
+void IoTelosMorphic_drawSubmorphs(SDL_Renderer *renderer, IoObject *worldObj);
 void IoTelosMorphic_extractColor(IoObject *morph, int *r, int *g, int *b, int *a);
 void IoTelosMorphic_extractBounds(IoObject *morph, SDL_Rect *rect);
 

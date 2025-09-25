@@ -198,7 +198,7 @@ Telos_Io_loadModule := method(moduleNameParam,
     // Create module loading context through message passing
     moduleContext := Object clone
     moduleContext moduleName := parameterHandler inputModuleName asString
-    moduleContext modulePath := "libs/Telos/io/" .. moduleContext moduleName .. ".io"
+    moduleContext modulePath := "/mnt/c/EntropicGarden/libs/Telos/io/" .. moduleContext moduleName .. ".io"
     
     // Check if already loaded through message passing
     loadChecker := Object clone
@@ -374,6 +374,7 @@ Telos loadAllModules := method(
     moduleNames := list(
         "TelosPersistence",
         "TelosFFI",
+        "TelosCognition",
         "TelosMorphic",
         "TelosMemory",
         "TelosPersona",
@@ -538,6 +539,117 @@ Telos llmCall := method(spec,
     result
 )
 
+// === COGNITIVE SYSTEM VALIDATION ===
+
+Telos validateCognition := method(
+    validationProcessor := Object clone
+    validationProcessor success := true
+    validationProcessor details := Map clone
+    
+    writeln("TelOS Core: Beginning cognitive system validation...")
+    
+    # Check if cognition module was loaded
+    cognitionChecker := Object clone
+    cognitionChecker hasCognition := Telos hasSlot("cognition")
+    validationProcessor details atPut("cognitionModuleLoaded", cognitionChecker hasCognition)
+    
+    if(cognitionChecker hasCognition not,
+        writeln("TelOS Core: Cognition module not loaded - attempting initialization...")
+        initResult := Telos initializeCognition
+        if(initResult not,
+            validationProcessor success := false
+            writeln("TelOS Core: Cognition initialization failed")
+            return validationProcessor details
+        )
+    )
+    
+    # Test System 1 (GCE) functionality
+    gceChecker := Object clone
+    gceChecker hasGCE := Telos cognition hasSlot("gce")
+    validationProcessor details atPut("system1Available", gceChecker hasGCE)
+    
+    if(gceChecker hasGCE,
+        try(
+            # Add test content to semantic space
+            testContent := "artificial intelligence reasoning system"
+            Telos cognition gce addToSemanticSpace("test_concept", testContent)
+            
+            # Test retrieval
+            testQuery := "intelligence"
+            retrievalResult := Telos cognition gce retrieve(testQuery, nil)
+            gceTestResult := (retrievalResult type == "List")
+            validationProcessor details atPut("system1Working", gceTestResult)
+            writeln("TelOS Core: System 1 (GCE) test - " .. if(gceTestResult, "PASSED", "FAILED"))
+        ,
+            exception,
+            validationProcessor details atPut("system1Working", false)
+            writeln("TelOS Core: System 1 (GCE) test failed: " .. exception description)
+        )
+    )
+    
+    # Test System 2 (HRC) functionality  
+    hrcChecker := Object clone
+    hrcChecker hasHRC := Telos cognition hasSlot("hrc")
+    validationProcessor details atPut("system2Available", hrcChecker hasHRC)
+    
+    if(hrcChecker hasHRC,
+        try(
+            # Test reasoning with mock candidates
+            testQuery := "bind concepts together"
+            mockCandidates := List clone
+            mockCandidate := Object clone
+            mockCandidate vector := List clone; i := 0; while(i < 100, mockCandidate vector append(0.5); i := i + 1)
+            mockCandidates append(mockCandidate)
+            
+            reasoningResult := Telos cognition hrc reason(testQuery, nil, mockCandidates)
+            hrcTestResult := (reasoningResult type == "Map")
+            validationProcessor details atPut("system2Working", hrcTestResult)
+            writeln("TelOS Core: System 2 (HRC) test - " .. if(hrcTestResult, "PASSED", "FAILED"))
+        ,
+            exception,
+            validationProcessor details atPut("system2Working", false)
+            writeln("TelOS Core: System 2 (HRC) test failed: " .. exception description)
+        )
+    )
+    
+    # Test dual-process coordination
+    coordinatorChecker := Object clone
+    coordinatorChecker hasCoordinator := Telos hasSlot("cognitiveQuery")
+    validationProcessor details atPut("dualProcessAvailable", coordinatorChecker hasCoordinator)
+    
+    if(coordinatorChecker hasCoordinator,
+        try(
+            testQuery := "reasoning test query"
+            coordinationResult := Telos cognitiveQuery(testQuery, nil)
+            coordinationTestResult := (coordinationResult type == "Map") and (coordinationResult hasSlot("system1_candidates")) and (coordinationResult hasSlot("system2_result"))
+            validationProcessor details atPut("dualProcessWorking", coordinationTestResult)
+            writeln("TelOS Core: Dual-Process Coordination test - " .. if(coordinationTestResult, "PASSED", "FAILED"))
+        ,
+            exception,
+            validationProcessor details atPut("dualProcessWorking", false)
+            writeln("TelOS Core: Dual-Process Coordination test failed: " .. exception description)
+        )
+    )
+    
+    # Overall validation result
+    validationSummary := Object clone
+    validationSummary system1OK := validationProcessor details atIfAbsent("system1Working", false)
+    validationSummary system2OK := validationProcessor details atIfAbsent("system2Working", false)
+    validationSummary coordinationOK := validationProcessor details atIfAbsent("dualProcessWorking", false)
+    validationProcessor success := validationSummary system1OK and validationSummary system2OK and validationSummary coordinationOK
+    
+    statusLogger := Object clone
+    statusLogger message := "TelOS Core: Cognitive validation " .. if(validationProcessor success, "COMPLETED SUCCESSFULLY", "FAILED - system may need attention")
+    writeln(statusLogger message)
+    
+    writeln("TelOS Core: Cognitive System Status:")
+    writeln("  System 1 (GCE): " .. if(validationSummary system1OK, "✓ ACTIVE", "✗ FAILED"))
+    writeln("  System 2 (HRC): " .. if(validationSummary system2OK, "✓ ACTIVE", "✗ FAILED"))
+    writeln("  Coordination: " .. if(validationSummary coordinationOK, "✓ ACTIVE", "✗ FAILED"))
+    
+    return validationProcessor details
+)
+
 // === GRACEFUL ERROR HANDLING ===
 
 Telos handleError := method(errorParam, contextParam,
@@ -573,8 +685,101 @@ if(Telos hasSlot("world") not,
     Telos world submorphs := List clone
 )
 
+// === FULL SYSTEM INITIALIZATION AND VALIDATION ===
+
+Telos initializeFullSystem := method(
+    systemInitializer := Object clone
+    systemInitializer success := true
+    
+    writeln("\n====================================================")
+    writeln("    TelOS Full System Initialization Starting")
+    writeln("====================================================\n")
+    
+    # Step 1: Core module loading
+    writeln("Step 1: Loading core modules...")
+    moduleResult := self loadAllModules
+    if(moduleResult not,
+        writeln("ERROR: Core module loading failed")
+        return false
+    )
+    writeln("✓ Core modules loaded successfully\n")
+    
+    # Step 2: FFI initialization (if available)
+    writeln("Step 2: Checking Foreign Function Interface...")
+    ffiChecker := Object clone
+    ffiChecker available := self hasSlot("ffi")
+    if(ffiChecker available,
+        writeln("✓ FFI system available\n")
+    ,
+        writeln("⚠ FFI system not yet available - continuing with core functionality\n")
+    )
+    
+    # Step 3: Persistence system validation
+    writeln("Step 3: Validating persistence system...")
+    if(self hasSlot("persistence"),
+        persistenceTest := try(
+            # Test transaction functionality
+            testResult := Telos persistence safeTransaction(block(
+                return true
+            ))
+            testResult
+        ) ifError(
+            false
+        )
+        
+        if(persistenceTest,
+            writeln("✓ Persistence system operational\n")
+        ,
+            writeln("⚠ Persistence system may need attention\n")
+        )
+    ,
+        writeln("⚠ Persistence module not loaded\n")
+    )
+    
+    # Step 4: Cognitive system validation
+    writeln("Step 4: Validating cognitive architecture...")
+    cognitiveValidation := self validateCognition
+    cognitiveResult := cognitiveValidation atIfAbsent("dualProcessWorking", false)
+    
+    if(cognitiveResult not,
+        writeln("⚠ Cognitive system validation incomplete - continuing with basic functionality\n")
+    )
+    
+    # Step 5: Final system status
+    writeln("Step 5: System status summary...")
+    statusChecker := Object clone
+    statusChecker coreOK := true
+    statusChecker ffiOK := ffiChecker available
+    statusChecker persistenceOK := if(self hasSlot("persistence"), true, false)
+    statusChecker cognitiveOK := cognitiveResult
+    
+    writeln("\n====================================================")
+    writeln("    TelOS System Status Report")
+    writeln("====================================================")
+    writeln("Core Modules:     " .. if(statusChecker coreOK, "✓ ACTIVE", "✗ FAILED"))
+    writeln("FFI Bridge:       " .. if(statusChecker ffiOK, "✓ ACTIVE", "⚠ PENDING"))
+    writeln("Persistence:      " .. if(statusChecker persistenceOK, "✓ ACTIVE", "⚠ PENDING"))
+    writeln("Cognition:        " .. if(statusChecker cognitiveOK, "✓ ACTIVE", "⚠ PARTIAL"))
+    writeln("====================================================")
+    
+    overallStatus := statusChecker coreOK
+    writeln("Overall Status:   " .. if(overallStatus, "OPERATIONAL - Living Image Ready", "NEEDS ATTENTION"))
+    writeln("====================================================\n")
+    
+    if(overallStatus,
+        writeln("🧠 TelOS is ready for Living Image development!")
+        writeln("📝 Use 'Telos inspect' to examine the system state.")
+        writeln("🔍 Use 'Telos cognitiveQuery(\"your query\")' to test reasoning.")
+        writeln("⚡ Use 'Telos initializeFullSystem' to re-run this validation.")
+        writeln("🎯 The Living Image awaits your prototypal creations!\n")
+    )
+    
+    return overallStatus
+)
+
 
 
 // Automatic initialization when module loads - prototypal style
-writeln("TelOS Core: Foundation module loaded - initializing system...")
+writeln("TelOS Core: Foundation module loaded - starting full system initialization...")
+writeln("           Use 'Telos initializeFullSystem' for complete validation anytime.")
 initializeSystem

@@ -11,7 +11,7 @@ TelosOllama loadTime := Date clone now
 
 // Ollama Configuration
 TelosOllama ollamaHost := "http://localhost:11434"
-TelosOllama defaultModel := "llama3.2:latest"
+TelosOllama defaultModel := "gemma3:4b"
 TelosOllama availableModels := List clone
 
 // Fractal Communication State
@@ -25,7 +25,7 @@ TelosOllama monologueThreads := Map clone
 FractalPersona := Object clone
 FractalPersona do(
     name := "Unknown"
-    model := "llama3.2:latest"
+    model := "gemma3:4b"
     personality := "curious and contemplative"
     fractalDepth := 1
     currentThought := ""
@@ -124,67 +124,50 @@ FractalPersona do(
 TelosOllama sendToOllama := method(model, prompt,
     if(model == nil, model = self defaultModel)
     
-    # Python code to communicate with Ollama
+    # Simplified Python code - just extract response text
     pythonCode := """
 import requests
 import json
 
-def send_ollama_request(host, model, prompt):
-    try:
-        url = f"{host}/api/generate"
-        data = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False
-        }
+try:
+    response = requests.post('""" .. self ollamaHost .. """/api/generate', 
+                           json={
+                               'model': '""" .. model .. """',
+                               'prompt': '''""" .. prompt .. """''',
+                               'stream': False
+                           }, 
+                           timeout=30)
+    
+    if response.status_code == 200:
+        data = response.json()
+        print('SUCCESS:' + data.get('response', 'No response'))
+    else:
+        print('ERROR:HTTP ' + str(response.status_code))
         
-        response = requests.post(url, json=data, timeout=30)
-        
-        if response.status_code == 200:
-            result = response.json()
-            return {
-                "success": True,
-                "response": result.get("response", ""),
-                "model": model,
-                "prompt": prompt
-            }
-        else:
-            return {
-                "success": False,
-                "error": f"HTTP {response.status_code}: {response.text}",
-                "model": model,
-                "prompt": prompt
-            }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "model": model,
-            "prompt": prompt
-        }
-
-# Execute request
-result = send_ollama_request('""" .. self ollamaHost .. """', '""" .. model .. """', '''""" .. prompt .. """''')
-result
+except Exception as e:
+    print('ERROR:' + str(e))
 """
     
     responseObj := Object clone
     
     if(Telos hasSlot("pyEval"),
-        pythonResult := Telos pyEval(pythonCode)
+        pythonOutput := Telos pyEval(pythonCode)
         
-        if(pythonResult != nil and pythonResult hasSlot("success"),
-            responseObj success := pythonResult success
-            responseObj model := model
-            responseObj prompt := prompt
-            if(pythonResult success,
-                responseObj response := pythonResult response
+        if(pythonOutput != nil and pythonOutput size > 0,
+            if(pythonOutput beginsWithSeq("SUCCESS:"),
+                responseObj success := true
+                responseObj response := pythonOutput slice(8)  # Remove "SUCCESS:" prefix
+                responseObj model := model
+                responseObj prompt := prompt
             ,
-                responseObj error := pythonResult error
+                responseObj success := false
+                responseObj error := pythonOutput
+                responseObj model := model
+                responseObj prompt := prompt
             )
         ,
             responseObj success := false
-            responseObj error := "Python evaluation returned nil or invalid result"
+            responseObj error := "Python evaluation returned empty result"
         )
     ,
         responseObj success := false

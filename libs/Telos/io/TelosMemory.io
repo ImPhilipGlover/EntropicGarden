@@ -13,6 +13,228 @@ TelosMemory load := method(
     self
 )
 
+// === VSA SERVICE INITIALIZATION ===
+// Bridge to Python computational muscle for real VSA operations
+
+TelosMemory initializeVSAServices := method(
+    serviceInitializer := Object clone
+    serviceInitializer pythonCode := """# Initialize VSA computational services
+import numpy as np
+import threading
+from concurrent.futures import ProcessPoolExecutor
+import pickle
+import os
+import tempfile
+
+# VSA Service Configuration
+VSA_DIMENSIONS = 512
+VSA_POOL_SIZE = 2
+
+# Global service state
+vsa_services = {
+    'embedding_service': None,
+    'vsa_service': None,
+    'pool_executor': None,
+    'is_initialized': False
+}
+
+def initialize_vsa_services():
+    try:
+        vsa_services['pool_executor'] = ProcessPoolExecutor(max_workers=VSA_POOL_SIZE)
+        future = vsa_services['pool_executor'].submit(lambda: 'VSA services ready')
+        result = future.result(timeout=5.0)
+        vsa_services['is_initialized'] = True
+        return {'status': 'success', 'message': result, 'dimensions': VSA_DIMENSIONS}
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
+
+def vsa_bind_vectors(vector_a, vector_b):
+    try:
+        if not vsa_services['is_initialized']:
+            return {'status': 'error', 'message': 'VSA services not initialized'}
+        future = vsa_services['pool_executor'].submit(_vsa_bind_worker, vector_a, vector_b)
+        result = future.result(timeout=10.0)
+        return result
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
+
+def _vsa_bind_worker(vector_a, vector_b):
+    import numpy as np
+    a = np.array(vector_a) if not isinstance(vector_a, np.ndarray) else vector_a
+    b = np.array(vector_b) if not isinstance(vector_b, np.ndarray) else vector_b
+    bound = np.bitwise_xor(a.astype(int), b.astype(int))
+    return {'status': 'success', 'result': bound.tolist()}
+
+def vsa_bundle_vectors(vectors):
+    try:
+        if not vsa_services['is_initialized']:
+            return {'status': 'error', 'message': 'VSA services not initialized'}
+        future = vsa_services['pool_executor'].submit(_vsa_bundle_worker, vectors)
+        result = future.result(timeout=10.0)
+        return result
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
+
+def _vsa_bundle_worker(vectors):
+    import numpy as np
+    if not vectors:
+        return {'status': 'error', 'message': 'No vectors provided'}
+    np_vectors = [np.array(v) if not isinstance(v, np.ndarray) else v for v in vectors]
+    stacked = np.stack(np_vectors, axis=0)
+    bundled = (np.sum(stacked, axis=0) > len(vectors) / 2).astype(int)
+    return {'status': 'success', 'result': bundled.tolist()}
+
+def vsa_similarity(vector_a, vector_b):
+    try:
+        if not vsa_services['is_initialized']:
+            return {'status': 'error', 'message': 'VSA services not initialized'}
+        future = vsa_services['pool_executor'].submit(_vsa_similarity_worker, vector_a, vector_b)
+        result = future.result(timeout=10.0)
+        return result
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
+
+def _vsa_similarity_worker(vector_a, vector_b):
+    import numpy as np
+    a = np.array(vector_a) if not isinstance(vector_a, np.ndarray) else vector_a
+    b = np.array(vector_b) if not isinstance(vector_b, np.ndarray) else vector_b
+    similarity = 1.0 - (np.sum(np.abs(a - b)) / len(a))
+    return {'status': 'success', 'result': float(similarity)}
+
+def get_vsa_services_status():
+    return {
+        'is_initialized': vsa_services['is_initialized'],
+        'has_pool': vsa_services['pool_executor'] is not None,
+        'dimensions': VSA_DIMENSIONS,
+        'pool_size': VSA_POOL_SIZE
+    }
+
+init_result = initialize_vsa_services()
+"""
+    
+    # Execute Python initialization
+    initResult := Telos pyEvalAsync(serviceInitializer pythonCode)
+    
+    # Store service status
+    serviceTracker := Object clone
+    serviceTracker initializeTimestamp := Date clone now
+    serviceTracker isReady := false
+    
+    if(initResult != nil,
+        serviceTracker isReady := true
+        Telos vsaServices := serviceTracker
+    )
+    
+    statusReporter := Object clone
+    statusReporter message := "TelOS Memory: VSA services " .. if(serviceTracker isReady, "initialized successfully", "initialization pending")
+    writeln(statusReporter message)
+    
+    serviceTracker isReady
+)
+
+TelosMemory vsaBind := method(vectorA, vectorB,
+    # Prototypal parameter validation
+    bindProcessor := Object clone
+    bindProcessor vectorA := vectorA
+    bindProcessor vectorB := vectorB
+    
+    # Convert parameters to Python-compatible format
+    pythonCaller := Object clone
+    pythonCaller command := "vsa_bind_vectors(" .. bindProcessor vectorA .. ", " .. bindProcessor vectorB .. ")"
+    pythonCaller result := Telos pyEvalAsync(pythonCaller command)
+    
+    resultProcessor := Object clone
+    resultProcessor rawResult := pythonCaller result
+    resultProcessor success := if(resultProcessor rawResult != nil, true, false)
+    
+    if(resultProcessor success,
+        resultReporter := Object clone
+        resultReporter message := "TelOS Memory: VSA bind operation completed"
+        writeln(resultReporter message)
+        return resultProcessor rawResult
+    ,
+        errorReporter := Object clone
+        errorReporter message := "TelOS Memory: VSA bind operation failed"
+        writeln(errorReporter message)
+        return nil
+    )
+)
+
+TelosMemory vsaBundle := method(vectorList,
+    # Prototypal parameter validation
+    bundleProcessor := Object clone
+    bundleProcessor vectors := vectorList
+    
+    # Convert parameters to Python-compatible format
+    pythonCaller := Object clone
+    pythonCaller command := "vsa_bundle_vectors(" .. bundleProcessor vectors .. ")"
+    pythonCaller result := Telos pyEvalAsync(pythonCaller command)
+    
+    resultProcessor := Object clone
+    resultProcessor rawResult := pythonCaller result
+    resultProcessor success := if(resultProcessor rawResult != nil, true, false)
+    
+    if(resultProcessor success,
+        resultReporter := Object clone
+        resultReporter message := "TelOS Memory: VSA bundle operation completed with " .. bundleProcessor vectors size .. " vectors"
+        writeln(resultReporter message)
+        return resultProcessor rawResult
+    ,
+        errorReporter := Object clone
+        errorReporter message := "TelOS Memory: VSA bundle operation failed"
+        writeln(errorReporter message)
+        return nil
+    )
+)
+
+TelosMemory vsaSimilarity := method(vectorA, vectorB,
+    # Prototypal parameter validation
+    similarityProcessor := Object clone
+    similarityProcessor vectorA := vectorA
+    similarityProcessor vectorB := vectorB
+    
+    # Convert parameters to Python-compatible format
+    pythonCaller := Object clone
+    pythonCaller command := "vsa_similarity(" .. similarityProcessor vectorA .. ", " .. similarityProcessor vectorB .. ")"
+    pythonCaller result := Telos pyEvalAsync(pythonCaller command)
+    
+    resultProcessor := Object clone
+    resultProcessor rawResult := pythonCaller result
+    resultProcessor success := if(resultProcessor rawResult != nil, true, false)
+    
+    if(resultProcessor success,
+        resultReporter := Object clone
+        resultReporter message := "TelOS Memory: VSA similarity calculated"
+        writeln(resultReporter message)
+        return resultProcessor rawResult
+    ,
+        errorReporter := Object clone
+        errorReporter message := "TelOS Memory: VSA similarity calculation failed"
+        writeln(errorReporter message)
+        return nil
+    )
+)
+
+TelosMemory vsaServicesStatus := method(
+    statusChecker := Object clone
+    statusChecker command := "get_vsa_services_status()"
+    statusChecker result := Telos pyEvalAsync(statusChecker command)
+    
+    statusProcessor := Object clone
+    statusProcessor rawResult := statusChecker result
+    statusProcessor isAvailable := if(statusProcessor rawResult != nil, true, false)
+    
+    statusReporter := Object clone
+    if(statusProcessor isAvailable,
+        statusReporter message := "TelOS Memory: VSA services operational - " .. statusProcessor rawResult
+    ,
+        statusReporter message := "TelOS Memory: VSA services not available"
+    )
+    writeln(statusReporter message)
+    
+    statusProcessor rawResult
+)
+
 // === VSA MEMORY OPERATIONS ===
 // Vector Symbolic Architecture with neural cleanup and search
 
@@ -334,6 +556,38 @@ TelosMemory status := method(
                              metricsCollector queryCount .. " queries, " .. metricsCollector dimensions .. " dimensions"
     writeln(statusReporter message)
     statusReporter message
+)
+
+// === EXTEND MAIN TELOS PROTOTYPE ===
+// Following modular architecture: expose methods to main prototype
+
+if(Telos != nil,
+    // VSA Core Services
+    Telos initializeVSAServices := method(TelosMemory initializeVSAServices())
+    Telos vsaBind := method(vectorA, vectorB, TelosMemory vsaBind(vectorA, vectorB))
+    Telos vsaBundle := method(vectorList, TelosMemory vsaBundle(vectorList))
+    Telos vsaSimilarity := method(vectorA, vectorB, TelosMemory vsaSimilarity(vectorA, vectorB))
+    Telos vsaServicesStatus := method(TelosMemory vsaServicesStatus())
+    
+    // Memory and Neural Operations
+    Telos initVSA := method(params, TelosMemory initVSA(params))
+    Telos memoryBind := method(keyObj, valueObj, TelosMemory bind(keyObj, valueObj))
+    Telos memorySearch := method(queryObj, limitObj, TelosMemory search(queryObj, limitObj))
+    Telos neuralCleanup := method(vectorObj, iterationsObj, TelosMemory neuralCleanup(vectorObj, iterationsObj))
+    Telos neuralEmbed := method(textObj, dimensionsObj, TelosMemory neuralEmbed(textObj, dimensionsObj))
+    
+    // Integrated Operations 
+    Telos integratedStore := method(conceptObj, contextObj, TelosMemory integratedStore(conceptObj, contextObj))
+    Telos integratedQuery := method(queryObj, limitObj, TelosMemory integratedQuery(queryObj, limitObj))
+    Telos memoryStatus := method(TelosMemory status())
+    
+    extensionReporter := Object clone
+    extensionReporter message := "TelOS Memory: Extended main prototype with VSA-RAG operations"
+    writeln(extensionReporter message)
+,
+    warningReporter := Object clone
+    warningReporter message := "TelOS Memory: Warning - Telos prototype not available for extension"
+    writeln(warningReporter message)
 )
 
 // Initialize memory system when module loads

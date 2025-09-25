@@ -24,6 +24,35 @@
 // Global world state
 static MorphicWorld *globalWorld = NULL;
 
+// --- Helper Function Declarations ---
+#ifdef TELOS_HAVE_SDL2
+void IoTelosMorphic_dispatchKeyEvent(IoObject *self, SDL_Keycode keycode, int isDown);
+#endif
+void IoTelosMorphic_dispatchTextInput(IoObject *self, const char *text);
+#ifdef TELOS_HAVE_SDL2
+void IoTelosMorphic_drawSubmorphs(SDL_Renderer *renderer, IoObject *worldObj);
+#endif
+
+// --- Core Morphic Methods ---
+IoObject *IoTelos_openWindow(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_closeWindow(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_createWorld(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_mainLoop(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_displayFor(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_drawWorld(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_handleEvent(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_createMorph(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_checkEvents(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_shouldExit(IoTelos *self, IoObject *locals, IoMessage *m);
+
+// --- Raw drawing primitives ---
+IoObject *IoTelos_drawRect(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_drawCircle(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_drawText(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_presentFrame(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_setClip(IoTelos *self, IoObject *locals, IoMessage *m);
+IoObject *IoTelos_clearClip(IoTelos *self, IoObject *locals, IoMessage *m);
+
 // --- Module Initialization ---
 
 void IoTelosMorphic_Init(IoState *state) {
@@ -52,14 +81,20 @@ void IoTelosMorphic_registerMethods(IoState *state, IoObject *proto) {
     IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawOpenWindow"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_openWindow, NULL, "Telos_rawOpenWindow"));
     
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawCloseWindow"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_closeWindow, NULL, "Telos_rawCloseWindow"));
+    
     IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawCreateWorld"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_createWorld, NULL, "Telos_rawCreateWorld"));
     
     IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawMainLoop"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_mainLoop, NULL, "Telos_rawMainLoop"));
     
-    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawDraw"),
-                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_drawWorld, NULL, "Telos_rawDraw"));
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawDisplayFor"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_displayFor, NULL, "Telos_rawDisplayFor"));
+    
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawDrawWorld"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_drawWorld, NULL, "Telos_rawDrawWorld"));
     
     IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawHandleEvent"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_handleEvent, NULL, "Telos_rawHandleEvent"));
@@ -74,6 +109,16 @@ void IoTelosMorphic_registerMethods(IoState *state, IoObject *proto) {
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_drawCircle, NULL, "Telos_rawDrawCircle"));
     IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawDrawText"),
                          IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_drawText, NULL, "Telos_rawDrawText"));
+    
+    // Canvas presentation method
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawPresent"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_presentFrame, NULL, "Telos_rawPresent"));
+    
+    // Canvas clipping methods
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawSetClip"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_setClip, NULL, "Telos_rawSetClip"));
+    IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "Telos_rawClearClip"),
+                         IoCFunction_newWithFunctionPointer_tag_name_(state, (IoUserFunction *)IoTelos_clearClip, NULL, "Telos_rawClearClip"));
     
     // Register event handling methods
     IoObject_setSlot_to_(proto, IoState_symbolWithCString_(state, "checkEvents"),
@@ -99,54 +144,72 @@ void IoTelosMorphic_setGlobalWorld(MorphicWorld *world) {
 
 IoObject *IoTelos_openWindow(IoTelos *self, IoObject *locals, IoMessage *m)
 {
-    printf("TelOS Morphic: Opening SDL2 window (640x480) - 'The Entropic Garden'\n");
-    
 #ifdef TELOS_HAVE_SDL2
     // Create world if it doesn't exist
     if (!globalWorld) {
-        printf("TelOS Morphic: No world exists, creating world first...\n");
         IoTelos_createWorld(self, locals, m);
     }
     
+    // Don't create multiple windows
+    if (globalWorld->sdlWindow) {
+        return self;
+    }
+    
     // Initialize SDL2 video subsystem
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        printf("TelOS Morphic: SDL_Init error: %s\n", SDL_GetError());
-        return self;
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
+        IoState_error_(IOSTATE, m, "SDL_Init failed: %s", SDL_GetError());
+        return IONIL(self);
     }
     
-    // Create SDL2 window
-    globalWorld->sdlWindow = SDL_CreateWindow("The Entropic Garden",
-                                             SDL_WINDOWPOS_CENTERED,
-                                             SDL_WINDOWPOS_CENTERED,
-                                             640, 480,
-                                             SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+    // Create SDL2 window with WSLg compatibility
+    globalWorld->sdlWindow = SDL_CreateWindow(
+        "TelOS Living Image",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        800, 600,
+        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+    );
+    
     if (!globalWorld->sdlWindow) {
-        printf("TelOS Morphic: SDL_CreateWindow error: %s\n", SDL_GetError());
         SDL_Quit();
-        return self;
+        IoState_error_(IOSTATE, m, "SDL_CreateWindow failed: %s", SDL_GetError());
+        return IONIL(self);
     }
     
-    // Create SDL2 renderer with hardware acceleration
-    globalWorld->sdlRenderer = SDL_CreateRenderer((SDL_Window*)globalWorld->sdlWindow, -1, 
-                                                 SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    // Create renderer with hardware acceleration
+    globalWorld->sdlRenderer = SDL_CreateRenderer(
+        (SDL_Window*)globalWorld->sdlWindow, -1, 
+        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+    );
+    
     if (!globalWorld->sdlRenderer) {
-        printf("TelOS Morphic: SDL_CreateRenderer error: %s\n", SDL_GetError());
+        // Fallback to software rendering
+        globalWorld->sdlRenderer = SDL_CreateRenderer(
+            (SDL_Window*)globalWorld->sdlWindow, -1, 
+            SDL_RENDERER_SOFTWARE
+        );
+    }
+    
+    if (!globalWorld->sdlRenderer) {
         SDL_DestroyWindow((SDL_Window*)globalWorld->sdlWindow);
         globalWorld->sdlWindow = NULL;
         SDL_Quit();
-        return self;
+        IoState_error_(IOSTATE, m, "SDL_CreateRenderer failed: %s", SDL_GetError());
+        return IONIL(self);
     }
     
-    // Set initial background color (dark blue-gray)
-    SDL_SetRenderDrawColor((SDL_Renderer*)globalWorld->sdlRenderer, 32, 48, 64, 255);
+    // Initial clear with dark background
+    SDL_SetRenderDrawColor((SDL_Renderer*)globalWorld->sdlRenderer, 20, 30, 40, 255);
     SDL_RenderClear((SDL_Renderer*)globalWorld->sdlRenderer);
     SDL_RenderPresent((SDL_Renderer*)globalWorld->sdlRenderer);
     
-    printf("TelOS Morphic: ✓ Real SDL2 window created successfully!\n");
-    printf("TelOS Morphic: Window handle: %p, Renderer: %p\n", globalWorld->sdlWindow, globalWorld->sdlRenderer);
+    // Force window to display (critical for WSLg)
+    SDL_ShowWindow((SDL_Window*)globalWorld->sdlWindow);
+    SDL_RaiseWindow((SDL_Window*)globalWorld->sdlWindow);
+    SDL_PumpEvents(); // Process pending window events
     
 #else
-    printf("TelOS Morphic: SDL2 not available - fallback mode\n");
+    IoState_error_(IOSTATE, m, "SDL2 support not compiled in");
+    return IONIL(self);
 #endif
     
     return self;
@@ -245,25 +308,21 @@ IoObject *IoTelos_drawWorld(IoTelos *self, IoObject *locals, IoMessage *m)
         return self;
     }
     
-    // Clear with world background color
     SDL_Renderer *renderer = (SDL_Renderer*)globalWorld->sdlRenderer;
-    MorphicMorph *world = globalWorld->world;
     
-    int r = (int)(world->r * 255);
-    int g = (int)(world->g * 255);
-    int b = (int)(world->b * 255);
-    int a = (int)(world->a * 255);
+    // Clear the screen with world background color
+    int r = (int)(globalWorld->world->r * 255);
+    int g = (int)(globalWorld->world->g * 255);
+    int b = (int)(globalWorld->world->b * 255);
+    int a = (int)(globalWorld->world->a * 255);
     
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
     SDL_RenderClear(renderer);
     
-    // Draw all submorphs in the world
-    IoTelosMorphic_drawSubmorphs(renderer, globalWorld->world);
+    printf("TelOS Morphic: Canvas ready for Io-level drawing\n");
     
-    // Present the frame
-    SDL_RenderPresent(renderer);
-    
-    printf("TelOS Morphic: Frame rendered with world submorphs\n");
+    // DON'T present here - let Io-level Canvas handle drawing and presentation
+    // The presentation should happen after all Canvas operations are complete
     
 #else
     printf("TelOS Morphic: Drawing world (fallback mode)\n");
@@ -304,7 +363,15 @@ IoObject *IoTelos_handleEvent(IoTelos *self, IoObject *locals, IoMessage *m)
                     if (shouldExitSymbol) {
                         IoObject_setSlot_to_(self, shouldExitSymbol, IOTRUE(self));
                     }
+                } else {
+                    // Route text input to focused morph
+                    IoTelosMorphic_dispatchKeyEvent(self, event.key.keysym.sym, 1);
                 }
+                break;
+            case SDL_TEXTINPUT:
+                // Handle text input (actual characters typed)
+                printf("TelOS Morphic: Text input: %s\n", event.text.text);
+                IoTelosMorphic_dispatchTextInput(self, event.text.text);
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 printf("TelOS Morphic: Mouse click at (%d, %d)\n", event.button.x, event.button.y);
@@ -431,120 +498,236 @@ void IoTelosMorphic_extractColor(IoObject *morph, int *r, int *g, int *b, int *a
 }
 
 // Helper function to extract bounds from Io morph object (updated for new Morph architecture)
+#ifdef TELOS_HAVE_SDL2
 void IoTelosMorphic_extractBounds(IoObject *morph, SDL_Rect *rect) {
     rect->x = rect->y = 50; // Default position
     rect->w = rect->h = 100; // Default size
     
-    if (!morph) return;
+    if (!morph) {
+        printf("TelOS Morphic: extractBounds - morph is NULL\n");
+        return;
+    }
+    
+    printf("TelOS Morphic: extractBounds - processing morph\n");
     
     // Try to get the bounds object first (new Morph architecture)
     IoObject *boundsObj = IoObject_getSlot_(morph, IoState_symbolWithCString_(IoObject_state(morph), "bounds"));
     if (boundsObj) {
+        printf("TelOS Morphic: extractBounds - found bounds object\n");
+        
         // Extract x, y, width, height from bounds object
         IoObject *xSlot = IoObject_getSlot_(boundsObj, IoState_symbolWithCString_(IoObject_state(morph), "x"));
         if (xSlot && ISNUMBER(xSlot)) {
             rect->x = (int)IoNumber_asDouble(xSlot);
+            printf("TelOS Morphic: extractBounds - x = %d\n", rect->x);
+        } else {
+            printf("TelOS Morphic: extractBounds - x slot not found or not a number\n");
         }
         
         IoObject *ySlot = IoObject_getSlot_(boundsObj, IoState_symbolWithCString_(IoObject_state(morph), "y"));
         if (ySlot && ISNUMBER(ySlot)) {
             rect->y = (int)IoNumber_asDouble(ySlot);
+            printf("TelOS Morphic: extractBounds - y = %d\n", rect->y);
+        } else {
+            printf("TelOS Morphic: extractBounds - y slot not found or not a number\n");
         }
         
         IoObject *widthSlot = IoObject_getSlot_(boundsObj, IoState_symbolWithCString_(IoObject_state(morph), "width"));
         if (widthSlot && ISNUMBER(widthSlot)) {
             rect->w = (int)IoNumber_asDouble(widthSlot);
+            printf("TelOS Morphic: extractBounds - width = %d\n", rect->w);
+        } else {
+            printf("TelOS Morphic: extractBounds - width slot not found or not a number\n");
         }
         
         IoObject *heightSlot = IoObject_getSlot_(boundsObj, IoState_symbolWithCString_(IoObject_state(morph), "height"));
         if (heightSlot && ISNUMBER(heightSlot)) {
             rect->h = (int)IoNumber_asDouble(heightSlot);
+            printf("TelOS Morphic: extractBounds - height = %d\n", rect->h);
+        } else {
+            printf("TelOS Morphic: extractBounds - height slot not found or not a number\n");
         }
     } else {
+        printf("TelOS Morphic: extractBounds - no bounds object found, trying direct slots\n");
+        
         // Fallback: try direct x, y, width, height slots for backward compatibility
         IoObject *xSlot = IoObject_getSlot_(morph, IoState_symbolWithCString_(IoObject_state(morph), "x"));
         if (xSlot && ISNUMBER(xSlot)) {
             rect->x = (int)IoNumber_asDouble(xSlot);
+            printf("TelOS Morphic: extractBounds - direct x = %d\n", rect->x);
         }
         
         IoObject *ySlot = IoObject_getSlot_(morph, IoState_symbolWithCString_(IoObject_state(morph), "y"));
         if (ySlot && ISNUMBER(ySlot)) {
             rect->y = (int)IoNumber_asDouble(ySlot);
+            printf("TelOS Morphic: extractBounds - direct y = %d\n", rect->y);
         }
         
         IoObject *widthSlot = IoObject_getSlot_(morph, IoState_symbolWithCString_(IoObject_state(morph), "width"));
         if (widthSlot && ISNUMBER(widthSlot)) {
             rect->w = (int)IoNumber_asDouble(widthSlot);
+            printf("TelOS Morphic: extractBounds - direct width = %d\n", rect->w);
         }
         
         IoObject *heightSlot = IoObject_getSlot_(morph, IoState_symbolWithCString_(IoObject_state(morph), "height"));
         if (heightSlot && ISNUMBER(heightSlot)) {
             rect->h = (int)IoNumber_asDouble(heightSlot);
+            printf("TelOS Morphic: extractBounds - direct height = %d\n", rect->h);
         }
+    }
+    
+    printf("TelOS Morphic: extractBounds - final rect: (%d,%d,%d,%d)\n", rect->x, rect->y, rect->w, rect->h);
+}
+#endif
+
+// Helper function to dispatch key events to focused Io morph
+#ifdef TELOS_HAVE_SDL2
+void IoTelosMorphic_dispatchKeyEvent(IoObject *self, SDL_Keycode keycode, int isDown) {
+    if (!globalWorld || !globalWorld->ioState) return;
+    
+    IoState *state = (IoState *)globalWorld->ioState;
+    
+    // Get the focused morph from Telos object
+    IoSymbol *focusedMorphSym = IoState_symbolWithCString_(state, "focusedMorph");
+    IoObject *focusedMorph = IoObject_getSlot_(self, focusedMorphSym);
+    
+    if (!focusedMorph || focusedMorph == IONIL(self)) {
+        // No focused morph, ignore key event
+        printf("TelOS Morphic: No focused morph for key event\n");
+        return;
+    }
+    
+    // Convert SDL keycode to string representation
+    const char *keyName = SDL_GetKeyName(keycode);
+    if (!keyName || strlen(keyName) == 0) {
+        keyName = "unknown";
+    }
+    
+    // Create Io string for key name
+    IoObject *keyNameObj = IoSeq_newWithCString_(state, keyName);
+    IoObject *isDownObj = isDown ? IOTRUE(self) : IOFALSE(self);
+    
+    // Call keyDown or keyUp method on focused morph
+    IoSymbol *methodName = isDown ? 
+        IoState_symbolWithCString_(state, "keyDown") : 
+        IoState_symbolWithCString_(state, "keyUp");
+    
+    if (IoObject_getSlot_(focusedMorph, methodName)) {
+        IoMessage *msg = IoMessage_newWithName_label_(state, methodName, methodName);
+        IoMessage_addArg_(msg, keyNameObj);
+        IoObject_perform(focusedMorph, focusedMorph, msg);
+    }
+}
+#endif
+
+// Helper function to dispatch text input to focused Io morph
+void IoTelosMorphic_dispatchTextInput(IoObject *self, const char *text) {
+    if (!globalWorld || !globalWorld->ioState || !text) return;
+    
+    IoState *state = (IoState *)globalWorld->ioState;
+    
+    // Get the focused morph from Telos object
+    IoSymbol *focusedMorphSym = IoState_symbolWithCString_(state, "focusedMorph");
+    IoObject *focusedMorph = IoObject_getSlot_(self, focusedMorphSym);
+    
+    if (!focusedMorph || focusedMorph == IONIL(self)) {
+        // No focused morph, ignore text input
+        printf("TelOS Morphic: No focused morph for text input\n");
+        return;
+    }
+    
+    // Create Io string for text
+    IoObject *textObj = IoSeq_newWithCString_(state, text);
+    
+    // Call textInput method on focused morph
+    IoSymbol *methodName = IoState_symbolWithCString_(state, "textInput");
+    
+    if (IoObject_getSlot_(focusedMorph, methodName) != IONIL(focusedMorph)) {
+        IoMessage *msg = IoMessage_newWithName_label_(state, methodName, methodName);
+        IoMessage_addArg_(msg, textObj);
+        IoObject_perform(focusedMorph, focusedMorph, msg);
     }
 }
 
-// Recursive function to draw all submorphs
-void IoTelosMorphic_drawSubmorphs(SDL_Renderer *renderer, MorphicMorph *worldMorph) {
-    if (!renderer || !globalWorld || !globalWorld->ioState) return;
-    
-    // Get the IoState from our stored reference
-    IoState *state = (IoState *)globalWorld->ioState;
-    if (!state) {
-        printf("TelOS Morphic: Cannot access IoState for morph rendering\n");
+// Helper function to recursively draw all submorphs
+#ifdef TELOS_HAVE_SDL2
+void IoTelosMorphic_drawSubmorphs(SDL_Renderer *renderer, IoObject *worldObj) {
+    if (!renderer || !worldObj) {
+        printf("TelOS Morphic: drawSubmorphs - renderer or worldObj is NULL\n");
         return;
     }
     
-    // Try to get the world object from Lobby
-    IoObject *lobby = IoState_lobby(state);
-    IoObject *telos = IoObject_getSlot_(lobby, IoState_symbolWithCString_(state, "Telos"));
-    if (!telos) {
-        printf("TelOS Morphic: Cannot find Telos object for morph rendering\n");
-        return;
+    IoState *state = IoObject_state(worldObj);
+    printf("TelOS Morphic: drawSubmorphs - starting with world object\n");
+    
+    // Get the world bounds and color
+    SDL_Rect worldRect = {0, 0, 800, 600}; // Default window size
+    int r = 128, g = 160, b = 192, a = 255; // Default background color
+    
+    // Try to get backgroundColor from world
+    IoObject *bgColor = IoObject_getSlot_(worldObj, IoState_symbolWithCString_(state, "backgroundColor"));
+    if (bgColor) {
+        IoTelosMorphic_extractColor(bgColor, &r, &g, &b, &a);
+        printf("TelOS Morphic: drawSubmorphs - extracted world background color: %d,%d,%d,%d\n", r, g, b, a);
+    } else {
+        printf("TelOS Morphic: drawSubmorphs - no backgroundColor found, using default\n");
     }
     
-    IoObject *world = IoObject_getSlot_(telos, IoState_symbolWithCString_(state, "world"));
-    if (!world) {
-        printf("TelOS Morphic: Cannot find world object for morph rendering\n");
-        return;
-    }
+    // Draw world background
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    SDL_RenderFillRect(renderer, &worldRect);
+    printf("TelOS Morphic: drawSubmorphs - drew world background\n");
     
-    IoObject *submorphs = IoObject_getSlot_(world, IoState_symbolWithCString_(state, "submorphs"));
-    if (!submorphs || !ISLIST(submorphs)) {
-        printf("TelOS Morphic: World has no submorphs list\n");
-        return;
-    }
-    
-    // Get the list of submorphs
-    List *morphList = IoList_rawList(submorphs);
-    if (!morphList) {
-        printf("TelOS Morphic: Empty submorphs list\n");
-        return;
-    }
-    
-    int morphCount = List_size(morphList);
-    printf("TelOS Morphic: Rendering %d submorphs\n", morphCount);
-    
-    // Draw each submorph
-    for (int i = 0; i < morphCount; i++) {
-        IoObject *morph = List_at_(morphList, i);
-        if (!morph) continue;
+    // Get submorphs list from Io world object
+    IoObject *submorphs = IoObject_getSlot_(worldObj, IoState_symbolWithCString_(state, "submorphs"));
+    if (submorphs && ISLIST(submorphs)) {
+        int count = IoList_rawSize(submorphs);
+        printf("TelOS Morphic: drawSubmorphs - found %d submorphs\n", count);
         
-        // Extract color and bounds from Io morph
-        int r, g, b, a;
-        SDL_Rect rect;
-        
-        IoTelosMorphic_extractColor(morph, &r, &g, &b, &a);
-        IoTelosMorphic_extractBounds(morph, &rect);
-        
-        // Set render color and draw rectangle
-        SDL_SetRenderDrawColor(renderer, r, g, b, a);
-        SDL_RenderFillRect(renderer, &rect);
-        
-        printf("TelOS Morphic: Drew morph at (%d,%d) size (%dx%d) color (%d,%d,%d)\n",
-               rect.x, rect.y, rect.w, rect.h, r, g, b);
+        for (int i = 0; i < count; i++) {
+            IoObject *morph = IoList_rawAt_(submorphs, i);
+            if (morph) {
+                printf("TelOS Morphic: drawSubmorphs - processing morph %d\n", i);
+                
+                // Extract bounds and color from Io morph
+                SDL_Rect morphRect;
+                IoTelosMorphic_extractBounds(morph, &morphRect);
+                
+                int mr = 200, mg = 200, mb = 200, ma = 255; // Default morph color
+                IoTelosMorphic_extractColor(morph, &mr, &mg, &mb, &ma);
+                printf("TelOS Morphic: drawSubmorphs - extracted morph color: %d,%d,%d,%d\n", mr, mg, mb, ma);
+                
+                // Draw the morph
+                SDL_SetRenderDrawColor(renderer, mr, mg, mb, ma);
+                SDL_RenderFillRect(renderer, &morphRect);
+                printf("TelOS Morphic: drawSubmorphs - drew morph fill rect\n");
+                
+                // Draw border
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Black border
+                SDL_RenderDrawRect(renderer, &morphRect);
+                printf("TelOS Morphic: drawSubmorphs - drew morph border\n");
+                
+                // Get morph type for debugging
+                IoObject *typeSlot = IoObject_getSlot_(morph, IoState_symbolWithCString_(state, "type"));
+                if (typeSlot && ISSEQ(typeSlot)) {
+                    const char *typeStr = IoSeq_asCString(typeSlot);
+                    printf("TelOS Morphic: drawSubmorphs - completed morph %s at (%d,%d,%d,%d)\n", 
+                           typeStr, morphRect.x, morphRect.y, morphRect.w, morphRect.h);
+                } else {
+                    printf("TelOS Morphic: drawSubmorphs - completed morph (no type) at (%d,%d,%d,%d)\n", 
+                           morphRect.x, morphRect.y, morphRect.w, morphRect.h);
+                }
+            } else {
+                printf("TelOS Morphic: drawSubmorphs - morph %d is NULL\n", i);
+            }
+        }
+    } else {
+        printf("TelOS Morphic: drawSubmorphs - no submorphs list found or not a list\n");
     }
+    
+    printf("TelOS Morphic: drawSubmorphs - completed\n");
 }
+#endif
 
 IoObject *IoTelos_checkEvents(IoTelos *self, IoObject *locals, IoMessage *m)
 {
@@ -611,6 +794,74 @@ IoObject *IoTelos_mainLoop(IoTelos *self, IoObject *locals, IoMessage *m)
     return self;
 }
 
+IoObject *IoTelos_displayFor(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+    printf("TelOS Morphic: Starting displayFor timed event loop...\n");
+    
+#ifdef TELOS_HAVE_SDL2
+    if (!globalWorld || !globalWorld->sdlWindow) {
+        printf("TelOS Morphic: No window available for displayFor\n");
+        return self;
+    }
+    
+    // Get duration argument (in seconds)
+    double duration = 0.0; // Default to perpetual
+    if (IoMessage_argCount(m) > 0) {
+        IoObject *durationArg = IoMessage_locals_valueArgAt_(m, locals, 0);
+        if (durationArg && ISNUMBER(durationArg)) {
+            duration = IoNumber_asDouble(durationArg);
+        }
+    }
+    
+    // Support perpetual mode: 0 or -1 means run until manually closed
+    int isPerpetual = (duration <= 0.0);
+    
+    printf("TelOS Morphic: displayFor duration: %s\n", 
+           isPerpetual ? "perpetual" : "timed");
+    
+    globalWorld->isRunning = 1;
+    
+    if (isPerpetual) {
+        printf("TelOS Morphic: WARNING - This is a BLOCKING perpetual display!\n");
+        printf("TelOS Morphic: The loop will run until the window is closed.\n");
+    } else {
+        printf("TelOS Morphic: Display will run for %.1f seconds\n", duration);
+    }
+    
+    // Track start time for timed display
+    Uint32 startTime = SDL_GetTicks();
+    Uint32 durationMs = (Uint32)(duration * 1000.0);
+    
+    while (globalWorld->isRunning) {
+        // Handle events
+        IoTelos_handleEvent(self, locals, m);
+        
+        // Draw world
+        IoTelos_drawWorld(self, locals, m);
+        
+        // Check if timed display should exit
+        if (!isPerpetual) {
+            Uint32 currentTime = SDL_GetTicks();
+            if (currentTime - startTime >= durationMs) {
+                printf("TelOS Morphic: Display duration expired (%.1f seconds)\n", duration);
+                globalWorld->isRunning = 0;
+                break;
+            }
+        }
+        
+        // Small delay to prevent 100% CPU usage
+        SDL_Delay(16);  // ~60 FPS
+    }
+    
+    printf("TelOS Morphic: displayFor loop ended\n");
+    
+#else
+    printf("TelOS Morphic: displayFor (fallback mode)\n");
+#endif
+    
+    return self;
+}
+
 // --- Raw drawing primitives to support Io Canvas ---
 
 IoObject *IoTelos_drawRect(IoTelos *self, IoObject *locals, IoMessage *m)
@@ -661,5 +912,53 @@ IoObject *IoTelos_drawText(IoTelos *self, IoObject *locals, IoMessage *m)
     // Placeholder: text rendering requires a font library; log and no-op
     // Args: text, x, y, r, g, b, a
     printf("TelOS Morphic: drawText placeholder invoked\n");
+    return self;
+}
+
+IoObject *IoTelos_presentFrame(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+#ifdef TELOS_HAVE_SDL2
+    if (!globalWorld || !globalWorld->sdlRenderer) {
+        printf("TelOS Morphic: No SDL2 renderer for frame presentation\n");
+        return self;
+    }
+    
+    SDL_Renderer *renderer = (SDL_Renderer*)globalWorld->sdlRenderer;
+    SDL_RenderPresent(renderer);
+    printf("TelOS Morphic: Frame presented to screen\n");
+#else
+    printf("TelOS Morphic: presentFrame (fallback mode)\n");
+#endif
+    return self;
+}
+
+IoObject *IoTelos_setClip(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+#ifdef TELOS_HAVE_SDL2
+    if (!globalWorld || !globalWorld->sdlRenderer) return self;
+    SDL_Renderer *renderer = (SDL_Renderer*)globalWorld->sdlRenderer;
+    
+    // Extract clip rectangle args: x, y, width, height
+    int x = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 0));
+    int y = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 1));
+    int w = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 2));
+    int h = (int)IoNumber_asDouble(IoMessage_locals_valueArgAt_(m, locals, 3));
+    
+    SDL_Rect clipRect = {x, y, w, h};
+    SDL_RenderSetClipRect(renderer, &clipRect);
+    printf("TelOS Morphic: Set clip region to (%d,%d,%d,%d)\n", x, y, w, h);
+#endif
+    return self;
+}
+
+IoObject *IoTelos_clearClip(IoTelos *self, IoObject *locals, IoMessage *m)
+{
+#ifdef TELOS_HAVE_SDL2
+    if (!globalWorld || !globalWorld->sdlRenderer) return self;
+    SDL_Renderer *renderer = (SDL_Renderer*)globalWorld->sdlRenderer;
+    
+    SDL_RenderSetClipRect(renderer, NULL);  // NULL clears clipping
+    printf("TelOS Morphic: Cleared clip region\n");
+#endif
     return self;
 }

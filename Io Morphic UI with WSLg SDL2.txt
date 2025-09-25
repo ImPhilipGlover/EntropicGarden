@@ -1,0 +1,686 @@
+﻿A Guide to Implementing Morphic Interfaces in Io with SDL2 and WSLg
+
+
+
+
+Part I: The Substrate: Configuring the WSLg and SDL2 Development Environment
+
+
+The successful realization of a Morphic user interface, with its core philosophical commitments to liveness and direct manipulation, is contingent not only on the choice of programming paradigm but also on the technical capabilities of the underlying execution environment. A system characterized by high latency, rendering artifacts, or cumbersome configuration would fundamentally undermine the seamless and responsive user experience that Morphic demands. This section provides a definitive protocol for establishing a modern, high-performance development substrate using Windows Subsystem for Linux GUI (WSLg), ensuring the environment itself is a robust and philosophically-aligned foundation for the project.
+
+
+Architectural Overview of WSLg
+
+
+Windows Subsystem for Linux GUI, or WSLg, represents a significant evolution in the integration of Linux and Windows environments, making it the ideal platform for this endeavor. Unlike previous solutions that required the manual installation and configuration of third-party X servers for Windows (such as VcXsrv or Xming), WSLg is a deeply integrated, first-party solution that aims to make Linux GUI applications feel native to the Windows desktop.1
+The architecture of WSLg is built upon a foundational separation of concerns. When WSLg is active, it runs a dedicated, minimal "system distro." This containerized Linux environment is managed by Microsoft and is responsible for running the core graphical servers: a Wayland server, the Weston compositor, an X server (XWayland for backward compatibility), and a PulseAudio server for audio.3 The communication sockets for each of these servers are then programmatically projected into the user's chosen Linux distribution (the "user distro," e.g., Ubuntu). Critical environment variables within the user distro, such as
+DISPLAY, WAYLAND_DISPLAY, and PULSE_SERVER, are automatically configured to point to these sockets.3
+This architecture allows a Linux GUI application, such as one built with SDL2, to communicate with the appropriate graphics server as if it were running in a native Linux environment. The system distro then forwards the graphical output to the Windows host for display using the Remote Desktop Protocol (RDP).4 This entire process is transparent to the end-user, resulting in Linux applications that can be launched from the Windows Start Menu, pinned to the taskbar, and managed with standard windowing controls like alt-tab.5 This level of integration provides the low-latency, high-fidelity graphical environment necessary to support the principles of a Morphic interface.
+
+
+Protocol for Establishing the WSL2/WSLg Environment
+
+
+To ensure a stable and reproducible development environment, the following protocol must be followed precisely.
+1. System Prerequisites: The host machine must be running a compatible version of Windows. This includes Windows 11 or Windows 10 version 2004 (Build 19041) and higher.5
+2. Initial WSL Installation: Open a PowerShell terminal in administrator mode. This can be done by right-clicking the Start Menu icon and selecting "Windows PowerShell (Admin)". Execute the following command to enable all necessary Windows features and install the default Ubuntu distribution 6:
+PowerShell
+wsl --install
+
+After the command completes, the machine must be restarted. Upon reboot, the installation will continue, prompting for the creation of a username and password for the new Linux distribution.5
+3. Verification of WSL Version: WSLg is exclusively supported on WSL 2, which utilizes a full Linux kernel within a lightweight virtual machine, as opposed to the system call translation layer of WSL 1.3 To verify that all installed distributions are configured for WSL 2, execute the following command in PowerShell:
+PowerShell
+wsl.exe --list --verbose
+
+If any distribution is listed as version 1, it must be upgraded. To ensure all future installations default to WSL 2, run:
+PowerShell
+wsl.exe --set-default-version 2
+
+4. Updating to Ensure WSLg Support: Even on an existing WSL installation, it is crucial to ensure the components are up-to-date to include WSLg support. From an administrator PowerShell, run the update command 5:
+PowerShell
+wsl --update
+
+For the update to take effect, all running WSL instances must be restarted. This can be forced by executing:
+PowerShell
+wsl --shutdown
+
+
+
+GPU Acceleration and Driver Installation
+
+
+A central feature of WSLg is its ability to provide Linux applications with access to the host machine's Graphics Processing Unit (GPU) via a virtualized GPU (vGPU). This enables hardware-accelerated rendering for APIs like OpenGL, which is a non-negotiable requirement for a fluid and responsive Morphic interface.5 Without hardware acceleration, SDL2 would be forced into a slower software rendering mode, resulting in poor performance that would violate the core principle of "liveness".7
+To enable this feature, the latest vGPU driver for the host machine's graphics hardware must be installed. Microsoft provides specific drivers for this purpose, and the correct one must be downloaded and installed from the official sources for Intel, AMD, or NVIDIA hardware.1
+
+
+Procuring and Installing the SDL2 Development Libraries
+
+
+With the WSLg environment established, the next step is to install the Simple DirectMedia Layer (SDL2) libraries within the Linux user distribution. It is critical to distinguish between the runtime libraries, which are needed to run an SDL2 application, and the development libraries, which are required to compile one.8 The development packages contain the C header files (
+.h) and the static or shared object files (.a, .so) that the compiler and linker need to build the custom Io FFI addon.
+From within the WSL terminal (e.g., Ubuntu), execute the following commands to update the package list and install the necessary development packages using the Advanced Packaging Tool (APT) 9:
+
+
+Bash
+
+
+
+
+sudo apt-get update
+sudo apt-get install libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+
+This command installs the core SDL2 development files (libsdl2-dev) as well as the development files for two common and useful extension libraries: SDL_image for loading various image formats, and SDL_ttf for rendering TrueType fonts.10 The package manager will automatically resolve and install the corresponding runtime libraries as dependencies.8
+
+
+A Foundational Test: The "Hello, Window" Sanity Check
+
+
+Before proceeding to the complexities of language interoperability, it is essential to perform a sanity check to verify that the entire underlying stack is functioning correctly. This is achieved by compiling and running a minimal C program that directly uses the SDL2 API to create and display a window.
+Create a file named test.c with the following content:
+
+
+C
+
+
+
+
+#include <SDL2/SDL.h>
+#include <stdio.h>
+
+const int SCREEN_WIDTH = 800;
+const int SCREEN_HEIGHT = 600;
+
+int main(int argc, char* args) {
+   SDL_Window* window = NULL;
+   SDL_Renderer* renderer = NULL;
+
+   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+       fprintf(stderr, "Could not initialize SDL: %s\n", SDL_GetError());
+       return 1;
+   }
+
+   window = SDL_CreateWindow(
+       "WSLg SDL2 Sanity Check",
+       SDL_WINDOWPOS_UNDEFINED,
+       SDL_WINDOWPOS_UNDEFINED,
+       SCREEN_WIDTH,
+       SCREEN_HEIGHT,
+       SDL_WINDOW_SHOWN
+   );
+
+   if (window == NULL) {
+       fprintf(stderr, "Could not create window: %s\n", SDL_GetError());
+       SDL_Quit();
+       return 1;
+   }
+
+   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+   if (renderer == NULL) {
+       fprintf(stderr, "Could not create renderer: %s\n", SDL_GetError());
+       SDL_DestroyWindow(window);
+       SDL_Quit();
+       return 1;
+   }
+
+   // Set draw color to blue and clear the screen
+   SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
+   SDL_RenderClear(renderer);
+   SDL_RenderPresent(renderer);
+
+   // Wait for 3 seconds
+   SDL_Delay(3000);
+
+   // Clean up
+   SDL_DestroyRenderer(renderer);
+   SDL_DestroyWindow(window);
+   SDL_Quit();
+
+   return 0;
+}
+
+This program initializes the SDL video subsystem, creates a window and an accelerated renderer, clears the window to a solid blue color, displays it for three seconds, and then cleanly shuts down.13
+To compile and run this program, use the following command in the WSL terminal. The backticks execute sdl2-config to automatically provide the compiler and linker with the correct flags for the installed SDL2 library 13:
+
+
+Bash
+
+
+
+
+gcc test.c -o test `sdl2-config --cflags --libs`
+./test
+
+Successful execution of this command will result in a blue window appearing on the Windows desktop for three seconds before closing. This provides empirical verification that the entire substrate is correctly configured: the Windows host drivers are working, the WSLg virtualization layer is correctly forwarding graphics, and the Linux userspace libraries are properly installed and linked. Any failure at this stage indicates a problem within this foundational layer that must be resolved before proceeding.
+
+
+Part II: The Synaptic Bridge: A Foreign Function Interface for Io and SDL2
+
+
+The Io programming language and the C-based SDL2 library represent two fundamentally different programming paradigms. Io is a high-level, dynamic, prototype-based language with automatic memory management, where all computation is a form of message passing.15 SDL2, conversely, is a low-level, procedural C library that requires meticulous manual resource management and operates through direct function calls.16 To bridge this divide, a Foreign Function Interface (FFI) is required. As Io lacks a high-level, automated FFI generation tool, one must be constructed from first principles as a C-based "addon" that uses the Io virtual machine's native C API.
+This FFI is not merely a technical conduit for function calls. Its architecture must serve a higher purpose: to act as a philosophical abstraction layer. A naive, one-to-one mapping of C functions would expose the procedural, manually-managed nature of SDL2 to the Io world, violating its core principles of object-orientation and liveness. A well-designed FFI, therefore, must transform the SDL2 API, presenting it to the Io programmer as a clean, idiomatic, and object-oriented interface that is philosophically coherent with the Morphic paradigm it is intended to support.
+
+
+Architectural Principles: The Io C API as an FFI Foundation
+
+
+An FFI is a mechanism that allows a program written in one language to call routines from another.17 The foundation for our bridge is the Io VM's C API, a set of C functions and data structures that allow C code to interact with the Io runtime. The core of this API revolves around the
+IoState structure, which represents a single, isolated Io virtual machine instance.18 All interactions, from creating Io objects to executing code, are mediated through this state object.
+The C API provides functions for creating and manipulating Io's native types. For example, IoNumber_newWithFloat() creates a new Io Number object from a C double, and IoSeq_asCString() extracts a C const char* from an Io Sequence.18 The most powerful function is
+IoState_doCString_, which parses and executes a string of Io code within the VM's context.18 While powerful, relying on string execution for an FFI is inefficient and unsafe. The proper approach is to create C functions that can be attached directly to Io objects as activatable methods, forming a direct, compiled bridge between the two languages.19
+
+
+Designing the IoSDL Addon
+
+
+An Io addon is a dynamically loadable shared library (.so on Linux) that the Io VM can load at runtime. The entry point for any addon is a C function with the signature IoAddonInit(IoObject *context). When the addon is loaded, the Io VM calls this function, providing a context object to which the addon can attach its functionality.2
+Our IoSDL addon will follow this structure. The IoAddonInit function will perform two primary tasks:
+   1. Create the SDL Prototype: It will create a new, empty Io object that will serve as the central namespace and prototype for all SDL-related functionality. This object will be added as a slot to Io's Lobby, making it globally accessible as SDL.
+   2. Attach C Functions as Slots: For each piece of SDL2 functionality we wish to expose, we will write a C wrapper function that conforms to the IoMethod signature (IoObject *f(IoObject *self, IoObject *locals, IoMessage *m)). We will then use IoObject_setSlot_to_ and IoCFunction_newWithFunction_ to attach these C functions as new slots on the SDL prototype.
+For example, to expose SDL_GetError(), we would write a C function IoSDL_getError that calls the underlying SDL2 function, converts the returned C string into an Io Sequence, and returns it. This C function would then be attached to the SDL prototype with the name getError, making it callable in Io as SDL getError.
+
+
+The Marshalling Contract: A Rosetta Stone for Io and C/SDL2
+
+
+The most critical and error-prone aspect of any FFI is marshalling: the process of converting data representations between the two language domains.2 To ensure correctness and stability, a formal, unambiguous "marshalling contract" is required. This contract defines the precise rules for every data type that must cross the Io-C boundary. Mismatches in type, size, or memory management protocol are a primary source of bugs, memory leaks, and segmentation faults in FFI design. The following table serves as the definitive specification for this contract.
+Io Type
+	C ABI Type
+	SDL2 Type/Concept
+	Marshalling Rule (Io -> C)
+	Marshalling Rule (C -> Io)
+	Memory/Resource Management Protocol
+	Number (Integer)
+	int, long
+	Integer parameters, flags
+	Use IoNumber_asInt() to convert Io Number to C int. Perform type checks.
+	Use IoNumber_newWithInt() to create a new Io Number from a C int.
+	Stack-based; no special handling required.
+	Number (Float)
+	double, float
+	Floating-point parameters
+	Use IoNumber_asFloat() to convert Io Number to C double. Cast to float if needed.
+	Use IoNumber_newWithDouble() to create a new Io Number from a C double.
+	Stack-based; no special handling required.
+	Sequence (String)
+	const char*
+	Window titles, error messages
+	Use IoSeq_asCString() to get a borrowed C string pointer.
+	Use IoSeq_newWithCString() to create a new Io Sequence from a C string.
+	The C string returned by IoSeq_asCString() is owned by the Io GC and must not be freed or modified.
+	List of Numbers
+	SDL_Rect*
+	Rectangle data for rendering
+	Create SDL_Rect on C stack. Unmarshal Io List elements (x, y, w, h) into the struct's fields. Pass pointer to SDL_Rect.
+	Create a new Io List. Populate it with new Io Number objects created from the fields of the C SDL_Rect struct.
+	C-side SDL_Rect is typically stack-allocated and managed automatically.
+	IoSDLWindow (custom)
+	SDL_Window*
+	Opaque window handle
+	Unwrap the SDL_Window* pointer from the custom Io object's internal data structure.
+	Wrap the returned SDL_Window* pointer inside a new, custom IoSDLWindow object.
+	See Section 2.4.
+	IoSDLRenderer (custom)
+	SDL_Renderer*
+	Opaque renderer handle
+	Unwrap the SDL_Renderer* pointer from the custom Io object's internal data.
+	Wrap the returned SDL_Renderer* pointer inside a new, custom IoSDLRenderer object.
+	See Section 2.4.
+	
+
+Managing Opaque Pointers and Resources
+
+
+Many core SDL2 objects, such as SDL_Window and SDL_Renderer, are exposed to the C API as opaque pointers.20 The C programmer receives a pointer from a creation function (e.g.,
+SDL_CreateWindow) and is responsible for passing that exact pointer to a corresponding destruction function (e.g., SDL_DestroyWindow) to release the underlying resources. Failure to do so results in a resource leak.
+To manage this safely and idiomatically within Io, the "thin veneer" or "handle" pattern will be implemented. We will define new, custom C-level object types within our addon, such as IoSDLWindow and IoSDLRenderer. These Io objects will serve as wrappers, containing a single C data member: the opaque pointer to the SDL2 resource.
+The key to automating resource management lies in leveraging Io's garbage collector. When we define these new custom types, we can associate a "free" function with them. This function is a finalizer that the Io garbage collector will automatically invoke just before an object of that type is deallocated.
+The workflow is as follows:
+   1. An Io script calls SDL createWindow(...).
+   2. Our C wrapper function calls the real SDL_CreateWindow(), which returns an SDL_Window* pointer.
+   3. The C wrapper then creates a new instance of our custom IoSDLWindow object and stores the SDL_Window* pointer inside it.
+   4. This IoSDLWindow object is returned to the Io script.
+   5. The Io script uses this object. When it eventually goes out of scope and is no longer referenced, the Io garbage collector marks it for collection.
+   6. Before freeing the memory for the IoSDLWindow object, the GC calls our registered finalizer function.
+   7. The finalizer function extracts the stored SDL_Window* pointer and calls SDL_DestroyWindow() on it, correctly releasing the SDL2 resource.
+This powerful pattern translates SDL2's mandatory manual resource management into the automatic, garbage-collected model that is idiomatic to Io. It completely eliminates the burden of manual cleanup from the Io programmer and prevents a major class of resource leak errors.
+
+
+Lifecycle Management: Encapsulating SDL_Init and SDL_Quit
+
+
+The SDL2 library requires a global initialization call, SDL_Init(), before most other functions can be used, and a corresponding SDL_Quit() call upon program termination.12 Exposing these directly would force the Io programmer to manage this procedural lifecycle, which is contrary to the "always live" philosophy of a Morphic environment.
+This lifecycle will be automated and made transparent by the FFI addon.
+   * Initialization: The IoAddonInit function, which is called only once when the addon is first loaded, will be responsible for calling SDL_Init(SDL_INIT_VIDEO). This ensures that the SDL2 subsystem is ready before any Io code can possibly call an SDL function.
+   * Termination: The Io C API provides a mechanism, IoState_atExit(), to register a C function that will be called when the IoState is being shut down. We will register a simple C function that calls SDL_Quit().
+This design ensures that the entire SDL2 lifecycle is tied to the lifecycle of the Io addon itself. The Io programmer never needs to write SDL init or SDL quit; the system is simply "live" and ready for use as soon as the IoSDL addon is loaded. This completes the transformation of the procedural C library into a system that appears to the high-level programmer as a seamless, object-oriented, and automatically-managed graphical world.
+
+
+Part III: The Morphic Paradigm in a Prototypal World
+
+
+The selection of the Morphic UI paradigm for a project based in the Io programming language is not an incidental choice of toolkit; it is an act of profound architectural and philosophical coherence. Morphic, born from the Self programming language, is the graphical user interface paradigm native to the prototypal world.7 Its design principles are not merely implemented
+in a language like Io; they are a direct reflection of the language's own fundamental mechanics. Understanding this deep isomorphism is key to building a system that is not just functional, but conceptually elegant and unified from its core object model to its interactive surface.
+
+
+The Philosophical Tenets of Direct Manipulation and Liveness
+
+
+Morphic is founded upon two guiding principles that distinguish it from conventional UI toolkits: Direct Manipulation and Liveness.7
+   * Direct Manipulation is the core interactive principle. It is defined as the ability for a user or developer to examine and modify the state, structure, and behavior of any UI component by interacting directly with its graphical representation.7 In a traditional framework, changing a button's color might involve finding the corresponding object in a code editor, modifying a property, and recompiling. In Morphic, one interacts with the button
+itself on the screen to invoke a tool (like a color picker) that modifies the live object directly. This creates a powerful illusion of interacting with tangible, concrete objects rather than abstract representations of them.7
+   * Liveness, a principle inherited directly from the image-based environments of Smalltalk and Self, means the user interface is perpetually active and reactive.7 There is no rigid separation between a "design-time" environment and a "run-time" application. The system is always running; development is the process of making incremental changes to this live system and receiving immediate visual and behavioral feedback.7 This fundamentally dissolves the traditional edit-compile-run cycle, fostering an environment of continuous, direct interaction.
+These principles combine to create a UI that is itself a collection of inspectable, scriptable, and modifiable objects, forming an integral part of the live system image. The button on the screen is not a passive representation of a Button object in memory; it is the live Button object, given a visual form.7
+
+
+Embodying Morphic Architecture in Io: The Base Morph Prototype
+
+
+The architecture of a Morphic system is a direct analog to the object model of a prototype-based language. The central abstraction is the Morph—a graphical object that can be directly manipulated.7 Every element on the screen, from a simple rectangle to a complex window, is a Morph.
+This concept maps perfectly to the Io object model. The foundation of our entire UI system will be a single, base Morph prototype, created by cloning Io's root Object. This prototype will contain slots for the shared state and behavior common to all graphical objects.7
+
+
+Code snippet
+
+
+
+
+// Create the base prototype for all graphical objects.
+Morph := Object clone do(
+   // SLOTS FOR STATE
+   // These slots hold the core properties of a graphical object.
+   bounds     := list(0, 0, 50, 50) // x, y, width, height
+   color      := list(0.5, 0.5, 0.8, 1.0) // r, g, b, a
+   submorphs  := list()
+   owner      := nil
+
+   // SLOTS FOR BEHAVIOR
+   // This is a placeholder for the rendering method.
+   // The 'canvas' object is the FFI bridge to SDL2.
+   drawOn := method(canvas,
+       // Draw self first.
+       canvas drawRectangle(self bounds, self color)
+
+       // Then, recursively draw all children on top.
+       self submorphs foreach(submorph, submorph drawOn(canvas))
+   )
+
+   // Placeholder for event dispatching logic.
+   handleEvent := method(event,
+       // In a real system, this would check for local handlers first,
+       // then pass the event down the submorph hierarchy.
+       writeln("Handling event: ", event type)
+   )
+
+   // Methods to manage the compositional hierarchy.
+   addMorph := method(aMorph,
+       if(aMorph owner, aMorph owner removeMorph(aMorph))
+       self submorphs append(aMorph)
+       aMorph owner = self
+       self
+   )
+
+   removeMorph := method(aMorph,
+       self submorphs remove(aMorph)
+       aMorph owner = nil
+   )
+)
+
+This Io code is not merely an implementation of the Morphic concept; it is a direct embodiment of it. Io's native features—cloning for object creation, slots for state and behavior, and message passing for invocation—provide the exact mechanisms required by the Morphic architecture.
+
+
+Composition as the Primary Design Pattern
+
+
+In traditional object-oriented UI toolkits, complex widgets are created through class-based inheritance. A Button class might inherit from a Control class, which inherits from a Widget class. Morphic rejects this rigid, hierarchical approach in favor of composition.7
+A complex UI element is assembled by cloning and combining simpler morphs. This is the direct visual application of the design principle "Favor composition over inheritance," a principle that is not an optional guideline in Io but the language's fundamental mechanism for code reuse.15
+To create a Button prototype, one does not define a Button class. Instead, one performs a concrete, constructive act:
+      1. Clone a RectangleMorph to serve as the button's background.
+      2. Clone a TextMorph to serve as its label.
+      3. Add the text morph as a submorph of the rectangle morph.7
+      4. Add new slots to the composite object for button-specific behavior, such as an onClick method.
+This resulting composite object is the Button prototype. New buttons are then created simply by cloning this prototype and specializing the clones (e.g., changing their labels or onClick actions). This workflow is a direct application of differential inheritance: a clone initially stores only the differences between itself and its prototype, delegating all shared behavior and structure.15 This bottom-up, concrete approach lowers the cognitive barrier to creating new components, as it does not require the preemptive design of a perfect, abstract class hierarchy.7
+
+
+The Morphic Event Model as a Message-Passing Protocol
+
+
+The synergy between Morphic and Io is most apparent in the event handling model. User inputs like mouse clicks and key presses are not handled by a monolithic, centralized controller. Instead, interactivity emerges from a decentralized protocol of message exchanges between autonomous graphical objects.7
+When a user clicks the mouse, the system encapsulates the input as an Event object. It then identifies the front-most morph under the cursor and sends it a message whose name corresponds to the event type, such as leftMouseDown:, with the Event object as the argument.7 This is a literal and direct application of Io's "everything is a message" computation model.15
+A morph handles the event by implementing a method for that message. If a morph does not have a method for a given event, the message lookup fails locally. The event dispatch mechanism then offers the event to the morph directly behind it in the visual hierarchy (i.e., further up its owner's submorphs list). This process, known as an event "falling through" the hierarchy, is a specialized form of message delegation.7
+Even complex interactions like drag-and-drop are modeled as a "conversation" between live objects, mediated by a sequence of messages. When one morph is dropped onto another, the target is first sent a query message like wantsMorph:. If it responds affirmatively, it is then sent an action message like addDroppingMorph:. This entire protocol treats interactivity as an emergent behavior arising from local, message-based negotiations, perfectly aligning the UI paradigm with the language's core computational metaphor.7
+The following table contrasts this unified, object-centric approach with the traditional Model-View-Controller (MVC) pattern to highlight the fundamental paradigm shift.
+Feature
+	Traditional Model-View-Controller (MVC)
+	Morphic Architecture
+	Core Units
+	Model (data/logic), View (UI representation), Controller (input handling)
+	Morph (unified object for data, appearance, and behavior)
+	Structure
+	Separate, loosely coupled objects communicating via notifications.
+	Tightly coupled scene graph of composite morphs.
+	UI Creation
+	Instantiating View classes and configuring them with data from the Model.
+	Cloning and composing existing Morph prototypes.
+	Data Flow
+	Often complex and indirect (e.g., Controller updates Model, Model notifies View).
+	Direct. Interaction with a Morph directly modifies its state.
+	Liveness
+	View is a passive representation; changes require an update cycle.
+	Morphs are live objects; changes are immediate and visible.
+	Conceptual Model
+	Separation of concerns.
+	Unification of concerns in a single, tangible object.
+	Table adapted from Morphic UI Framework Training Guide Extension.7
+
+
+Part IV: Implementation: Forging a Live Morphic Interface in Io
+
+
+This final section synthesizes the preceding architectural and philosophical discussions into a practical, step-by-step implementation guide. It provides the concrete C and Io code required to bridge the SDL2 C API with the Io runtime and use that bridge to construct a functional, interactive Morphic system. This process demonstrates the ultimate value of the architecture, showing how a carefully designed FFI can transform low-level, procedural primitives into a dynamic, live, and philosophically consistent graphical object world.
+
+
+The Heartbeat: The SDL2 Event Loop as an Io Message Pump
+
+
+The core of any interactive SDL2 application is the event loop, a while loop that repeatedly polls for user input.23 Our FFI must transform this procedural C loop into an Io-idiomatic message pump. This is achieved by creating a bridge function in C that fetches a single event and marshals it into an Io object, which the high-level Io code can then process in its own coroutine-based loop.
+
+
+C Addon Implementation (IoSDL_event.c)
+
+
+Within the IoSDL C addon, a function will be created to poll for the next event and convert it into an Io object.
+
+
+C
+
+
+
+
+#include "IoState.h"
+#include "IoObject.h"
+#include "IoNumber.h"
+#include "IoList.h"
+#include <SDL2/SDL.h>
+
+// This function will be attached to the 'SDL' object in Io as 'pumpNextEvent'.
+IoObject *IoSDL_pumpNextEvent(IoObject *self, IoObject *locals, IoMessage *m) {
+   SDL_Event event;
+
+   // Poll for an event. If the queue is empty, SDL_PollEvent returns 0.
+   if (SDL_PollEvent(&event)) {
+       // Create a new Io object to represent the event.
+       IoObject *ioEvent = IoObject_new(IOSTATE);
+
+       // Add a 'type' slot based on the SDL event type.
+       IoObject_setSlot_to_(ioEvent, IOSYMBOL("type"), IoNumber_newWithInt(IOSTATE, event.type));
+
+       // Marshal data for specific event types.
+       // This can be expanded for mouse motion, keys, etc.
+       if (event.type == SDL_MOUSEBUTTONDOWN |
+
+| event.type == SDL_MOUSEBUTTONUP) {
+           IoObject_setSlot_to_(ioEvent, IOSYMBOL("button"), IoNumber_newWithInt(IOSTATE, event.button.button));
+           IoObject_setSlot_to_(ioEvent, IOSYMBOL("x"), IoNumber_newWithInt(IOSTATE, event.button.x));
+           IoObject_setSlot_to_(ioEvent, IOSYMBOL("y"), IoNumber_newWithInt(IOSTATE, event.button.y));
+       } else if (event.type == SDL_MOUSEMOTION) {
+           IoObject_setSlot_to_(ioEvent, IOSYMBOL("x"), IoNumber_newWithInt(IOSTATE, event.motion.x));
+           IoObject_setSlot_to_(ioEvent, IOSYMBOL("y"), IoNumber_newWithInt(IOSTATE, event.motion.y));
+           IoObject_setSlot_to_(ioEvent, IOSYMBOL("xrel"), IoNumber_newWithInt(IOSTATE, event.motion.xrel));
+           IoObject_setSlot_to_(ioEvent, IOSYMBOL("yrel"), IoNumber_newWithInt(IOSTATE, event.motion.yrel));
+       }
+       //... handle other event types like SDL_KEYDOWN, SDL_QUIT etc.
+
+       return ioEvent;
+   }
+
+   // If no event was polled, return nil.
+   return IONIL(self);
+}
+
+
+
+Io Application Loop (main.io)
+
+
+The Io code uses this FFI function to drive the application. A coroutine is launched to continuously pump for events and dispatch them as messages to the appropriate morphs.
+
+
+Code snippet
+
+
+
+
+// Assume 'World' is the root morph.
+eventLoop := coroutine(
+   loop(
+       event := SDL pumpNextEvent
+       if(event, World handleEvent(event))
+       yield // Yield control to allow other coroutines (like rendering) to run.
+   )
+)
+
+This architecture successfully transforms SDL2's blocking, procedural loop into a non-blocking, message-driven system that is perfectly suited for Io's actor-based concurrency model and the reactive nature of a Morphic UI.15
+
+
+The Canvas Abstraction: The FFI Rendering Bridge
+
+
+As established in Part III, morphs do not draw directly to the screen. They send abstract drawing commands to a Canvas object, which is responsible for translating them into low-level graphics calls.7 The
+Canvas is therefore the linchpin of our rendering FFI.
+
+
+Io Canvas Prototype (Canvas.io)
+
+
+In Io, we define the high-level Canvas interface. It encapsulates the SDL_Renderer handle and provides clean, object-oriented drawing methods.
+
+
+Code snippet
+
+
+
+
+Canvas := Object clone do(
+   rendererHandle ::= nil // Slot for the opaque C pointer wrapper
+
+   // FFI methods will be implemented in C.
+   clear := method()
+   present := method()
+   drawRectangle := method(bounds, color)
+)
+
+
+
+C Addon Implementation (IoSDL_render.c)
+
+
+The C addon implements the methods of the Canvas prototype. These functions un-marshal the Io arguments, extract the raw SDL_Renderer* pointer from the rendererHandle slot, and call the corresponding SDL2 C functions.
+
+
+C
+
+
+
+
+// C implementation of Canvas drawRectangle(bounds, color)
+IoObject *IoCanvas_drawRectangle(IoObject *self, IoObject *locals, IoMessage *m) {
+   // 1. Get the opaque SDL_Renderer* from the 'rendererHandle' slot.
+   SDL_Renderer *renderer = unwrap_renderer_pointer(IoObject_getSlot_(self, IOSYMBOL("rendererHandle")));
+
+   // 2. Unmarshal the 'bounds' list argument.
+   IoObject *boundsList = IoMessage_locals_valueArgAt_(m, locals, 0);
+   SDL_Rect rect;
+   rect.x = IoNumber_asInt(IoList_rawAt(boundsList, 0));
+   rect.y = IoNumber_asInt(IoList_rawAt(boundsList, 1));
+   rect.w = IoNumber_asInt(IoList_rawAt(boundsList, 2));
+   rect.h = IoNumber_asInt(IoList_rawAt(boundsList, 3));
+
+   // 3. Unmarshal the 'color' list argument.
+   IoObject *colorList = IoMessage_locals_valueArgAt_(m, locals, 1);
+   Uint8 r = IoNumber_asInt(IoList_rawAt(colorList, 0)) * 255;
+   Uint8 g = IoNumber_asInt(IoList_rawAt(colorList, 1)) * 255;
+   Uint8 b = IoNumber_asInt(IoList_rawAt(colorList, 2)) * 255;
+   Uint8 a = IoNumber_asInt(IoList_rawAt(colorList, 3)) * 255;
+
+   // 4. Call the underlying SDL2 C functions.
+   SDL_SetRenderDrawColor(renderer, r, g, b, a);
+   SDL_RenderFillRect(renderer, &rect);
+
+   return self;
+}
+
+// C implementation of Canvas present()
+IoObject *IoCanvas_present(IoObject *self, IoObject *locals, IoMessage *m) {
+   SDL_Renderer *renderer = unwrap_renderer_pointer(IoObject_getSlot_(self, IOSYMBOL("rendererHandle")));
+   SDL_RenderPresent(renderer);
+   return self;
+}
+
+This design provides a perfect separation of concerns. The Io-side Morph objects remain completely ignorant of the C API and FFI complexities, interacting only with a pure Io Canvas object.
+
+
+A Complete Prototypal Workflow: A Draggable Morph
+
+
+This example synthesizes all preceding components into a minimal, working Morphic application that demonstrates direct manipulation.
+
+
+Code snippet
+
+
+
+
+// main.io
+
+// Load the custom C addon.
+doFile("IoSDL.io") // Assumes an Io file that loads the.so addon.
+
+// --- 1. Initialization ---
+// Create the window and renderer via the FFI.
+// These return Io objects wrapping the opaque C pointers.
+window := SDL createWindow("Morphic in Io", 800, 600)
+renderer := window createRenderer
+
+// Create the canvas and link it to the renderer.
+theCanvas := Canvas clone
+theCanvas rendererHandle = renderer
+
+// Create the root of the scene graph.
+World := Morph clone do(
+   bounds = list(0, 0, 800, 600)
+   color = list(0.1, 0.1, 0.1, 1.0) // Dark gray background
+)
+
+// --- 2. Creation ---
+// Create a draggable rectangle by cloning the base Morph.
+draggableRect := Morph clone do(
+   bounds = list(100, 100, 80, 80)
+   color = list(0.8, 0.2, 0.2, 1.0) // Red
+   isDragging := false
+   dragOffset := list(0, 0)
+)
+World addMorph(draggableRect)
+
+// --- 3. Behavior ---
+// Add event handlers directly to the object's slots.
+draggableRect mouseDown := method(event,
+   self isDragging = true
+   // Calculate offset from top-left corner to click position.
+   self dragOffset at(0) = event x - self bounds at(0)
+   self dragOffset at(1) = event y - self bounds at(1)
+)
+
+draggableRect mouseUp := method(event,
+   self isDragging = false
+)
+
+draggableRect mouseMove := method(event,
+   if(self isDragging,
+       // Update position based on mouse and stored offset.
+       self bounds at(0) = event x - self dragOffset at(0)
+       self bounds at(1) = event y - self dragOffset at(1)
+   )
+)
+
+// Override the World's event handler to dispatch events.
+World handleEvent = method(event,
+   // Simplified: dispatch to the first submorph.
+   // A real implementation would check bounds.
+   target := self submorphs at(0)
+
+   // Translate SDL event types into message sends.
+   if(event type == SDL_MOUSEBUTTONDOWN, target mouseDown(event))
+   if(event type == SDL_MOUSEBUTTONUP, target mouseUp(event))
+   if(event type == SDL_MOUSEMOTION, target mouseMove(event))
+)
+
+// --- 4. The Main Loop ---
+mainLoop := coroutine(
+   loop(
+       // Pump and dispatch events.
+       event := SDL pumpNextEvent
+       if(event,
+           if(event type == SDL_QUIT, break) // Exit condition
+           World handleEvent(event)
+       )
+
+       // Render the scene.
+       theCanvas clear
+       World drawOn(theCanvas)
+       theCanvas present
+
+       Scheduler runNextCoroutine // Yield
+   )
+)
+
+// Start the event loop and the scheduler.
+mainLoop resume
+Scheduler start
+
+This complete example demonstrates a live, interactive object that can be directly manipulated by the user, fulfilling the core promise of the Morphic paradigm. The behavior is defined directly on the concrete draggableRect object, which responds to messages dispatched by the main event loop. The rendering is handled by the Canvas abstraction, which hides the underlying complexity of the FFI and the SDL2 C API.
+
+
+Advanced Interactivity: The Drag-and-Drop Protocol
+
+
+The message-passing architecture allows for the creation of complex, emergent behaviors from simple, local rules. A drag-and-drop interaction can be implemented as a "conversation" between the dragged morph and the potential drop target.7
+To extend the previous example, one could create a TrashCanMorph. When the draggableRect's mouseUp: method is called, instead of simply setting isDragging to false, it would first identify the morph under the cursor (the potential target, which might be the TrashCanMorph). It would then initiate the protocol:
+      1. Query: The draggableRect sends a wantsMorph: message to the TrashCanMorph.
+      2. Decision: The TrashCanMorph's wantsMorph: method inspects the incoming morph and returns true.
+      3. Action: Seeing the affirmative response, the draggableRect sends the addDroppingMorph: message to the TrashCanMorph.
+      4. Execution: The TrashCanMorph's addDroppingMorph: method then performs the "delete" action, perhaps by telling the World to remove the dropped morph from its submorphs list.
+This decentralized, message-based negotiation is a hallmark of the Smalltalk/Self/Io philosophy and demonstrates how sophisticated interactivity can be built without a centralized controller or complex state management logic.7
+
+
+Conclusions
+
+
+This report has provided a comprehensive architectural and implementation guide for creating a Morphic user interface in the Io programming language, rendered via SDL2 within the WSLg environment. The analysis and resulting implementation strategy yield several key conclusions.
+First, the project's feasibility and philosophical integrity are predicated on the choice of a modern graphical substrate. WSLg, with its deep integration and hardware acceleration, provides the necessary low-latency, high-performance foundation upon which the Morphic principles of "liveness" and "direct manipulation" can be technically realized.3 The meticulous configuration of this environment is not a mere preliminary step but a foundational act of architectural design.
+Second, the primary technical challenge lies in bridging the profound paradigmatic gap between the high-level, object-oriented Io language and the low-level, procedural SDL2 C library. A successful Foreign Function Interface must do more than simply expose C functions; it must act as a transformative abstraction layer. By leveraging Io's C API to create a custom addon that automates resource management via garbage collector finalizers and encapsulates the library's lifecycle, it is possible to present the SDL2 API to the Io programmer as a clean, idiomatic, and object-oriented system that conceals the underlying procedural complexity.2
+Third, the relationship between the Io programming language and the Morphic UI paradigm is one of deep isomorphism. The core mechanics of Io—object creation via cloning, behavior reuse via delegation, compositional object assembly, and a universal message-passing model—are not just suitable for implementing Morphic; they are a direct computational reflection of Morphic's own architectural principles.7 This synergy means that a Morphic "framework" in Io is not a large, monolithic library to be learned, but rather a small set of core prototypes that are extended dynamically by the developer, perfectly aligning the language's design with the needs of a flexible, live UI.
+Ultimately, the successful synthesis of these layers—from the WSLg substrate, through the FFI bridge, to the Io object model—demonstrates a powerful architectural pattern. It shows how a low-level, high-performance C library can be effectively "tamed" and leveraged to bring a high-level, philosophically-driven programming model into the visual domain, resulting in a system that is not only functional but also conceptually coherent and elegant. The final draggable morph example serves as empirical proof that this architecture can fulfill the promise of creating a truly live and directly manipulable graphical object world.
+Works cited
+      1. What's the easiest way to run GUI apps on Windows Subsystem for Linux? - Ask Ubuntu, accessed September 25, 2025, https://askubuntu.com/questions/993225/whats-the-easiest-way-to-run-gui-apps-on-windows-subsystem-for-linux
+      2. Building TelOS with Io and Morphic
+      3. microsoft/wslg: Enabling the Windows Subsystem for Linux to include support for Wayland and X server related scenarios - GitHub, accessed September 25, 2025, https://github.com/microsoft/wslg
+      4. wine - Running a Windows graphical app inside a Linux desktop running under WSLg, accessed September 25, 2025, https://superuser.com/questions/1749875/running-a-windows-graphical-app-inside-a-linux-desktop-running-under-wslg
+      5. Run Linux GUI apps with WSL - Microsoft Learn, accessed September 25, 2025, https://learn.microsoft.com/en-us/windows/wsl/tutorials/gui-apps
+      6. Install WSL | Microsoft Learn, accessed September 25, 2025, https://learn.microsoft.com/en-us/windows/wsl/install
+      7. Morphic UI Framework Training Guide Extension
+      8. Installing SDL2 Development version on Ubuntu Linux - Stack Overflow, accessed September 25, 2025, https://stackoverflow.com/questions/59108617/installing-sdl2-development-version-on-ubuntu-linux
+      9. Setting up SDL 2 on Linux - Lazy Foo' Productions, accessed September 25, 2025, https://lazyfoo.net/tutorials/SDL/01_hello_SDL/linux/index.php
+      10. Develop SDL2 games in WSL2 with VSCode - YouTube, accessed September 25, 2025, https://www.youtube.com/watch?v=sC3M6C8IpoE
+      11. How do I install SDL on ubuntu? - GitHub Gist, accessed September 25, 2025, https://gist.github.com/aaangeletakis/3187339a99f7786c25075d4d9c80fad5
+      12. SDL library in C/C++ with examples - GeeksforGeeks, accessed September 25, 2025, https://www.geeksforgeeks.org/c/sdl-library-in-c-c-with-examples/
+      13. 4.1.3. Drawing to a screen using SDL2 - Learn Programming, accessed September 25, 2025, https://progbook.org/sdl.html
+      14. Getting Started with SDL and C | Learn C Games Programming Blog, accessed September 25, 2025, https://learncgames.com/tutorials/getting-started-with-sdl-and-c/
+      15. Io Prototype Programming Training Guide
+      16. SDL2/Introduction - SDL Wiki, accessed September 25, 2025, https://wiki.libsdl.org/SDL2/Introduction
+      17. Foreign function interface - Wikipedia, accessed September 25, 2025, https://en.wikipedia.org/wiki/Foreign_function_interface
+      18. io guide - io language, accessed September 25, 2025, https://iolanguage.org/guide/guide.html
+      19. Embedding Io language: Call Io method from C - Stack Overflow, accessed September 25, 2025, https://stackoverflow.com/questions/13314641/embedding-io-language-call-io-method-from-c
+      20. SDL2/SDL_CreateWindowAndRenderer - SDL Wiki, accessed September 25, 2025, https://wiki.libsdl.org/SDL2/SDL_CreateWindowAndRenderer
+      21. SDL2/SDL_CreateRenderer - SDL Wiki, accessed September 25, 2025, https://wiki.libsdl.org/SDL2/SDL_CreateRenderer
+      22. Hello SDL: Your First Graphics Window - Lazy Foo' Productions, accessed September 25, 2025, https://lazyfoo.net/tutorials/SDL/01_hello_SDL/index2.php
+      23. Creating the Main Application Loop with SDL2 | A Practical Guide - StudyPlan.dev, accessed September 25, 2025, https://www.studyplan.dev/sdl2/sdl2-application-loop
