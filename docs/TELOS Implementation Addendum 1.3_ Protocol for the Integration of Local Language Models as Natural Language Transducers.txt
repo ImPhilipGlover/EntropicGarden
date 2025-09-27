@@ -1,0 +1,257 @@
+﻿TELOS Implementation Addendum 1.3: Protocol for the Integration of Local Language Models as Natural Language Transducers
+
+
+
+
+I. Architectural Framing: The LLM as a Managed Transducer Service
+
+
+This section establishes the formal architectural and philosophical role of the Large Language Model (LLM) within the TELOS ecosystem. The integration must be coherent with the system's foundational axiom of info-autopoiesis and its mandate for a dynamic, self-organizing "Living Image".1 To maintain the system's high standards for determinism and auditable reasoning, the LLM will not be implemented as an unconstrained, general-purpose agent. Instead, it is to be architected as a deterministic, protocol-adherent service for translating between the unstructured domain of natural language and the structured data paradigms native to the TELOS cognitive core.
+
+
+1.1 The Transducer Mandate: A Principled Integration
+
+
+The core function of the LLM within the TELOS architecture is formally defined as transduction: the principled conversion of information from one form to another. Specifically, the LLM service will be responsible for translating between unstructured, probabilistic natural language and the structured, schema-defined objects and messages that constitute the system's native mode of operation. This framing is a direct extension of the system's existing commitment to mathematically grounded transformations.3 Just as the Laplace-HDC encoder provides a transparent, auditable bridge from the geometric space of embeddings to the algebraic space of symbolic hypervectors, the
+ollama service, when rigorously constrained by a JSON schema, provides a predictable (if probabilistic) bridge from natural language to structured data. This approach is critical for avoiding the introduction of an opaque, non-deterministic "black box" into the system's reasoning chain, a risk that would violate the core architectural tenet of explainability.3
+The successful integration of this capability hinges on the native support within the ollama API for structured outputs, which makes it possible to constrain a model's generation to a specific format defined by a JSON schema.4 By leveraging this feature, the LLM is transformed from a potential source of chaotic, unbounded text generation into a manageable, protocol-adherent component. It becomes a predictable service that accepts unstructured input and produces structured output, a function that is fully compatible with the system's core values of transactional integrity and auditable cognition.
+To realize this vision, the ollama server itself must be deployed as a decoupled system service, managed independently of the core TELOS processes. Its configuration parameters—including the service endpoint URL, the default model to be used (e.g., llama3.1), and operational parameters like the keep_alive duration—must be stored as a persistent configuration object within the L3 ZODB ground truth store.1 This architectural decision has profound operational implications. It allows for transactional, runtime updates to the LLM service configuration, in perfect alignment with the "Living Image" philosophy. An operator or an autonomous system process could, for example, swap the active model from a large, powerful one to a smaller, more efficient model for a specific class of tasks via a simple database transaction, without requiring a code deployment or system restart. This makes the system's cognitive tools as fluid and manageable as its data, fulfilling the mandate for a truly dynamic system.
+
+
+1.2 The LLMTransducer Actor Prototype: A Centralized Gateway
+
+
+To manage all interactions with this new service, a new Io actor prototype, LLMTransducer, must be implemented. This actor will serve as the sole, system-wide gateway for all communications with the ollama service. Direct Foreign Function Interface (FFI) calls from other actors to the Python-based LLM worker are explicitly forbidden.
+This centralized design enforces architectural discipline and is essential for maintaining system integrity at scale. It ensures that all LLM requests are managed, logged, and traced through a single, auditable chokepoint, a requirement of the system's Unified Observability Framework.2 This actor also provides a natural and necessary location to implement system-wide policies such as request batching to amortize FFI overhead, rate-limiting to manage computational resources, and robust, centralized error handling and retry logic.
+The LLMTransducer actor will be implemented as a message-driven state machine. It will receive transduction requests from other system actors (e.g., the HRCOrchestrator), manage the complex, asynchronous communication with the Python worker pool across the Synaptic Bridge, await the structured response, and route the final, validated result back to the original requesting actor. This ensures that the rest of the system can interact with the power of the LLM through the simple, safe, and well-understood message-passing paradigm native to the Io cognitive core.7
+
+
+II. Physical Integration: Adherence to the Synaptic Bridge & GIL Quarantine Mandates
+
+
+This section provides the exhaustive, engineering-level specifications for integrating the ollama service into the existing physical substrate of the TELOS architecture. The implementation must demonstrate strict and uncompromising compliance with the non-negotiable mandates of the Synaptic Bridge FFI and the GIL Quarantine Protocol, which govern all interoperability between the Io cognitive core and the Python substrate.2
+
+
+2.1 The OllamaWorker: A Specialized Python Process
+
+
+A new Python class, OllamaWorker, must be created to serve as the dedicated interface to the ollama REST API. This class will encapsulate all logic for constructing requests, handling authentication, and parsing responses from the local LLM server. It will be designed to be instantiated and executed within the system's existing multiprocessing.ProcessPoolExecutor, which is managed by the Io core. This placement ensures strict adherence to the GIL Quarantine Protocol, which mandates that all CPU-bound Python tasks are run in separate processes to bypass the Global Interpreter Lock and achieve true parallelism.2
+The primary method of this worker, execute_transduction(request_payload), will be the entry point for all LLM operations. This method will receive a structured request payload from the Io core, dynamically construct the appropriate HTTP request using the official ollama Python library, and manage the interaction with the ollama server.5 Its responsibilities include:
+* Setting the format parameter to the provided JSON schema for structured output requests.4
+* Constructing the tools payload from a list of JSON schemas for function-calling requests.9
+* Handling network errors, timeouts, and non-successful HTTP status codes from the ollama server.
+* Parsing the JSON response from the server and, critically, validating it against the expected schema before returning it to the Io core.
+
+
+2.2 Asynchronous Message Flow and Data Marshalling
+
+
+The end-to-end communication flow for a single transduction request is defined by a precise, multi-step, asynchronous protocol:
+1. An originating Io actor (e.g., HRCOrchestrator) sends a formal message to the LLMTransducer actor within the Io runtime.
+2. The LLMTransducer actor packages the request and makes a non-blocking call across the Synaptic Bridge FFI to the Python ProcessPoolExecutor.
+3. The process pool schedules the request for execution by an available OllamaWorker process, transferring the payload via Inter-Process Communication (IPC).
+4. The OllamaWorker executes the request by sending an HTTP request to the external ollama server.
+5. The response path reverses this sequence, with the final structured result being delivered as an Io message back to the original requester.
+The payloads for these transduction requests and responses, which may contain large prompts or extensive contextual information, are subject to the same severe performance constraints as the tensors and hypervectors used in VSA operations. A naive implementation that relies on data serialization (e.g., "pickling") for IPC would introduce unacceptable latency, violating the system's stringent performance targets.2 The architectural problem of transferring these large data blobs is identical to the already-solved problem of transferring tensor data.
+Therefore, it is mandated that the established protocol for high-performance, zero-copy IPC must be reused. All request and response payloads between the Io core and the Python worker must be transferred using multiprocessing.shared_memory.2 The FFI call will not pass the raw JSON or string data. Instead, it will pass a small handle comprising the unique
+name of the shared memory block, an offset, and a size.2 The Python worker will attach to this memory block, read the request payload (e.g., a UTF-8 encoded JSON string), execute the
+ollama call, and write the response back into a separate, pre-allocated shared memory block, returning its handle to the Io core. This reuse of a proven, high-performance protocol is not merely an optimization; it is a necessary condition for ensuring the LLM integration does not compromise the low-latency reasoning path of the core architecture.
+
+
+III. Logical Integration: A Formal Message-Passing Protocol for Transduction
+
+
+This section defines the definitive API contract for the LLMTransducer actor. This contract is specified as a formal message-passing protocol, establishing the precise "language" that enables the rest of the TELOS system to leverage the LLM's capabilities in a structured, predictable, and safe manner.
+
+
+3.1 Message Schema: transduceTextToSchema
+
+
+This message is the primary mechanism for query understanding and structured data extraction. Its purpose is to parse unstructured natural language into a structured, schema-compliant JSON object.
+* Payload Schema: { "prompt_template_oid": <OID>, "text_input": <String>, "output_schema_name": <String> }
+* Workflow: The calling actor provides the Object ID (OID) of a persistent PromptTemplate object stored in the L3 database, the raw text to be processed, and the name of a target Pydantic class that defines the desired output structure. The OllamaWorker will use this class name to retrieve a pre-defined Pydantic model, generate a JSON schema from it using the .model_json_schema() method, and pass this schema to the format parameter of the ollama API call.5 This creates a robust, type-safe bridge across the language boundary. The Io core requests a transduction into a schema defined by a Python Pydantic class. The Python worker uses that class to generate the schema for
+ollama, receives the JSON response, and then uses the same Pydantic class to parse and validate the response before sending it back to Io. This self-consistent validation loop significantly reduces the risk of data corruption at the FFI boundary.
+* Response: A message containing the validated data, parsed into a corresponding Io object graph.
+
+
+3.2 Message Schema: transduceSchemaToText
+
+
+This message is used for generating natural language representations, such as summaries or explanations, from structured data objects. It is the primary mechanism for creating user-facing reports or explaining the intermediate steps of a complex reasoning chain.
+   * Payload Schema: { "prompt_template_oid": <OID>, "schema_input": <Io Object> }
+   * Workflow: The calling actor provides the OID of a PromptTemplate object and a structured Io object (e.g., a ReasoningContext object 2). The
+LLMTransducer actor serializes the Io object into a JSON string. This string is then injected as context into the prompt template and sent to the ollama service for processing.
+   * Response: A message containing the unstructured natural language text generated by the LLM.
+
+
+3.3 Message Schema: transduceTextToToolCall
+
+
+This message is the foundation for enabling LLM-driven action and control within the TELOS system. Its purpose is to interpret a natural language command, select an appropriate system "tool" to execute from a list of available options, and return the tool's name and validated arguments.
+      * Payload Schema: { "prompt_template_oid": <OID>, "text_input": <String>, "available_tools": <List of JSON Schemas> }
+      * Workflow: The calling actor (e.g., HRCOrchestrator) provides a list of available tools it can execute. Each tool is defined by a JSON schema that is compliant with the ollama tool-calling format, specifying the function's name, description, and parameters.8 The
+OllamaWorker passes this list directly to the tools parameter of the ollama API call. The LLM then determines which, if any, of the provided tools should be called to address the user's input.
+      * Response: If the LLM chooses to use a tool, the LLMTransducer will return a message with the schema { "tool_name": <String>, "arguments": <Io Object> }. The calling actor is then responsible for dispatching this structured request as a new Io message to the appropriate actor that implements the chosen tool.
+
+
+3.4 LLMTransducer Actor Message Protocol
+
+
+The following table formalizes the message-passing protocol for the LLMTransducer actor, providing the definitive contract for all interactions.
+Message Name
+	Payload Schema
+	Description
+	Expected Response Schema
+	transduceTextToSchema
+	{ "prompt_template_oid": OID, "text_input": String, "output_schema_name": String }
+	Parses unstructured text into a structured object defined by a named Pydantic schema.
+	A structured Io object graph matching the requested schema.
+	transduceSchemaToText
+	{ "prompt_template_oid": OID, "schema_input": Io Object }
+	Generates a natural language description or summary from a structured Io object.
+	An Io String containing the generated text.
+	transduceTextToToolCall
+	{ "prompt_template_oid": OID, "text_input": String, "available_tools": List of JSON Schemas }
+	Interprets a natural language command and selects a tool to call from a provided list.
+	{ "tool_name": String, "arguments": Io Object } or nil if no tool is called.
+	
+
+IV. Prompt Engineering as a Formal, Managed Protocol
+
+
+This section elevates prompt engineering from an informal, ad-hoc practice to a rigorous, architecturally managed discipline. This formalization is essential for ensuring that all LLM interactions are reproducible, auditable, and dynamically tunable, in keeping with the core "Living Image" principle of the TELOS architecture.1
+
+
+4.1 The L3 PromptTemplate Object Mandate
+
+
+All prompts used for LLM transduction must be defined and stored as persistent PromptTemplate objects within the L3 ZODB store.1 The practice of hardcoding prompt strings in the Io or Python source code is explicitly forbidden.
+This mandate treats prompts as first-class citizens of the "Living Image," on par with the Concept objects that form the system's knowledge graph. Storing prompts as versioned, transactional data in the L3 database allows them to be audited, refined, and updated at runtime without requiring code deployments. This provides a powerful and agile mechanism for tuning and evolving the system's linguistic behavior over time, a critical capability for a system designed for continuous learning and adaptation.
+
+
+4.2 Schema Definition for PromptTemplate Objects
+
+
+To enforce a structured, best-practice approach to prompt design, the PromptTemplate object schema must include a comprehensive set of attributes. This ensures that every prompt is a complete and well-defined specification for a linguistic task.2 The schema must include:
+         * template_oid and version: For unique identification and version control.
+         * description: A human-readable description of the template's intended purpose and use case.
+         * persona_priming: Text that establishes the role, context, and desired tone for the LLM (e.g., "You are a senior programmer who writes clean, efficient code with helpful comments.").12
+         * context_injection_rules: A dictionary defining named placeholders for runtime data that will be injected into the prompt (e.g., {"input_text": "user_query"}).
+         * output_instructions: Explicit, unambiguous instructions detailing the task to be performed and the desired output format. It is critical to include these instructions even when a JSON schema is provided, as this helps the model better understand the request.5
+         * negative_constraints: A list of explicit negative rules to guide the model away from undesirable or unsafe behaviors (e.g., "DO NOT use the eval, exec, or subprocess modules.", "DO NOT include any explanatory text outside the final JSON structure.").2
+         * few_shot_examples: A list of complete input/output pairs that serve as in-context learning examples, dramatically improving the model's adherence to complex formatting and nuanced instructions.
+
+
+4.3 L3 PromptTemplate Object Schema
+
+
+The following table provides the definitive schema for the PromptTemplate persistent object, to be implemented within the L3 ZODB.
+Attribute Name
+	Data Type (ZODB)
+	Description
+	Example Value
+	template_oid
+	persistent.Persistent
+	The unique, persistent object identifier.
+	(Internal ZODB OID)
+	version
+	int
+	An integer for version control of the template.
+	2
+	description
+	str
+	A human-readable summary of the template's purpose.
+	"Parses a user's natural language database query into a structured Query object."
+	persona_priming
+	str
+	Text to set the LLM's role and context.
+	"You are an expert SQL analyst. Your task is to translate user requests into precise, structured query objects."
+	context_injection_rules
+	persistent.mapping.PersistentMapping
+	A mapping of placeholder names to the context keys they will be filled from.
+	{"user_request": "text_input"}
+	output_instructions
+	str
+	The core instruction text, including placeholders.
+	"Analyze the following user request: {user_request}. Extract the entities, relationships, and filters into a valid JSON object."
+	negative_constraints
+	persistent.list.PersistentList
+	A list of rules defining forbidden actions or outputs.
+	``
+	few_shot_examples
+	persistent.list.PersistentList
+	A list of dictionaries, each containing an example input and output.
+	, "filters": {"state": "CA"}}'}]
+	
+
+V. Systemic Synergy: Enhancing the Cognitive Core and Autopoietic Engine
+
+
+This section details how the newly integrated LLMTransducer service will be leveraged to enhance and, critically, de-risk the system's highest-level cognitive functions. The value of this integration extends far beyond simple text processing; it provides a foundational capability that strengthens the entire architecture.
+
+
+5.1 Enhancing the HRCOrchestrator's Query Understanding
+
+
+The HRCOrchestrator actor is the heart of the TELOS cognitive core, responsible for managing the Cognitive Escalation Heuristic.2 While this heuristic provides a robust framework for resolving ambiguity
+during a reasoning process, the initial parsing of a complex, multi-faceted user query from natural language into an executable plan is a critical and previously underspecified step.
+This initial parsing is a perfect example of a task that requires slow, deliberate, and probabilistic "System 2" cognition, which stands in contrast to the fast, "System 1" retrieval performed by the memory fabric.1 The
+LLMTransducer provides the ideal mechanism to serve as this "System 2" front-door. It can perform the computationally expensive and nuanced task of parsing a user's fuzzy, human-language intent into a formal, structured query. This structured query can then be executed with extreme speed and determinism by the "System 1" VSA and ANN components of the memory fabric.
+Therefore, the HRCOrchestrator must be updated to use the LLMTransducer as its primary front-end for this task. Upon receiving a free-text query, the HRCOrchestrator will send a transduceTextToSchema message to the LLMTransducer. The target schema will be a StructuredQuery object, with fields for intent, target_entities, positive_constraints, negative_constraints, and required_relations. The resulting structured object provides a deterministic, machine-readable plan that the HRCOrchestrator can then execute against the L1, L2, and L3 layers of the federated memory fabric.
+
+
+5.2 A Tiered Protocol for Generative Autopoiesis
+
+
+The GenerativeKernel actor's ability to autonomously generate and execute new Python code via the doesNotUnderstand_ protocol is the system's most powerful capability and the very heart of its autopoietic engine. 2 While this represents a significant stability and security risk, an overly risk-averse strategy that eliminates this capability entirely would violate the system's foundational mandate for dynamism and runtime evolution. 2 The philosophy of the "Living Image" is not to avoid failure, but to learn from it within a contained environment. 2
+Therefore, the doesNotUnderstand_ protocol must be refactored not to eliminate code generation, but to treat it as the final, most powerful step in a new, tiered escalation heuristic. This approach balances safety with the non-negotiable requirement for the system to be able to create genuinely new features.
+The new, mandated workflow is as follows:
+         1. Stage 1: Planning with Existing Tools. When the doesNotUnderstand_ protocol is triggered, the GenerativeKernel will first attempt to resolve the unknown message by formulating a plan using existing capabilities. It will send a transduceTextToToolCall request to the LLMTransducer, providing the JSON schemas for a curated set of high-level, safe, and pre-defined system functions as the available_tools. 16 The LLM's initial task is to act as a "planner," attempting to devise a solution by selecting and parameterizing these trusted tools. 11
+         2. Stage 2: Escalation to Generative Code. If the LLM determines that no combination of the available tools can fulfill the request, or if the planning stage fails to produce a viable result, the protocol escalates. Only at this stage does the GenerativeKernel invoke its most potent capability: prompting the LLM to generate novel Python code to create a new feature. 2
+         3. Stage 3: Contained Execution. This newly generated code is never executed in an uncontrolled environment. It must be executed within the full, multi-layered security sandbox, which provides process isolation via an ephemeral Docker container and kernel-level system call filtering via eBPF and the secimport library. 2 The result is communicated back to the Io core, and the container is irrevocably destroyed. 16
+This tiered protocol embodies the true spirit of the doesNotUnderstand_ directive. It intelligently applies the principle of least privilege, first attempting to solve problems with existing, trusted functions. However, it preserves the system's essential dynamism by retaining the ability to generate, execute, and learn from entirely new code when necessary, ensuring that the autopoietic engine remains capable of genuine evolution and self-modification. 2
+
+
+VI. Validation and Performance Mandates
+
+
+This final section extends the system's existing End-to-End Performance Validation Protocol to encompass the new LLM transduction capabilities. These mandates are essential to ensure that the integration meets the system's rigorous, non-negotiable standards for performance, scalability, and operational resilience.2
+
+
+6.1 New Key Performance Indicators (KPIs)
+
+
+The system's automated Validation Gauntlet must be augmented with new benchmarks to measure and report on the following KPIs related to the LLM subsystem:
+         * p99 Transduction Latency: The 99th percentile end-to-end latency for a complete round-trip of a transduceTextToSchema message. This metric is to be measured from the moment the LLMTransducer actor receives the initial message to the moment it sends the final, parsed response back to the requester. This KPI isolates the performance of the entire LLM subsystem, including FFI/IPC overhead and ollama server response time.
+         * Schema Adherence Rate: The percentage of non-streaming transduceTextToSchema responses that successfully validate against the requested Pydantic schema without requiring a client-side retry. This metric measures the reliability of the model and the effectiveness of the prompt. The formal success criterion for this metric is mandated to be >99.9%. Failures below this threshold indicate systemic issues with the selected model, the prompt templates, or the ollama service itself that must be addressed.
+
+
+6.2 Preservation of Existing Performance Targets
+
+
+A hard, non-negotiable constraint of this integration is that the introduction of the LLM service must not, under any circumstances, cause a regression in the system's primary performance target: the p99 Hybrid Query Latency of <50 ms for all queries that do not require LLM transduction.1 This target is the cornerstone of the system's fluid "System 1" cognitive path.
+To enforce this, the existing benchmark suite that validates this target must be executed as part of the Validation Gauntlet with the LLMTransducer actor and its associated Python worker processes active but idle. This will verify that there is no passive resource contention (e.g., for CPU, memory, or process pool slots) that negatively impacts the performance of the core reasoning path. This validation ensures that the "System 1" fast path remains uncompromised.
+
+
+6.3 Stress Testing and Resilience
+
+
+The Validation Gauntlet must be expanded to include a new suite of stress tests designed to verify the resilience of the LLM integration. These tests must simulate a range of failure modes in the external ollama service, including network timeouts, HTTP 500 errors, rate-limiting responses, and malformed or non-schema-compliant JSON responses.
+The OllamaWorker and LLMTransducer actor must demonstrate robust and graceful error handling in response to these simulated failures. This includes the implementation of configurable retry mechanisms with exponential backoff for transient errors and the ability to return a formal TransductionFailure error message to the calling actor without crashing the worker process or blocking the LLMTransducer's message queue. This ensures that failures in the LLM subsystem are properly contained and do not cascade to destabilize the entire cognitive architecture.
+Works cited
+         1. Tiered Cache Design and Optimization
+         2. Design Protocol for Dynamic System Resolution
+         3. Mathematical Functions For Knowledge Discovery
+         4. API reference - Ollama's documentation, accessed September 25, 2025, https://docs.ollama.com/api
+         5. Structured outputs · Ollama Blog, accessed September 25, 2025, https://ollama.com/blog/structured-outputs
+         6. A High-Resolution Implementation Plan: Supplemental Mandates for the TELOS Constructor
+         7. A Strategic Directive for the Autonomous Generation of a Self-Supervised Neuro-Symbolic Cognitive Architecture
+         8. Ollama Python library 0.4 with function calling improvements, accessed September 25, 2025, https://ollama.com/blog/functions-as-tools
+         9. Tool support · Ollama Blog, accessed September 25, 2025, https://ollama.com/blog/tool-support
+         10. JSON Schema - Pydantic, accessed September 25, 2025, https://docs.pydantic.dev/latest/concepts/json_schema/
+         11. Dynamic OO Enhancing LLM Understanding
+         12. Supercharging Ollama: Mastering System Prompts for Better Results - John W. Little, accessed September 25, 2025, https://johnwlittle.com/supercharging-ollama-mastering-system-prompts-for-better-results/
+         13. Structured outputs with Ollama - what's your recipe for success? : r/LocalLLaMA - Reddit, accessed September 25, 2025, https://www.reddit.com/r/LocalLLaMA/comments/1jflouy/structured_outputs_with_ollama_whats_your_recipe/
+         14. How to Write Negative Prompts (Relevant for SDXL only) - Layer | Documentation & Guides, accessed September 25, 2025, https://help.layer.ai/en/articles/8120630-how-to-write-negative-prompts-relevant-for-sdxl-only
+         15. Controlling your LLM: Deep dive into Constrained Generation | by Andrew Docherty, accessed September 25, 2025, https://medium.com/@docherty/controlling-your-llm-deep-dive-into-constrained-generation-1e561c736a20
+         16. AI Constructor Implementation Plan

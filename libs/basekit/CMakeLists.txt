@@ -26,6 +26,7 @@ file(GLOB HEADERS "source/*.h")
 # Now build the shared library
 add_library(basekit SHARED ${SRCS})
 set_target_properties(basekit PROPERTIES PUBLIC_HEADER "${HEADERS}")
+target_include_directories(basekit PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/source)
 target_link_libraries(basekit ${BASEKIT_LIBS})
 
 # ...And the static library

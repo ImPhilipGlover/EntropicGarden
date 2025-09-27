@@ -1,227 +1,322 @@
-# Base Io build system
-# Written by Jeremy Tregunna <jeremy.tregunna@me.com>
-#
-# This file is the top level CMakeLists.txt and all the items defined in this
-# file are inherited by CMakeLists.txt throughout the rest of the system, if
-# they can be traced back through subdirectories to this file.
-#
-# This is an experimental build system, and it should be treated as such. It
-# is being developed on a Mac OS X system, and tested as well on a FreeBSD
-# system. I have no access to other platforms to test there. If this notice
-# goes away, then it can be said that this system works on at least three
-# major platforms:
-#   1. Mac OS X
-#   2. Linux
-#   3. Windows
-#
-# If you find a bug for a particular platform, please feel free to fix it, or
-# contact the iolanguage mailing list, file a bug report, or contact Jeremy
-# Tregunna directly, at the e-mail address above. Please follow that order.
+# TELOS Unified Polyglot Build System
+# 
+# This CMakeLists.txt serves as the single point of control for the entire TELOS
+# system build process, managing C, C++, and Python components within a consistent
+# and managed environment as mandated by the architectural blueprints.
 
-# Require CMake 2.8. I know for sure that this will not work with CMake 2.6
-# due to the use of the FILE command we use when creating the bundle
-# hierarchy.
-#cmake_minimum_required(VERSION 2.8.12)
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.20)
+project(TELOS
+    VERSION 1.0.0
+    DESCRIPTION "TELOS Neuro-Symbolic Cognitive Architecture"
+    LANGUAGES C CXX ASM
+)
 
-# Mac OS X: Setting policy CMP0042 to the new behavior generates dylibs with
-# RPATH-relative install name that is better suited for Mac OS X applications
-# embedding Io in their bundle.
-if(POLICY CMP0042)
-	cmake_policy(SET CMP0042 NEW)
-endif()
-	
-# Project name, this gets prefixed to a bunch of stuff under the hood. No
-# spaces, or anything silly like that please.
-project(IoLanguage C)
-
-# Find Python for FFI Bridge - try modern approach first, fall back to legacy
-cmake_policy(SET CMP0148 OLD)  # Allow legacy FindPythonLibs for compatibility
-find_package(PythonLibs REQUIRED)
-find_package(PythonInterp REQUIRED)
-include_directories(${PYTHON_INCLUDE_DIRS})
-
-# Enable ASM language for ARM64 coroutine support
 enable_language(ASM)
 
-# Default config when building with gcc variants
-IF(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
-    SET(CMAKE_BUILD_TYPE_DebugFast)
-    SET(CMAKE_CXX_FLAGS_DEBUGFAST "-g -O0")
-    SET(CMAKE_C_FLAGS_DEBUGFAST "-g -O0")
+# Set C++17 as minimum standard for modern features
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# Enable position independent code for shared libraries
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# =============================================================================
+# Build Configuration and Compiler Flags
+# =============================================================================
+
+# Default to Release build with debug info if not specified
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
+endif()
+
+# Add AddressSanitizer build type for memory safety validation
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO_ASAN "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fsanitize=address -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO_ASAN "${CMAKE_C_FLAGS_RELWITHDEBINFO} -fsanitize=address -fno-omit-frame-pointer")
+set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO_ASAN "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} -fsanitize=address")
+set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO_ASAN "${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO} -fsanitize=address")
+
+# Enable warnings (but not -Werror globally due to legacy IoVM code)
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra -Wno-unused-parameter)
+endif()
+
+# =============================================================================
+# Python Detection and Configuration
+# =============================================================================
+
+# Find Python interpreter and development components
+find_package(Python COMPONENTS Interpreter Development REQUIRED)
+
+message(STATUS "Python version: ${Python_VERSION}")
+message(STATUS "Python executable: ${Python_EXECUTABLE}")
+message(STATUS "Python include dirs: ${Python_INCLUDE_DIRS}")
+message(STATUS "Python libraries: ${Python_LIBRARIES}")
+
+# Verify we can import required Python modules
+execute_process(
+    COMMAND ${Python_EXECUTABLE} -c "import cffi, multiprocessing, numpy; print('Python dependencies OK')"
+    RESULT_VARIABLE PYTHON_DEPS_CHECK
+    OUTPUT_VARIABLE PYTHON_DEPS_OUTPUT
+    ERROR_VARIABLE PYTHON_DEPS_ERROR
+)
+
+if(NOT PYTHON_DEPS_CHECK EQUAL 0)
+    message(FATAL_ERROR "Required Python dependencies not found: ${PYTHON_DEPS_ERROR}")
+endif()
+
+message(STATUS "${PYTHON_DEPS_OUTPUT}")
+
+# =============================================================================
+# Io VM Integration
+# =============================================================================
+
+# Find the Io VM headers and libraries
+# Look for IoVM in the standard libs directory
+set(IOVM_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/iovm")
+set(IOVM_INCLUDE_DIR "${IOVM_ROOT_DIR}/source")
+set(IOVM_LIBRARY_DIR "${IOVM_ROOT_DIR}/_build")
+
+# Also include garbage collector headers
+set(GC_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/garbagecollector")
+set(GC_INCLUDE_DIR "${GC_ROOT_DIR}/source")
+
+# Base Kit includes for Common.h and other base types
+set(BASEKIT_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/basekit")
+set(BASEKIT_INCLUDE_DIR "${BASEKIT_ROOT_DIR}/source")
+
+# Coroutine library for Coro.h
+set(COROUTINE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/coroutine")
+set(COROUTINE_INCLUDE_DIR "${COROUTINE_ROOT_DIR}/source")
+
+# Check if Io headers exist
+if(EXISTS "${IOVM_INCLUDE_DIR}/IoState.h")
+    message(STATUS "Found Io VM headers at: ${IOVM_INCLUDE_DIR}")
+    set(IOVM_FOUND TRUE)
+else()
+    message(WARNING "Io VM headers not found. You may need to build the Io VM first.")
+    set(IOVM_FOUND FALSE)
+endif()
+
+# =============================================================================
+# TELOS Library Configuration
+# =============================================================================
+
+# Define the main TELOS source directories
+set(TELOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos/source")
+set(TELOS_IO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos/io")
+set(TELOS_PYTHON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos/python")
+
+# =============================================================================
+# OpenTelemetry Collector Configuration
+# =============================================================================
+
+set(TELOS_OTEL_ENDPOINT "http://localhost:4317" CACHE STRING "OTLP gRPC endpoint for TELOS telemetry exports")
+set(TELOS_OTEL_HEADERS "" CACHE STRING "Optional OTLP headers in key=value pairs separated by commas")
+set(TELOS_OTEL_INSECURE OFF CACHE BOOL "Allow insecure (non-TLS) OTLP connections")
+
+if(TELOS_OTEL_INSECURE)
+    set(TELOS_OTEL_INSECURE_BOOL "true")
+else()
+    set(TELOS_OTEL_INSECURE_BOOL "false")
+endif()
+
+set(TELOS_CONFIG_DIR "${CMAKE_BINARY_DIR}/config")
+file(MAKE_DIRECTORY "${TELOS_CONFIG_DIR}")
+
+configure_file(
+    "${TELOS_PYTHON_DIR}/otel_settings.json.in"
+    "${TELOS_CONFIG_DIR}/otel_settings.json"
+    @ONLY
+)
+
+set(TELOS_OTEL_SETTINGS_PATH "${TELOS_CONFIG_DIR}/otel_settings.json" CACHE INTERNAL "Path to generated OTLP configuration" FORCE)
+
+# Create TELOS core library
+set(TELOS_CORE_SOURCES
+    "${TELOS_SOURCE_DIR}/synaptic_bridge.h"
+    "${TELOS_SOURCE_DIR}/synaptic_bridge.c"
+    "${TELOS_SOURCE_DIR}/telos_proxy.h"
+    "${TELOS_SOURCE_DIR}/telos_proxy_internal.h"
+    "${TELOS_SOURCE_DIR}/telos_proxy.c"
+    "${TELOS_SOURCE_DIR}/telos_proxy_forwarding.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/deps/parson/parson.c"
+)
+
+# Create the actual TELOS core library with C implementation
+add_library(telos_core SHARED ${TELOS_CORE_SOURCES})
+target_include_directories(telos_core PUBLIC
+    ${TELOS_SOURCE_DIR}
+    ${Python_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/parson
+)
+
+# Link with Python libraries
+target_link_libraries(telos_core PUBLIC ${Python_LIBRARIES})
+
+if(IOVM_FOUND)
+    target_include_directories(telos_core PUBLIC 
+        ${IOVM_INCLUDE_DIR}
+        ${GC_INCLUDE_DIR}
+        ${BASEKIT_INCLUDE_DIR}
+        ${COROUTINE_INCLUDE_DIR}
+    )
+    target_compile_definitions(telos_core PUBLIC HAVE_IOVM_HEADERS=1)
+    # Apply strict error checking to TELOS code only (not legacy IoVM)
+    target_compile_options(telos_core PRIVATE -Werror -Wno-sign-compare)
+endif()
+
+# =============================================================================
+# Python Extension Build Integration
+# =============================================================================
+
+# Custom command to build the Python CFFI extension
+add_custom_command(
+    OUTPUT "${TELOS_PYTHON_DIR}/_telos_bridge.c"
+    COMMAND ${CMAKE_COMMAND} -E env
+        TELOS_CORE_LIB=$<TARGET_FILE:telos_core>
+        TELOS_CORE_LIBDIR=$<TARGET_LINKER_FILE_DIR:telos_core>
+        TELOS_CORE_INCLUDEDIR=${TELOS_SOURCE_DIR}
+        ${Python_EXECUTABLE} "${TELOS_PYTHON_DIR}/build_extension.py"
+    DEPENDS 
+        telos_core
+        "${TELOS_SOURCE_DIR}/synaptic_bridge.c"
+        "${TELOS_SOURCE_DIR}/synaptic_bridge.h"
+        "${TELOS_PYTHON_DIR}/build_extension.py"
+    WORKING_DIRECTORY ${TELOS_PYTHON_DIR}
+    COMMENT "Generating CFFI Python extension"
+)
+
+# Create a custom target for the Python extension build
+add_custom_target(telos_python_extension
+    DEPENDS "${TELOS_PYTHON_DIR}/_telos_bridge.c"
+)
+
+add_dependencies(telos_python_extension telos_core)
+
+# =============================================================================
+# Testing Configuration
+# =============================================================================
+
+# Enable testing if this is the main project
+if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+    enable_testing()
     
-    # Only use -msse2 flag for x86/x86_64 architectures.
-    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
-        SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2")
+    # Add IoVM and its dependencies to unified polyglot build per architectural mandate
+    # Build order: basekit -> garbagecollector -> coroutine -> iovm
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/basekit")
+        message(STATUS "Adding basekit to unified build system")
+        add_subdirectory(libs/basekit)
     endif()
     
-    if(NOT CMAKE_BUILD_TYPE)
-            SET(CMAKE_BUILD_TYPE "DebugFast")
-    endif(NOT CMAKE_BUILD_TYPE)
-ENDIF(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/garbagecollector")
+        message(STATUS "Adding garbagecollector to unified build system")
+        add_subdirectory(libs/garbagecollector)
+    endif()
+    
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/coroutine")
+        message(STATUS "Adding coroutine to unified build system") 
+        add_subdirectory(libs/coroutine)
+    endif()
+    
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/iovm")
+        message(STATUS "Adding IoVM to unified build system")
+        add_subdirectory(libs/iovm)
+    endif()
+    
+    if(IOVM_FOUND)
+        if(TARGET iovmall AND TARGET basekit AND TARGET coroutine AND TARGET garbagecollector)
+            target_link_libraries(telos_core PUBLIC iovmall basekit coroutine garbagecollector)
+            add_dependencies(telos_core iovmall basekit coroutine garbagecollector)
+            target_compile_definitions(telos_core PUBLIC HAVE_IOVM=1)
 
-MESSAGE(STATUS "Configuration set to: ${CMAKE_BUILD_TYPE}")
+            add_library(IoTelosBridge MODULE "${TELOS_SOURCE_DIR}/IoTelosBridge.c")
 
-# Don't want a coloured Makefile. On some platforms, the blue that is used is
-# so dark it's illegible.
-set(CMAKE_COLOR_MAKEFILE off)
+            target_include_directories(IoTelosBridge PRIVATE
+                ${TELOS_SOURCE_DIR}
+                ${IOVM_INCLUDE_DIR}
+                ${GC_INCLUDE_DIR}
+                ${BASEKIT_INCLUDE_DIR}
+                ${COROUTINE_INCLUDE_DIR}
+                ${Python_INCLUDE_DIRS}
+            )
 
-# We want our binaries to go here
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/_build/binaries)
+            target_compile_definitions(IoTelosBridge PRIVATE HAVE_IOVM_HEADERS=1)
 
-# Macro to create the _build directory hierarchy.
-# Note: I'm not sure we need lib/ or objs/ in there. But I'll leave them in
-# anyway, I'm just not going to do anything with them unless it breaks doing
-# nothing breaks something.
-macro(make_build_bundle NAME)
-	file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${NAME}/binaries ${CMAKE_CURRENT_BINARY_DIR}/${NAME}/objs ${CMAKE_CURRENT_BINARY_DIR}/${NAME}/headers ${CMAKE_CURRENT_BINARY_DIR}/${NAME}/lib ${CMAKE_CURRENT_BINARY_DIR}/${NAME}/dll)
-endmacro(make_build_bundle)
+            target_link_libraries(IoTelosBridge PRIVATE
+                telos_core
+                iovmall
+                basekit
+                coroutine
+                garbagecollector
+            )
 
-# Generic macro to copy files mattching GLOBPAT in the current source
-# directory into another directory.
-macro(copy_files NAME GLOBPAT DSTDIR)
-	# Get a list of the filenames mattching the pattern GLOBPAT
-	file(GLOB ${NAME} ${GLOBPAT})
+            add_dependencies(IoTelosBridge telos_core iovmall basekit coroutine garbagecollector)
 
-	# Create a custom copy target and display a message
-	add_custom_target(copy_${NAME} ALL COMMENT "Copying files: ${CMAKE_CURRENT_SOURCE_DIR}/${GLOBPAT} to ${DSTDIR}")
+            set_target_properties(IoTelosBridge PROPERTIES
+                OUTPUT_NAME "IoTelosBridge"
+                LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/addons/TelosBridge/_build/dll"
+                RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/addons/TelosBridge/_build/dll"
+            )
 
-	foreach(FILENAME ${${NAME}})
-		# Finally, copy the files.
-		add_custom_command(
-			TARGET copy_${NAME}
-			COMMAND ${CMAKE_COMMAND} -E copy ${FILENAME} ${DSTDIR}
-		)
-	endforeach(FILENAME)
-endmacro(copy_files)
+            add_custom_command(
+                TARGET IoTelosBridge POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/addons/TelosBridge/io"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${TELOS_IO_DIR}/TelosBridge.io" "${PROJECT_BINARY_DIR}/addons/TelosBridge/io/TelosBridge.io"
+            )
+        else()
+            message(WARNING "IoVM components not fully built; telos_core will not link against iovmall")
+        endif()
+    endif()
 
-# Binary suffix is used to append things like .exe to binary names, for
-# windows support.
-if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	set(BINARY_SUFFIX ".exe")
-	set(CMAKE_STATIC_LIBRARY_PREFIX "lib")
-	set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
-	set(CMAKE_IMPORT_LIBRARY_PREFIX "lib")
-else()
-	set(BINARY_SUFFIX "")
-endif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+    # Add tests directory after Io targets are defined so test harnesses can depend on them
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/tests")
+        add_subdirectory(libs/tests)
+    endif()
+endif()
 
-# Definitions on where we can find headers and whatnot. Convenience definitions.
-set(COROUTINE_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libs/coroutine/source)
-set(BASEKIT_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libs/basekit/source)
-set(GARBAGECOLLECTOR_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libs/garbagecollector/source)
-set(IOVM_SOURCE_DIR ${PROJECT_SOURCE_DIR}/libs/iovm/source)
+# =============================================================================
+# Installation Configuration
+# =============================================================================
 
-# Subdirectories. These directories should have their own CMakeLists.txt.
-add_subdirectory(libs)
-add_subdirectory(tools)
+# Install the TELOS headers
+install(FILES "${TELOS_SOURCE_DIR}/synaptic_bridge.h"
+              "${TELOS_SOURCE_DIR}/IoTelosBridge.h"
+    DESTINATION include/telos
+)
 
-# Ensure the _build hierarchy is created top-level, this is where our
-# binaries go.
-make_build_bundle(_build)
+# Install the TELOS Io files
+install(DIRECTORY "${TELOS_IO_DIR}/"
+    DESTINATION share/telos/io
+    FILES_MATCHING PATTERN "*.io"
+)
 
-# Next we NEED to copy all the libs headers into one single dir in the bundle.
-copy_files(coroutine_headers ${PROJECT_SOURCE_DIR}/libs/coroutine/source/*.h ${CMAKE_CURRENT_BINARY_DIR}/_build/headers)
-copy_files(basekit_headers ${PROJECT_SOURCE_DIR}/libs/basekit/source/*.h ${CMAKE_CURRENT_BINARY_DIR}/_build/headers)
-copy_files(garbagecollector_headers ${PROJECT_SOURCE_DIR}/libs/garbagecollector/source/*.h ${CMAKE_CURRENT_BINARY_DIR}/_build/headers)
-copy_files(iovm_headers ${PROJECT_SOURCE_DIR}/libs/iovm/source/*.h ${CMAKE_CURRENT_BINARY_DIR}/_build/headers)
+# =============================================================================
+# Build Information and Status
+# =============================================================================
 
-# Packaging stuff
+# Print build configuration summary
+message(STATUS "==========================================")
+message(STATUS "TELOS Build Configuration Summary")
+message(STATUS "==========================================")
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "C Compiler: ${CMAKE_C_COMPILER}")
+message(STATUS "CXX Compiler: ${CMAKE_CXX_COMPILER}")
+message(STATUS "Python: ${Python_VERSION} (${Python_EXECUTABLE})")
+message(STATUS "TELOS Source Dir: ${TELOS_SOURCE_DIR}")
+message(STATUS "Io VM Found: ${IOVM_FOUND}")
+message(STATUS "==========================================")
 
-#Modified from: http://www.mail-archive.com/cmake@cmake.org/msg32916.html
-MACRO (TODAY RESULT)
-    IF (WIN32)
-        EXECUTE_PROCESS(COMMAND "cmd" " /C date /T" OUTPUT_VARIABLE ${RESULT})
-        string(REGEX REPLACE "(..)/(..)/(....).*" "\\1.\\2.\\3" ${RESULT} 
-${${RESULT}})
-    ELSEIF(UNIX)
-        EXECUTE_PROCESS(COMMAND "date" "+%d/%m/%Y" OUTPUT_VARIABLE ${RESULT})
-        string(REGEX REPLACE "(..)/(..)/(....).*" "\\1.\\2.\\3" ${RESULT} 
-${${RESULT}})
-    ELSE (WIN32)
-        MESSAGE(SEND_ERROR "date not implemented")
-        SET(${RESULT} 00.00.0000)
-    ENDIF (WIN32)
-ENDMACRO (TODAY)
+# Add convenience target for building everything
+add_custom_target(telos_all
+    DEPENDS telos_core telos_python_extension
+)
 
-TODAY(CMD_DATE)
-STRING(SUBSTRING ${CMD_DATE} 0 2 CMD_DATE_DAY)
-STRING(SUBSTRING ${CMD_DATE} 3 2 CMD_DATE_MON)
-STRING(SUBSTRING ${CMD_DATE} 6 4 CMD_DATE_YEAR)
-SET(CMD_DATE "${CMD_DATE_YEAR}.${CMD_DATE_MON}.${CMD_DATE_DAY}")
-
-# If source tree is not a git repository this will not work
-#IF(WIN32 AND NOT CYGWIN)
-#	execute_process(COMMAND "cmd" " /C git rev-parse --short HEAD" OUTPUT_VARIABLE IO_GIT_REV)
-#ELSE(WIN32 AND NOT CYGWIN)
-#	execute_process(COMMAND git rev-parse --short HEAD OUTPUT_VARIABLE IO_GIT_REV)
-#ENDIF(WIN32 AND NOT CYGWIN)
-#string(REGEX REPLACE "(.......)." "\\1" IO_GIT_REV ${IO_GIT_REV})
-
-SET(CPACK_PACKAGE_NAME ${PROJECT_NAME})
-SET(CPACK_PACKAGE_VENDOR "iolanguage.com")
-SET(CPACK_PACKAGE_CONTACT "iolanguage@yahoogroups.com")
-SET(CPACK_RESOURCE_FILE_LICENSE ${PROJECT_SOURCE_DIR}/LICENSE.txt)
-SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Io Language")
-SET(CPACK_PACKAGE_VERSION "${CMD_DATE}")
-SET(CPACK_PACKAGE_VERSION_MAJOR ${CMD_DATE_YEAR})
-SET(CPACK_PACKAGE_VERSION_MINOR ${CMD_DATE_MON})
-SET(CPACK_PACKAGE_VERSION_PATCH ${CMD_DATE_DAY})
-SET(CPACK_PACKAGE_INSTALL_DIRECTORY ${CPACK_PACKAGE_NAME})
-
-IF(WIN32)
-	# It's not very clear whether redist files for MSVC build are in the path bellow...
-	# The semi-hardcoded path bellow is for Visual Studio 2008 Express.
-	# Anyway, we have to distinguish between Debug and Release redist files as well.
-	IF(MSVC)
-		STRING(REGEX REPLACE "\\\\" "\\\\\\\\" VC_INSTALL_PATH "$ENV{VCINSTALLDIR}")
-		SET(VC_RUNTIME_REDIST_FILES "File '${VC_INSTALL_PATH}\\\\redist\\\\Debug_NonRedist\\\\x86\\\\Microsoft.VC90.DebugCRT\\\\*.*'")
-	ENDIF(MSVC)
-	
-	SET(CPACK_SET_DESTDIR "OFF")
-	SET(CPACK_NSIS_URL_INFO_ABOUT "http://www.iolanguage.com")
-	SET(CPACK_NSIS_HELP_LINK "http://www.iolanguage.com")
-	SET(CPACK_NSIS_MODIFY_PATH "ON")
-	SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-		WriteIniStr '\$INSTDIR\\\\IoLanguageWebSite.url' 'InternetShortcut' 'URL' '${CPACK_NSIS_URL_INFO_ABOUT}'
-		SetOutPath '\$INSTDIR\\\\lib'
-		SetOverwrite try
-		${VC_RUNTIME_REDIST_FILES}
-	")
-	SET(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
-		Delete '\$INSTDIR\\\\IoLanguageWebSite.url'
-		Delete '\$INSTDIR\\\\lib\\\\*.*'
-	")
-
-	SET(CPACK_NSIS_CREATE_ICONS "
-		CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Io CLI.lnk' '$INSTDIR\\\\bin\\\\io.exe'
-		CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\IoLanguage Web Site.lnk' '\$INSTDIR\\\\IoLanguageWebSite.url'
-	")
-	SET(CPACK_NSIS_CREATE_ICONS_EXTRA "CreateShortCut '\$DESKTOP\\\\Io CLI.lnk' '$INSTDIR\\\\bin\\\\io.exe'")
-	SET(CPACK_NSIS_DELETE_ICONS "
-		Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Io CLI.lnk'
-		Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\IoLanguage Web Site.lnk'
-	")
-	SET(CPACK_NSIS_DELETE_ICONS_EXTRA "Delete '\$DESKTOP\\\\Io CLI.lnk'")
-ENDIF(WIN32)
-
-IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	SET(CPACK_SET_DESTDIR "ON")
-
-	FIND_PROGRAM(DPKG_CMD dpkg)
-	IF(DPKG_CMD)
-		SET(CPACK_GENERATOR ${CPACK_GENERATOR} DEB)
-	ELSE(DPKG_CMD)
-		MESSAGE( STATUS "dpkg binary not found, not building debian package" )
-	ENDIF(DPKG_CMD)
-
-	FIND_PROGRAM(RPMBUILD_CMD rpmbuild)
-	IF(RPMBUILD_CMD)
-		SET( CPACK_GENERATOR ${CPACK_GENERATOR} RPM )
-	ELSE(RPMBUILD_CMD)
-		MESSAGE( STATUS "rpmbuild binary not found, not building rpm package" )
-	ENDIF(RPMBUILD_CMD)
-ENDIF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-
-include(CPack)
-
+# Add target for running memory safety tests with AddressSanitizer
+add_custom_target(telos_test_asan
+    COMMAND ${CMAKE_COMMAND} -DCMAKE_BUILD_TYPE=RelWithDebInfo-ASan -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS_RELWITHDEBINFO_ASAN}" -DCMAKE_C_FLAGS="${CMAKE_C_FLAGS_RELWITHDEBINFO_ASAN}" ${CMAKE_SOURCE_DIR}
+    COMMENT "Configuring build with AddressSanitizer for memory safety testing"
+)

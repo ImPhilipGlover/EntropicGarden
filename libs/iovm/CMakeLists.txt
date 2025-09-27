@@ -91,6 +91,7 @@ add_definitions("-DBUILDING_IOVM_DLL")# -DINSTALL_PREFIX="${CMAKE_INSTALL_PREFIX
 
 # Include dirs, -I flags and whatnot
 include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/parson
     ${CMAKE_CURRENT_SOURCE_DIR}/../basekit/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../coroutine/source
@@ -99,6 +100,7 @@ include_directories(
 
 # Our library sources.
 file(GLOB SRCS "source/*.c")
+list(REMOVE_ITEM SRCS "${CMAKE_CURRENT_SOURCE_DIR}/source/main.c")
 list(APPEND SRCS source/IoVMInit.c)
 list(APPEND SRCS ../../deps/parson/parson.c)
 file(GLOB HEADERS "source/*.h")
@@ -107,6 +109,9 @@ file(GLOB HEADERS "source/*.h")
 add_library(iovmall SHARED ${SRCS})
 add_dependencies(iovmall io2c basekit coroutine garbagecollector)
 set_target_properties(iovmall PROPERTIES PUBLIC_HEADER "${HEADERS}")
+target_include_directories(iovmall PUBLIC
+	${CMAKE_CURRENT_SOURCE_DIR}/source
+)
 target_link_libraries(iovmall basekit coroutine garbagecollector)
 
 # The following add the install target, so we put libvmall.* in our
@@ -122,3 +127,14 @@ else()
         PUBLIC_HEADER DESTINATION include/io
         )
 endif(WIN32)
+
+# Build the io executable
+add_executable(io source/main.c)
+target_include_directories(io PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}/source
+    ${CMAKE_CURRENT_SOURCE_DIR}/../basekit/source
+    ${CMAKE_CURRENT_SOURCE_DIR}/../coroutine/source
+    ${CMAKE_CURRENT_SOURCE_DIR}/../garbagecollector/source
+)
+target_link_libraries(io iovmall)
+install(TARGETS io RUNTIME DESTINATION bin)

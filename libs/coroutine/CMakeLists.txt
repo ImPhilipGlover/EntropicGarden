@@ -24,7 +24,7 @@ file(GLOB HEADERS "source/*.h")
 # Hackery for CMake's horrible ASM support... but not on Windows
 if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     set(ASM_SOURCES source/asm.S)
-    set_source_files_properties(${ASM_SOURCES} PROPERTIES LANGUAGE C)
+    set_source_files_properties(${ASM_SOURCES} PROPERTIES LANGUAGE ASM)
     list(APPEND SRCS ${ASM_SOURCES})
 endif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
