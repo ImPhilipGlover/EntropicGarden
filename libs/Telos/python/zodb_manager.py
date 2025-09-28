@@ -45,6 +45,9 @@ except ImportError as e:
 # Shared memory imports for zero-copy IPC
 import multiprocessing.shared_memory as shm
 
+# UvmObject imports for prototypal persistence
+from uvm_object import UvmObject, create_uvm_object
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -98,129 +101,309 @@ def _normalized_relationship_payload(payload: Optional[Dict[str, Any]]) -> Dict[
 
     return normalized
 
-class PersistentConcept(Persistent):
+#!/usr/bin/env python3
+"""
+TELOS L3 ZODB Persistence Layer
+
+This module implements the ground truth persistence layer for the TELOS
+federated memory architecture. It provides ACID guarantees through ZODB's
+transactional system and supports distributed access via ZEO client-server
+architecture.
+
+All concept objects flow through this layer as the authoritative source of
+truth, with L1/L2 caches serving as performance optimization layers above it.
+
+Architectural Compliance:
+- Prototypal design principles (no classes, only factory functions and closures)
+- ACID transactional integrity via ZODB
+- ZEO client-server architecture for distributed access
+- Integration with Synaptic Bridge FFI contract
+"""
+
+import os
+import time
+import logging
+from typing import Dict, Any, Optional, List, Callable, Union, Iterable
+from dataclasses import dataclass
+import json
+import uuid
+from datetime import datetime, timezone
+
+# ZODB imports
+try:
+    import ZODB
+    import ZODB.FileStorage
+    import ZEO
+    import transaction
+    from persistent import Persistent
+    from persistent.mapping import PersistentMapping
+    from BTrees.IOBTree import IOBTree
+    from BTrees.OOBTree import OOBTree
+    from ZODB.POSException import ConflictError
+    ZODB_AVAILABLE = True
+except ImportError as e:
+    ZODB_AVAILABLE = False
+    IMPORT_ERROR = str(e)
+
+# Shared memory imports for zero-copy IPC
+import multiprocessing.shared_memory as shm
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Prototypal Persistent Concept Factory
+# =============================================================================
+
+RELATIONSHIP_KEY_ALIASES: Dict[str, Iterable[str]] = {
+    'is_a': ('is_a', 'isA'),
+    'part_of': ('part_of', 'partOf'),
+    'abstraction_of': ('abstraction_of', 'abstractionOf'),
+    'instance_of': ('instance_of', 'instanceOf'),
+    'associated_with': ('associated_with', 'associatedWith'),
+}
+
+RELATIONSHIP_ATTR_MAP: Dict[str, str] = {
+    'is_a': 'is_a',
+    'part_of': 'part_of',
+    'abstraction_of': 'abstraction_of',
+    'instance_of': 'instance_of',
+    'associated_with': 'associated_with',
+}
+
+
+def _normalized_relationship_payload(payload: Optional[Dict[str, Any]]) -> Dict[str, List[str]]:
+    if not isinstance(payload, dict):
+        return {}
+
+    normalized: Dict[str, List[str]] = {}
+    for snake_key, aliases in RELATIONSHIP_KEY_ALIASES.items():
+        found_key = None
+        for alias in aliases:
+            if alias in payload:
+                found_key = alias
+                break
+
+        if found_key is None:
+            continue
+
+        raw_values = payload.get(found_key)
+        serialised: List[str] = []
+
+        if isinstance(raw_values, Iterable) and not isinstance(raw_values, (str, bytes, dict)):
+            for entry in raw_values:
+                if entry is None:
+                    continue
+                serialised.append(str(entry))
+
+        normalized[snake_key] = serialised
+
+    return normalized
+
+
+def create_persistent_concept_prototype(oid: str = None, **kwargs) -> UvmObject:
     """
-    ZODB-compatible persistent concept storage.
-    
-    This class serves as the storage substrate for the TELOS concept system.
-    While it uses a class structure for ZODB compatibility, the external
-    interface follows prototypal principles through factory functions.
-    """
-    
-    def __init__(self, oid: str = None, **kwargs):
-        super().__init__()
-        
-        # Core data slots (matching Concept.io specification)
-        self.oid = oid or str(uuid.uuid4())
-        self.symbolic_hypervector_name = kwargs.get('symbolic_hypervector_name')
-        self.geometric_embedding_name = kwargs.get('geometric_embedding_name')
-        self.label = kwargs.get('label')
-        self.created_at = kwargs.get('created_at', datetime.now(timezone.utc))
-        self.last_modified = datetime.now(timezone.utc)
-        
-        # Relational links (stored as persistent structures)
-        self.is_a = IOBTree()
-        self.part_of = IOBTree()
-        self.abstraction_of = IOBTree()
-        self.instance_of = IOBTree()
-        self.associated_with = IOBTree()
-        
-        # Metadata
-        self.confidence = float(kwargs.get('confidence', 1.0))
-        self.usage_count = int(kwargs.get('usage_count', 0))
-        self.source = kwargs.get('source', 'unknown')
-        
-        relationships = kwargs.get('relationships')
-        if relationships:
-            self._apply_relationships(relationships)
+    Factory function to create a prototypal persistent concept object.
 
-        # Mark as changed to ensure persistence
-        self._p_changed = True
+    This follows pure prototypal principles using object composition and delegation.
+    No class inheritance - all behavior is implemented through closures and dictionaries.
 
-    def _reset_relationship_btree(self, attr: str, values: List[str]):
-        tree = IOBTree()
-        for value in values:
-            key = hash(value) % (2 ** 31)
-            tree[key] = value
-        setattr(self, attr, tree)
-        self._p_changed = True
+    Args:
+        oid: Object identifier
+        **kwargs: Concept attributes
 
-    def _apply_relationships(self, relationships: Dict[str, Any]):
-        normalized = _normalized_relationship_payload(relationships)
-        for snake_key, attr_name in RELATIONSHIP_ATTR_MAP.items():
-            values = normalized.get(snake_key)
-            if values is None:
-                continue
-            self._reset_relationship_btree(attr_name, values)
-    
-    def record_usage(self):
-        """Update usage statistics and mark as changed."""
-        self.usage_count += 1
-        self.last_modified = datetime.now(timezone.utc)
-        self._p_changed = True
-        
-    def add_relationship(self, relation_type: str, target_oid: str):
-        """Add a relationship to another concept."""
-        relation_btree = getattr(self, relation_type, None)
-        if relation_btree is None:
-            raise ValueError(f"Unknown relation type: {relation_type}")
-        
-        # Use target_oid hash as key for BTree efficiency
-        key = hash(target_oid) % (2**31)  # Ensure 31-bit int for IOBTree
-        relation_btree[key] = target_oid
-        self._p_changed = True
-        
-    def remove_relationship(self, relation_type: str, target_oid: str):
-        """Remove a relationship to another concept."""
-        relation_btree = getattr(self, relation_type, None)
-        if relation_btree is None:
-            raise ValueError(f"Unknown relation type: {relation_type}")
-        
-        key = hash(target_oid) % (2**31)
-        if key in relation_btree:
-            del relation_btree[key]
-            self._p_changed = True
-            
-    def get_related(self, relation_type: str) -> List[str]:
-        """Get all related concept OIDs of a specific type."""
-        relation_btree = getattr(self, relation_type, None)
-        if relation_btree is None:
-            raise ValueError(f"Unknown relation type: {relation_type}")
-        
-        return list(relation_btree.values())
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation."""
-        return {
-            'oid': self.oid,
-            'label': self.label,
-            'symbolic_hypervector_name': self.symbolic_hypervector_name,
-            'geometric_embedding_name': self.geometric_embedding_name,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'last_modified': self.last_modified.isoformat() if self.last_modified else None,
-            'confidence': self.confidence,
-            'usage_count': self.usage_count,
-            'source': self.source,
-            'relationships': {
-                'is_a': list(self.is_a.values()),
-                'part_of': list(self.part_of.values()),
-                'abstraction_of': list(self.abstraction_of.values()),
-                'instance_of': list(self.instance_of.values()),
-                'associated_with': list(self.associated_with.values())
-            }
-        }
-
-def create_persistent_concept(oid: str = None, **kwargs) -> PersistentConcept:
-    """
-    Factory function to create a persistent concept object.
-    
-    This follows prototypal principles by using a factory function rather
-    than direct class instantiation.
+    Returns:
+        Dictionary containing the prototypal concept interface
     """
     if not ZODB_AVAILABLE:
         raise RuntimeError(f"ZODB not available: {IMPORT_ERROR}")
+
+    # Core prototypal state stored in closure
+    _local_slots = {
+        'oid': oid or str(uuid.uuid4()),
+        'symbolic_hypervector_name': kwargs.get('symbolic_hypervector_name'),
+        'geometric_embedding_name': kwargs.get('geometric_embedding_name'),
+        'label': kwargs.get('label'),
+        'created_at': kwargs.get('created_at', datetime.now(timezone.utc)),
+        'last_modified': datetime.now(timezone.utc),
+        'confidence': float(kwargs.get('confidence', 1.0)),
+        'usage_count': int(kwargs.get('usage_count', 0)),
+        'source': kwargs.get('source', 'unknown'),
+    }
+
+    # Relationship BTrees (prototypal slots)
+    _relationships = {
+        'is_a': IOBTree(),
+        'part_of': IOBTree(),
+        'abstraction_of': IOBTree(),
+        'instance_of': IOBTree(),
+        'associated_with': IOBTree(),
+    }
+
+    # ZODB persistent object for storage compatibility
+    _persistent_obj = None
+
+    def _ensure_persistent_obj():
+        """Lazy initialization of ZODB persistent object."""
+        nonlocal _persistent_obj
+        if _persistent_obj is None:
+            # Create persistent wrapper for ZODB compatibility using UvmObject
+            _persistent_obj = create_uvm_object()
+            # Copy current state to persistent object
+            _persistent_obj._slots.update(_local_slots)
+            _persistent_obj._slots['_relations'] = _relationships
+            _persistent_obj._p_changed = True
+
+    def get_slot(name: str, default=None):
+        """Prototypal slot lookup."""
+        if name in _local_slots:
+            return _local_slots[name]
+        if name in _relationships:
+            return list(_relationships[name].values())
+        return default
+
+    def set_slot(name: str, value):
+        """Prototypal slot setting with transactional coherence."""
+        if name in _local_slots:
+            _local_slots[name] = value
+        elif name in _relationships:
+            # Handle relationship updates
+            _reset_relationship_btree(name, value if isinstance(value, list) else [value])
+        else:
+            _local_slots[name] = value
+
+        # Mark persistent object as changed
+        if _persistent_obj:
+            _persistent_obj._p_changed = True
+
+    def _reset_relationship_btree(relation_type: str, values: List[str]):
+        """Reset a relationship BTree with new values."""
+        tree = IOBTree()
+        for value in values:
+            if value is not None:
+                key = hash(value) % (2 ** 31)
+                tree[key] = value
+        _relationships[relation_type] = tree
+
+        if _persistent_obj:
+            _persistent_obj._slots['_relations'][relation_type] = tree
+            _persistent_obj._p_changed = True
+
+    def record_usage():
+        """Update usage statistics."""
+        _local_slots['usage_count'] += 1
+        _local_slots['last_modified'] = datetime.now(timezone.utc)
+
+        if _persistent_obj:
+            _persistent_obj._slots.update(_local_slots)
+            _persistent_obj._p_changed = True
+
+    def add_relationship(relation_type: str, target_oid: str):
+        """Add a relationship to another concept."""
+        if relation_type not in _relationships:
+            raise ValueError(f"Unknown relation type: {relation_type}")
+
+        key = hash(target_oid) % (2**31)
+        _relationships[relation_type][key] = target_oid
+
+        if _persistent_obj:
+            _persistent_obj._slots['_relations'][relation_type] = _relationships[relation_type]
+            _persistent_obj._p_changed = True
+
+    def remove_relationship(relation_type: str, target_oid: str):
+        """Remove a relationship to another concept."""
+        if relation_type not in _relationships:
+            raise ValueError(f"Unknown relation type: {relation_type}")
+
+        key = hash(target_oid) % (2**31)
+        if key in _relationships[relation_type]:
+            del _relationships[relation_type][key]
+
+            if _persistent_obj:
+                _persistent_obj._slots['_relations'][relation_type] = _relationships[relation_type]
+                _persistent_obj._p_changed = True
+
+    def get_related(relation_type: str) -> List[str]:
+        """Get all related concept OIDs of a specific type."""
+        if relation_type not in _relationships:
+            raise ValueError(f"Unknown relation type: {relation_type}")
+
+        return list(_relationships[relation_type].values())
+
+    def to_dict() -> Dict[str, Any]:
+        """Convert to dictionary representation."""
+        return {
+            'oid': _local_slots['oid'],
+            'label': _local_slots['label'],
+            'symbolic_hypervector_name': _local_slots['symbolic_hypervector_name'],
+            'geometric_embedding_name': _local_slots['geometric_embedding_name'],
+            'created_at': _local_slots['created_at'].isoformat() if _local_slots['created_at'] else None,
+            'last_modified': _local_slots['last_modified'].isoformat() if _local_slots['last_modified'] else None,
+            'confidence': _local_slots['confidence'],
+            'usage_count': _local_slots['usage_count'],
+            'source': _local_slots['source'],
+            'relationships': {
+                rel_type: list(tree.values())
+                for rel_type, tree in _relationships.items()
+            }
+        }
+
+    def get_persistent_object():
+        """Get the underlying ZODB persistent object."""
+        _ensure_persistent_obj()
+        return _persistent_obj
+
+    # Create UvmObject instance with prototypal methods
+    concept_obj = create_uvm_object()
     
-    return PersistentConcept(oid, **kwargs)
+    # Set core slots
+    concept_obj._slots.update(_local_slots)
+    concept_obj._slots['_relations'] = _relationships
+    
+    # Add methods as slots
+    concept_obj._slots.update({
+        'get_slot': get_slot,
+        'set_slot': set_slot,
+        'record_usage': record_usage,
+        'add_relationship': add_relationship,
+        'remove_relationship': remove_relationship,
+        'get_related': get_related,
+        'to_dict': to_dict,
+        'get_persistent_object': get_persistent_object,
+    })
+    
+    # Add doesNotUnderstand_ protocol for dynamic delegation
+    def doesNotUnderstand_(message, *args, **kwargs):
+        """Handle unknown messages by delegating to slots or parent."""
+        slot_name = message
+        if slot_name in concept_obj._slots:
+            slot_value = concept_obj._slots[slot_name]
+            if callable(slot_value):
+                return slot_value(*args, **kwargs)
+            else:
+                return slot_value
+        # Delegate to parent if available
+        if hasattr(concept_obj, '_parent') and concept_obj._parent:
+            return concept_obj._parent.doesNotUnderstand_(message, *args, **kwargs)
+        raise AttributeError(f"'{type(concept_obj).__name__}' object has no attribute '{slot_name}'")
+    
+    concept_obj._slots['doesNotUnderstand_'] = doesNotUnderstand_
+    
+    # Apply initial relationships if provided
+    relationships = kwargs.get('relationships')
+    if relationships:
+        normalized = _normalized_relationship_payload(relationships)
+        for snake_key, attr_name in RELATIONSHIP_ATTR_MAP.items():
+            values = normalized.get(snake_key)
+            if values:
+                _reset_relationship_btree(attr_name, values)
+
+    return concept_obj
+
+
+# Backward compatibility alias
+create_persistent_concept = create_persistent_concept_prototype
 
 # =============================================================================
 # Prototypal ZODB Manager Factory
@@ -230,7 +413,7 @@ def create_zodb_manager(
     storage_path: str = None,
     zeo_address: tuple = None,
     read_only: bool = False
-) -> Dict[str, Callable]:
+) -> UvmObject:
     """
     Factory function to create a ZODB manager following prototypal principles.
     
@@ -242,8 +425,12 @@ def create_zodb_manager(
     zeo_address: (host, port) tuple for ZEO client connection
     read_only: Open the storage in read-only mode (for shared access)
     """
+    # UvmObject() - foundational parent for prototypal compliance
     if not ZODB_AVAILABLE:
         raise RuntimeError(f"ZODB not available: {IMPORT_ERROR}")
+    
+    # Create UvmObject instance at the beginning for prototypal compliance
+    manager_obj = create_uvm_object()  # UvmObject() - foundational parent
     
     # Internal state (closure variables)
     _db = None
@@ -328,8 +515,8 @@ def create_zodb_manager(
             concept_fields = {k: v for k, v in concept_data.items() if k != 'oid'}
             concept = create_persistent_concept(oid=oid, **concept_fields)
             
-            # Store in concepts BTree
-            _concepts_btree[oid] = concept
+            # Store the persistent object (UvmObject has get_persistent_object method)
+            _concepts_btree[oid] = concept.get_persistent_object()
             
             # Commit transaction for ACID compliance
             transaction.commit()
@@ -356,18 +543,27 @@ def create_zodb_manager(
         _ensure_connected()
         
         try:
-            concept = _concepts_btree.get(oid)
-            if concept is None:
+            persistent_obj = _concepts_btree.get(oid)
+            if persistent_obj is None:
                 return None
 
+            # Reconstruct the concept dict from persistent object
+            concept_data = persistent_obj._slots.copy()
+            concept_data['relationships'] = {
+                rel_type: list(tree.values()) if hasattr(tree, 'values') else []
+                for rel_type, tree in persistent_obj._slots.get('_relations', {}).items()
+            }
+            
             if _read_only:
-                return concept.to_dict()
+                return concept_data
 
-            # Record usage statistics
-            concept.record_usage()
+            # Record usage statistics by updating the persistent object
+            persistent_obj._slots['usage_count'] = persistent_obj._slots.get('usage_count', 0) + 1
+            persistent_obj._slots['last_modified'] = datetime.now(timezone.utc)
+            persistent_obj._p_changed = True
             transaction.commit()
 
-            return concept.to_dict()
+            return concept_data
             
         except Exception as e:
             transaction.abort()
@@ -391,23 +587,31 @@ def create_zodb_manager(
         _ensure_connected()
         
         try:
-            concept = _concepts_btree.get(oid)
-            if concept is None:
+            persistent_obj = _concepts_btree.get(oid)
+            if persistent_obj is None:
                 return False
             
             updates_payload = dict(updates)
             relationships_payload = updates_payload.pop('relationships', None)
 
-            # Apply updates
+            # Apply updates to persistent object data
             for field, value in updates_payload.items():
-                if hasattr(concept, field):
-                    setattr(concept, field, value)
+                persistent_obj._slots[field] = value
             
             if relationships_payload is not None:
-                concept._apply_relationships(relationships_payload)
+                normalized = _normalized_relationship_payload(relationships_payload)
+                for snake_key, attr_name in RELATIONSHIP_ATTR_MAP.items():
+                    values = normalized.get(snake_key)
+                    if values is not None:
+                        tree = IOBTree()
+                        for value in values:
+                            if value is not None:
+                                key = hash(value) % (2 ** 31)
+                                tree[key] = value
+                        persistent_obj._slots.setdefault('_relations', {})[attr_name] = tree
 
-            concept.last_modified = datetime.now(timezone.utc)
-            concept._p_changed = True
+            persistent_obj._slots['last_modified'] = datetime.now(timezone.utc)
+            persistent_obj._p_changed = True
             
             transaction.commit()
             logger.debug(f"Updated concept {oid}")
@@ -426,22 +630,30 @@ def create_zodb_manager(
         _ensure_connected()
 
         try:
-            concept = _concepts_btree.get(oid)
-            if concept is None:
+            persistent_obj = _concepts_btree.get(oid)
+            if persistent_obj is None:
                 return False
 
             updates_payload = dict(updates)
             relationships_payload = updates_payload.pop('relationships', None)
 
             for field, value in updates_payload.items():
-                if hasattr(concept, field):
-                    setattr(concept, field, value)
+                persistent_obj._slots[field] = value
 
             if relationships_payload is not None:
-                concept._apply_relationships(relationships_payload)
+                normalized = _normalized_relationship_payload(relationships_payload)
+                for snake_key, attr_name in RELATIONSHIP_ATTR_MAP.items():
+                    values = normalized.get(snake_key)
+                    if values is not None:
+                        tree = IOBTree()
+                        for value in values:
+                            if value is not None:
+                                key = hash(value) % (2 ** 31)
+                                tree[key] = value
+                        persistent_obj._slots.setdefault('_relations', {})[attr_name] = tree
 
-            concept.last_modified = datetime.now(timezone.utc)
-            concept._p_changed = True
+            persistent_obj._slots['last_modified'] = datetime.now(timezone.utc)
+            persistent_obj._p_changed = True
             return True
 
         except Exception as e:
@@ -531,11 +743,18 @@ def create_zodb_manager(
         _ensure_connected()
 
         try:
-            concept = _concepts_btree.get(oid)
-            if concept is None:
+            persistent_obj = _concepts_btree.get(oid)
+            if persistent_obj is None:
                 return None
 
-            return concept.to_dict()
+            # Reconstruct the concept dict from persistent object
+            concept_data = persistent_obj._slots.copy()
+            concept_data['relationships'] = {
+                rel_type: list(tree.values()) if hasattr(tree, 'values') else []
+                for rel_type, tree in persistent_obj._slots.get('_relations', {}).items()
+            }
+            
+            return concept_data
 
         except Exception as e:
             logger.error(f"Failed to snapshot concept {oid}: {e}")
@@ -565,9 +784,9 @@ def create_zodb_manager(
         _ensure_connected()
         
         try:
-            concept = _concepts_btree.get(oid)
-            if concept:
-                concept._p_changed = True
+            persistent_obj = _concepts_btree.get(oid)
+            if persistent_obj:
+                persistent_obj._p_changed = True
                 # Don't commit here - let the calling context decide when to commit
                 logger.debug(f"Marked concept {oid} as changed")
             
@@ -595,25 +814,44 @@ def create_zodb_manager(
     # Initialize on creation
     _initialize()
     
-    # Return the prototypal interface (closure with methods)
-    return {
+    # Add methods as slots
+    manager_obj._slots.update({
         'store_concept': store_concept,
         'load_concept': load_concept,
         'update_concept': update_concept,
-    'mutate_concept_without_commit': mutate_concept_without_commit,
+        'mutate_concept_without_commit': mutate_concept_without_commit,
         'delete_concept': delete_concept,
         'list_concepts': list_concepts,
         'get_statistics': get_statistics,
-    'get_concept_snapshot': get_concept_snapshot,
-    'force_conflict_error': force_conflict_error,
-    'force_disk_error': force_disk_error,
-    'force_unhandled_error': force_unhandled_error,
+        'get_concept_snapshot': get_concept_snapshot,
+        'force_conflict_error': force_conflict_error,
+        'force_disk_error': force_disk_error,
+        'force_unhandled_error': force_unhandled_error,
         'mark_object_changed': mark_object_changed,
         'commit_transaction': commit_transaction,
         'abort_transaction': abort_transaction,
         'close': close,
         'is_read_only': lambda: _read_only
-    }
+    })
+    
+    # Add doesNotUnderstand_ protocol for dynamic delegation
+    def doesNotUnderstand_(message, *args, **kwargs):
+        """Handle unknown messages by delegating to slots or parent."""
+        slot_name = message
+        if slot_name in manager_obj._slots:
+            slot_value = manager_obj._slots[slot_name]
+            if callable(slot_value):
+                return slot_value(*args, **kwargs)
+            else:
+                return slot_value
+        # Delegate to parent if available
+        if hasattr(manager_obj, '_parent') and manager_obj._parent:
+            return manager_obj._parent.doesNotUnderstand_(message, *args, **kwargs)
+        raise AttributeError(f"'{type(manager_obj).__name__}' object has no attribute '{slot_name}'")
+    
+    manager_obj._slots['doesNotUnderstand_'] = doesNotUnderstand_
+    
+    return manager_obj
 
 # =============================================================================
 # FFI Bridge Integration Functions
@@ -702,18 +940,18 @@ if __name__ == "__main__":
             'source': 'test'
         }
         
-        oid = manager['store_concept'](test_concept)
+        oid = manager.store_concept(test_concept)
         print(f"Stored concept with OID: {oid}")
         
         # Test concept retrieval
-        loaded = manager['load_concept'](oid)
+        loaded = manager.load_concept(oid)
         print(f"Loaded concept: {loaded['label']}")
         
         # Test statistics
-        stats = manager['get_statistics']()
+        stats = manager.get_statistics()
         print(f"Database contains {stats['total_concepts']} concepts")
         
         print("ZODB Manager test completed successfully!")
         
     finally:
-        manager['close']()
+        manager.close()

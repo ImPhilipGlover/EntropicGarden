@@ -201,7 +201,8 @@ class TelosPhase1EndToEndValidator:
             # If we get here, test basic bridge operations
             try:
                 # Test bridge initialization - this exercises the C ABI contract
-                result = lib.bridge_initialize(4)
+                config = ffi.new("BridgeConfig*", {'max_workers': 4, 'log_callback': ffi.NULL})
+                result = lib.bridge_initialize(config)
                 init_success = (result == 0)  # BRIDGE_SUCCESS
                 
                 if init_success:

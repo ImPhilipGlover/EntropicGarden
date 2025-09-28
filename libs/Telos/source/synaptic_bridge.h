@@ -23,6 +23,38 @@ extern "C" {
 #endif
 
 /* =============================================================================
+ * Constants
+ * =============================================================================
+ */
+
+#define MAX_SHARED_MEMORY_POOLS 16
+#define MAX_VSA_BINDINGS 32
+#define MAX_VSA_NAME_LENGTH 64
+
+/* =============================================================================
+ * Internal Helper Functions
+ * =============================================================================
+ */
+
+/**
+ * GIL guard structure for Python thread safety
+ */
+typedef struct {
+    int active;
+    void* state;  /* PyGILState_STATE */
+} GILGuard;
+
+/**
+ * Acquire the Python GIL.
+ */
+GILGuard acquire_gil(void);
+
+/**
+ * Release the Python GIL.
+ */
+void release_gil(GILGuard* guard);
+
+/* =============================================================================
  * Core Data Types and Handles
  * =============================================================================
  */
@@ -42,7 +74,65 @@ typedef struct {
     const char* name;     /* Unique name of the shared memory block */
     size_t offset;        /* Byte offset within the block */
     size_t size;         /* Size of the data in bytes */
+    void* data;          /* Mapped data pointer */
 } SharedMemoryHandle;
+
+/**
+ * Internal shared memory pool structure
+ */
+typedef struct {
+    char name[256];      /* Shared memory name */
+    int fd;              /* File descriptor */
+    size_t size;         /* Size of the memory block */
+    void* data;          /* Mapped memory pointer */
+} SharedMemoryPool;
+
+/**
+ * VSA handle type (opaque)
+ */
+typedef void* VSAHandle;
+
+/**
+ * VSA binding structure
+ */
+typedef struct {
+    VSAHandle handle;
+    char name[64];
+} VSABinding;
+
+/**
+ * Log level enumeration
+ */
+typedef enum {
+    LOG_LEVEL_DEBUG = 0,
+    LOG_LEVEL_INFO = 1,
+    LOG_LEVEL_WARNING = 2,
+    LOG_LEVEL_ERROR = 3
+} LogLevel;
+
+/**
+ * Log callback function type
+ */
+typedef void (*LogCallback)(LogLevel level, const char* message);
+
+/**
+ * Bridge configuration structure
+ */
+typedef struct {
+    int max_workers;
+    LogCallback log_callback;
+} BridgeConfig;
+
+/**
+ * Main bridge state structure
+ */
+typedef struct {
+    BridgeConfig config;
+    char error_buffer[1024];
+    size_t error_length;
+    SharedMemoryPool* shared_memory_pools[16];  /* MAX_SHARED_MEMORY_POOLS = 16 */
+    VSABinding vsa_bindings[32];  /* MAX_VSA_BINDINGS = 32 */
+} SynapticBridgeState;
 
 /**
  * Error codes returned by bridge functions
@@ -54,7 +144,13 @@ typedef enum {
     BRIDGE_ERROR_MEMORY_ALLOCATION = -3,
     BRIDGE_ERROR_PYTHON_EXCEPTION = -4,
     BRIDGE_ERROR_SHARED_MEMORY = -5,
-    BRIDGE_ERROR_TIMEOUT = -6
+    BRIDGE_ERROR_TIMEOUT = -6,
+    BRIDGE_ERROR_ALREADY_INITIALIZED = -7,
+    BRIDGE_ERROR_NOT_INITIALIZED = -8,
+    BRIDGE_ERROR_ALREADY_EXISTS = -9,
+    BRIDGE_ERROR_NOT_FOUND = -10,
+    BRIDGE_ERROR_INVALID_ARGUMENT = -11,
+    BRIDGE_ERROR_RESOURCE_EXHAUSTED = -12
 } BridgeResult;
 
 /* =============================================================================
@@ -66,16 +162,18 @@ typedef enum {
  * Initialize the Python substrate and process pool.
  * Must be called before any other bridge functions.
  * 
- * @param max_workers Maximum number of worker processes in the pool
+ * @param config Configuration structure
  * @return BRIDGE_SUCCESS on success, error code on failure
  */
-BridgeResult bridge_initialize(int max_workers);
+BridgeResult bridge_initialize(const BridgeConfig* config);
 
 /**
  * Shutdown the Python substrate and clean up all resources.
  * This function blocks until all worker processes have terminated.
+ * 
+ * @return BRIDGE_SUCCESS on success, error code on failure
  */
-void bridge_shutdown(void);
+BridgeResult bridge_shutdown(void);
 
 /**
  * Pin an Io object to prevent garbage collection while referenced by Python.
@@ -116,6 +214,8 @@ BridgeResult bridge_get_last_error(char* error_buffer, size_t buffer_size);
  */
 void bridge_clear_error(void);
 
+
+
 /* =============================================================================
  * Shared Memory Management
  * =============================================================================
@@ -137,7 +237,7 @@ BridgeResult bridge_create_shared_memory(size_t size, SharedMemoryHandle* handle
  * @param handle Handle to the memory block to destroy
  * @return BRIDGE_SUCCESS on success, error code on failure
  */
-BridgeResult bridge_destroy_shared_memory(const SharedMemoryHandle* handle);
+BridgeResult bridge_destroy_shared_memory(SharedMemoryHandle* handle);
 
 /**
  * Map a shared memory block into the current process address space.
@@ -156,6 +256,31 @@ BridgeResult bridge_map_shared_memory(const SharedMemoryHandle* handle, void** m
  * @return BRIDGE_SUCCESS on success, error code on failure
  */
 BridgeResult bridge_unmap_shared_memory(const SharedMemoryHandle* handle, void* mapped_ptr);
+
+/**
+ * Create a shared memory handle.
+ */
+BridgeResult create_shared_memory_handle(SharedMemoryHandle* handle, size_t size, const char* name);
+
+/**
+ * Destroy a shared memory handle.
+ */
+BridgeResult destroy_shared_memory_handle(SharedMemoryHandle* handle);
+
+/**
+ * Read JSON from shared memory.
+ */
+BridgeResult read_json_from_shared_memory(const SharedMemoryHandle* handle, char** json_buffer, size_t* json_length);
+
+/**
+ * Write JSON to shared memory.
+ */
+BridgeResult write_json_to_shared_memory(const SharedMemoryHandle* handle, const char* json_data, size_t json_length);
+
+/**
+ * Destroy a shared memory pool.
+ */
+void destroy_shared_memory_pool(SharedMemoryPool* pool);
 
 /* =============================================================================
  * Core Computational Functions
@@ -248,6 +373,19 @@ BridgeResult bridge_submit_json_task(
     const SharedMemoryHandle* response_handle
 );
 
+/* Implementation functions (internal) */
+BridgeResult bridge_submit_json_task_impl(
+    const SharedMemoryHandle* request_handle,
+    const SharedMemoryHandle* response_handle
+);
+
+BridgeResult bridge_ann_search_impl(
+    const SharedMemoryHandle* query_handle,
+    int k,
+    const SharedMemoryHandle* results_handle,
+    double similarity_threshold
+);
+
 /* =============================================================================
  * Message Passing and Object Communication
  * =============================================================================
@@ -298,8 +436,66 @@ BridgeResult bridge_set_slot(
     const SharedMemoryHandle* value_handle
 );
 
+/**
+ * Bind a VSA handle to a name.
+ */
+BridgeResult bridge_bind_vsa(const char* name, VSAHandle handle);
+
+/**
+ * Unbind a VSA handle.
+ */
+BridgeResult bridge_unbind_vsa(const char* name);
+
+/**
+ * Query a VSA.
+ */
+BridgeResult bridge_query_vsa(const char* name, const SharedMemoryHandle* query_handle, const SharedMemoryHandle* result_handle);
+
+/* =============================================================================
+ * Error handling functions
+ * =============================================================================
+ */
+
+void set_bridge_error(const char* format, ...);
+const char* get_bridge_error(void);
+void clear_bridge_error(void);
+void log_bridge_message(LogLevel level, const char* format, ...);
+
+/* =============================================================================
+ * Shared memory functions
+ * =============================================================================
+ */
+
+BridgeResult create_shared_memory_handle(SharedMemoryHandle* handle, size_t size, const char* name);
+BridgeResult destroy_shared_memory_handle(SharedMemoryHandle* handle);
+BridgeResult write_json_to_shared_memory(const SharedMemoryHandle* handle, const char* json_data, size_t json_length);
+BridgeResult read_json_from_shared_memory(const SharedMemoryHandle* handle, char** json_buffer, size_t* json_length);
+
+/* =============================================================================
+ * VSA functions
+ * =============================================================================
+ */
+
+int bind_vsa(const char* name, void* binding_data);
+int unbind_vsa(const char* name);
+void* query_vsa(const char* name);
+
+/* =============================================================================
+ * Io integration functions
+ * =============================================================================
+ */
+
+char* serialize_io_object(void* io_object);
+void* deserialize_io_object(const char* json_data);
+BridgeResult bridge_send_message(void* io_object, const char* message_name, const SharedMemoryHandle* args_handle, const SharedMemoryHandle* result_handle);
+BridgeResult bridge_get_slot(void* io_object, const char* slot_name, const SharedMemoryHandle* result_handle);
+BridgeResult bridge_set_slot(void* io_object, const char* slot_name, const SharedMemoryHandle* value_handle);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* SYNAPTIC_BRIDGE_H */
+
+/* Global bridge state */
+extern SynapticBridgeState* g_bridge_state;

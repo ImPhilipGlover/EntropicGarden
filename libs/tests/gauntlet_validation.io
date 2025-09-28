@@ -24,7 +24,7 @@
 // Ensure we can find the core system files
 try(doFile("init.io"))
 try(doFile("../iovm/init.io"))
-try(doFile("libs/Telos/io/TelosBridge.io"))
+doFile("libs/Telos/io/TelosBridge.io")
 try(doFile("../Telos/io/TelosBridge.io"))
 try(doFile("libs/Telos/io/TelosGauntlet.io"))
 
@@ -71,18 +71,57 @@ GauntletValidationHarness := Object clone do(
             // TODO: Replace this with actual calls to TelosHRC and FederatedMemory
 
             // 4a. Inject distractors
-            // For now, we assume distractors are simple concepts.
-            // A more robust implementation would handle different concept types.
+            // Distractors are already persisted via ConceptRepository in the generator
+            // They should be available in the federated memory system
             query associatedDistractors foreach(distractor,
-                // writeln("Injecting distractor: ", distractor name) // Optional: for debugging
-                self Telos FederatedMemory add(distractor)
+                // Ensure distractor is persisted and indexed
+                if(distractor oid isNil,
+                    Telos ConceptRepository save(distractor)
+                )
             )
 
             // 4b. Submit prompt to HRC
-            actualResult := self Telos HRC process(query prompt)
+            // Create proper query structure for HRC
+            hrcQuery := Map clone
+            hrcQuery atPut("type", "gauntlet_query")
+            hrcQuery atPut("message", query prompt)
+            hrcQuery atPut("queryType", query queryType)
+
+            hrcContext := Map clone
+            hrcContext atPut("source", "gauntlet_validation")
+            hrcContext atPut("expectedResult", query expectedResult)
+            hrcContext atPut("distractorsInjected", query associatedDistractors size)
+
+            cycleId := self Telos HRC startCognitiveCycle(hrcQuery, hrcContext)
+
+            // Wait for cycle completion (simplified - in practice would be async)
+            cycleStatus := self Telos HRC getCycleStatus(cycleId)
+            waitCount := 0
+            while(cycleStatus at("status") != "completed" and waitCount < 50,
+                System sleep(0.1)
+                cycleStatus = self Telos HRC getCycleStatus(cycleId)
+                waitCount = waitCount + 1
+            )
+
+            if(cycleStatus at("status") == "completed",
+                actualResult := cycleStatus at("result")
+                if(actualResult and actualResult at("success"),
+                    // Extract the best result from HRC response
+                    bestMatch := actualResult at("bestMatch")
+                    if(bestMatch,
+                        actualResult = bestMatch,
+                        actualResult = Map clone atPut("name", "no_result") atPut("confidence", 0)
+                    ),
+                    actualResult = Map clone atPut("name", "hrc_failed") atPut("confidence", 0)
+                ),
+                actualResult = Map clone atPut("name", "cycle_timeout") atPut("confidence", 0)
+            )
 
             // 5. Compare results
-            isCorrect := (actualResult name == query expectedResult name)
+            // Compare the name field of actualResult with expectedResult name
+            actualName := actualResult at("name", "unknown")
+            expectedName := query expectedResult name
+            isCorrect := (actualName == expectedName)
 
 
             if (isCorrect, correctCount = correctCount + 1; writeln(" CORRECT"))
@@ -93,17 +132,66 @@ GauntletValidationHarness := Object clone do(
                 setQuery(query)
                 setActualResult(actualResult)
                 setIsCorrect(isCorrect)
-                // setTelemetry(...) // TODO: capture from HRC
+                // Capture telemetry from HRC cycle
+                telemetry := Map clone
+                telemetry atPut("cycleId", cycleId)
+                telemetry atPut("cycleStatus", cycleStatus)
+                if(actualResult hasSlot("confidence"),
+                    telemetry atPut("confidence", actualResult at("confidence"))
+                )
+                if(actualResult hasSlot("searchHits"),
+                    telemetry atPut("searchHits", actualResult at("searchHits"))
+                )
+                setTelemetry(telemetry)
             )
             runResults append(result)
+
+            // Persist result to ZODB
+            Telos ConceptRepository save(result)
         )
 
-        // --- 7. Reporting ---
+        // --- 7. Generate detailed report ---
         writeln("\n--- Gauntlet Run Summary ---")
         accuracy := (correctCount / totalQueries) * 100
         writeln("  Total Queries:   ", totalQueries)
         writeln("  Correct Answers: ", correctCount)
         writeln("  Accuracy:        ", accuracy, "%")
+
+        // Calculate additional metrics
+        totalConfidence := 0
+        totalSearchHits := 0
+        validResults := 0
+        runResults foreach(result,
+            telemetry := result telemetry
+            if(telemetry,
+                confidence := telemetry at("confidence")
+                if(confidence, totalConfidence = totalConfidence + confidence; validResults = validResults + 1)
+                searchHits := telemetry at("searchHits")
+                if(searchHits, totalSearchHits = totalSearchHits + searchHits)
+            )
+        )
+
+        if(validResults > 0,
+            avgConfidence := totalConfidence / validResults
+            writeln("  Average Confidence: ", avgConfidence round(2))
+        )
+        if(runResults size > 0,
+            avgSearchHits := totalSearchHits / runResults size
+            writeln("  Average Search Hits: ", avgSearchHits round(2))
+        )
+
+        // Analyze anomalies
+        anomalies := runResults select(result, result isCorrect not)
+        if(anomalies size > 0,
+            writeln("  Anomalies Detected: ", anomalies size)
+            anomalies foreach(i, anomaly,
+                queryText := anomaly query prompt
+                actualName := anomaly actualResult at("name", "unknown")
+                expectedName := anomaly query expectedResult name
+                writeln("    Query ", (i+1), ": Expected '", expectedName, "', got '", actualName, "'")
+            )
+        )
+
         writeln("----------------------------")
 
 

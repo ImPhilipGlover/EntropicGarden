@@ -499,9 +499,9 @@ IoObject *IoState_protoWithId_(IoState *self, const char *v) {
     // printf("IoState_protoWithId_(self, %s)\n", v);
 
     if (!proto) {
-        printf("IoState fatal error: missing proto '%s'", v);
-        IoState_fatalError_(
-            self, "IoState_protoWithId_() Error: missing proto with id");
+        // Return NULL for missing protos instead of fatal error
+        // This allows addons to check for proto existence and register new ones
+        return NULL;
     }
 
     return proto;

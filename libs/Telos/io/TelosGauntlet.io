@@ -69,6 +69,7 @@ Telos GauntletGenerator := Telos Concept clone do(
         writeln("  Queries: ", self queries size)
         writeln("  Distractors: ", self distractors size)
         self
+        markChanged
     )
 )
 
@@ -108,6 +109,7 @@ Telos BenchmarkGraph := Telos Concept clone do(
             )
         )
         self
+        markChanged
     )
 )
 

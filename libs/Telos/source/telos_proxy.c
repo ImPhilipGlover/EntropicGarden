@@ -940,3 +940,171 @@ static PyObject* TelosProxy_GetLocalSlots(TelosProxyObject *self, PyObject *args
     Py_INCREF(self->localSlots);
     return self->localSlots;
 }
+
+// =============================================================================
+// Prototypal Attribute Access Implementation
+// =============================================================================
+
+/**
+ * Implementation of __getattr__ for prototypal delegation.
+ * 
+ * This function implements the core prototype chain lookup as specified in the
+ * Prototypal Emulation Layer Design document. It first checks localSlots for
+ * the attribute, then delegates to the master Io object via forwardMessage.
+ */
+PyObject* TelosProxy_GetAttr(TelosProxyObject *self, PyObject *name) {
+    if (!TelosProxy_Validate(self)) {
+        return NULL;
+    }
+    
+    // Convert Python name to C string
+    const char *attr_name = PyUnicode_AsUTF8(name);
+    if (!attr_name) {
+        PyErr_SetString(PyExc_TypeError, "Attribute name must be a string");
+        return NULL;
+    }
+    
+    // 1. Local Cache Lookup (fast path)
+    PyObject *local_value = PyDict_GetItemString(self->localSlots, attr_name);
+    if (local_value) {
+        // Found in local slots - return it with increased reference count
+        Py_INCREF(local_value);
+        return local_value;
+    }
+    
+    // 2. FFI Message Forwarding (delegate to Io master)
+    if (self->forwardMessage) {
+        double start_time = (double)clock() / CLOCKS_PER_SEC * 1000.0;
+        
+        PyObject *result = self->forwardMessage(self->ioMasterHandle, attr_name, NULL);
+        
+        double end_time = (double)clock() / CLOCKS_PER_SEC * 1000.0;
+        double duration_ms = end_time - start_time;
+        
+        // Record dispatch metrics
+        TelosProxy_RecordDispatch(self, attr_name, (result != NULL), duration_ms, end_time / 1000.0, NULL);
+        
+        if (result) {
+            return result;  // forwardMessage already returns a new reference
+        }
+        
+        // Check if this was a legitimate "not found" vs an error
+        if (PyErr_Occurred()) {
+            return NULL;  // Error occurred, propagate it
+        }
+    }
+    
+    // 3. Attribute not found - raise AttributeError
+    PyErr_Format(PyExc_AttributeError, "'IoProxy' object has no attribute '%s'", attr_name);
+    return NULL;
+}
+
+/**
+ * Implementation of __setattr__ for transactional state coherence.
+ * 
+ * This function implements transactional state management as specified in the
+ * Prototypal Emulation Layer Design document. It updates localSlots and
+ * optionally propagates changes back to the Io master for consistency.
+ */
+int TelosProxy_SetAttr(TelosProxyObject *self, PyObject *name, PyObject *value) {
+    if (!TelosProxy_Validate(self)) {
+        return -1;
+    }
+    
+    // Convert Python name to C string
+    const char *attr_name = PyUnicode_AsUTF8(name);
+    if (!attr_name) {
+        PyErr_SetString(PyExc_TypeError, "Attribute name must be a string");
+        return -1;
+    }
+    
+    // Skip special internal attributes that are handled by Python's default mechanism
+    if (strcmp(attr_name, "__dict__") == 0 || strcmp(attr_name, "__class__") == 0) {
+        return PyObject_GenericSetAttr((PyObject *)self, name, value);
+    }
+    
+    // 1. Local Cache Update (immediate synchronous update)
+    if (PyDict_SetItemString(self->localSlots, attr_name, value) != 0) {
+        return -1;
+    }
+    
+    // 2. Transactional State Propagation (asynchronous FFI dispatch)
+    if (self->forwardMessage) {
+        // Create args tuple for the setSlot message
+        PyObject *args = PyTuple_New(2);
+        if (!args) {
+            return -1;
+        }
+        
+        Py_INCREF(value);  // forwardMessage will consume this reference
+        PyTuple_SET_ITEM(args, 0, PyUnicode_FromString(attr_name));
+        PyTuple_SET_ITEM(args, 1, value);
+        
+        double start_time = (double)clock() / CLOCKS_PER_SEC * 1000.0;
+        
+        // Asynchronous dispatch - don't wait for result
+        PyObject *result = self->forwardMessage(self->ioMasterHandle, "setSlot", args);
+        
+        double end_time = (double)clock() / CLOCKS_PER_SEC * 1000.0;
+        double duration_ms = end_time - start_time;
+        
+        // Record dispatch metrics
+        TelosProxy_RecordDispatch(self, "setSlot", (result != NULL), duration_ms, end_time / 1000.0, NULL);
+        
+        Py_XDECREF(result);
+        Py_DECREF(args);
+        
+        // Note: Even if the transactional update fails, we keep the local cache update
+        // This follows the "optimistic local cache" pattern from the design document
+    }
+    
+    return 0;
+}
+
+/**
+ * Default message forwarding implementation.
+ * 
+ * This provides the standard implementation of cross-language message
+ * delegation. It can be overridden for specialized proxy types, but
+ * this default implementation handles the common case of forwarding
+ * messages to the Io VM through the synaptic bridge.
+ */
+PyObject* TelosProxy_DefaultForwardMessage(IoObjectHandle handle, const char *messageName, PyObject *args) {
+    // This is a placeholder implementation. The actual forwarding logic
+    // would be implemented using the synaptic_bridge.h FFI functions.
+    // For now, return None to indicate the attribute was not found.
+    
+    // TODO: Implement actual FFI call to Io VM
+    // BridgeResult result = bridge_send_message(handle, messageName, args, &response);
+    // if (result == BRIDGE_SUCCESS) {
+    //     return marshall_io_to_python(response);
+    // }
+    
+    Py_RETURN_NONE;
+}
+
+/**
+ * Forward invocation helper with metrics instrumentation.
+ *
+ * Routes all bridge-bound messages through a single choke point so latency,
+ * failure context, and recent history are recorded alongside the returned
+ * value. Args are treated as borrowed references consistent with the Python C
+ * API expectations for call helpers.
+ */
+PyObject* TelosProxy_InvokeForwardMessage(TelosProxyObject *self, const char *messageName, PyObject *args) {
+    if (!TelosProxy_Validate(self) || !self->forwardMessage) {
+        Py_RETURN_NONE;
+    }
+    
+    double start_time = (double)clock() / CLOCKS_PER_SEC * 1000.0;
+    
+    PyObject *result = self->forwardMessage(self->ioMasterHandle, messageName, args);
+    
+    double end_time = (double)clock() / CLOCKS_PER_SEC * 1000.0;
+    double duration_ms = end_time - start_time;
+    
+    // Record dispatch metrics
+    TelosProxy_RecordDispatch(self, messageName, (result != NULL), duration_ms, end_time / 1000.0, NULL);
+    
+    return result;
+}

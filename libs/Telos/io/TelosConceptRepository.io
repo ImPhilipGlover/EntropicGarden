@@ -10,6 +10,7 @@ TelosConceptRepository := Object clone do(
             Exception raise("Protos Core registry unavailable; cannot access Concept prototype")
         )
         Lobby Protos Core Concept
+        markChanged()
     )
 
     manager := method(
@@ -17,6 +18,7 @@ TelosConceptRepository := Object clone do(
             Exception raise("System ZODBManager slot is unavailable; initialize Telos Bridge first")
         )
         System ZODBManager
+        markChanged()
     )
 
     ensureConcept := method(obj,
@@ -24,6 +26,7 @@ TelosConceptRepository := Object clone do(
             obj,
             Exception raise("ConceptRepository requires a Concept-like prototype with canonical slots")
         )
+        markChanged()
     )
 
     relationshipKeyMap := method(
@@ -34,12 +37,14 @@ TelosConceptRepository := Object clone do(
         keys atPut("instanceOf", "instance_of")
         keys atPut("associatedWith", "associated_with")
         keys
+        markChanged()
     )
 
     listToSequenceList := method(values,
         if(values type != "List", list(), values map(entry,
             if(entry isNil, nil, entry asString)
         ) select(val, val isNil not))
+        markChanged()
     )
 
     buildRelationshipPayload := method(concept,
@@ -52,6 +57,7 @@ TelosConceptRepository := Object clone do(
             )
         )
         relationships
+        markChanged()
     )
 
     buildPersistencePayload := method(concept,
@@ -86,6 +92,7 @@ TelosConceptRepository := Object clone do(
         )
 
         payload
+        markChanged()
     )
 
     normalizeSequenceList := method(value,
@@ -103,6 +110,7 @@ TelosConceptRepository := Object clone do(
                 list()
             )
         )
+        markChanged()
     )
 
     applyRelationships := method(concept, payload)
@@ -124,6 +132,7 @@ TelosConceptRepository := Object clone do(
             )
         )
         concept
+        markChanged()
     )
 
     hydrateConcept := method(payload,
@@ -156,6 +165,7 @@ TelosConceptRepository := Object clone do(
 
         applyRelationships(target, payload)
         target
+        markChanged()
     )
 
     refreshPrototype := method(concept, payload)
@@ -188,6 +198,7 @@ TelosConceptRepository := Object clone do(
 
         applyRelationships(concept, payload)
         concept
+        markChanged()
     )
 
     persistConcept := method(concept, options,
@@ -205,6 +216,7 @@ TelosConceptRepository := Object clone do(
             refreshPrototype(concept, conceptData)
         )
         response
+        markChanged()
     )
 
     loadConcept := method(oid, options,
@@ -217,6 +229,7 @@ TelosConceptRepository := Object clone do(
             Exception raise("Concept not found: " .. oid)
         )
         hydrateConcept(conceptData)
+        markChanged()
     )
 
     hydrateExisting := method(concept, options,
@@ -230,6 +243,7 @@ TelosConceptRepository := Object clone do(
             Exception raise("Concept not found for oid: " .. concept oid)
         )
         refreshPrototype(concept, conceptData)
+        markChanged()
     )
 
     deleteConcept := method(conceptOrOid, options,
@@ -247,10 +261,12 @@ TelosConceptRepository := Object clone do(
             conceptOrOid oid = nil
         )
         response
+        markChanged()
     )
 
     listConcepts := method(limit, offset, options,
         manager listConcepts(limit, offset, options)
+        markChanged()
     )
 )
 

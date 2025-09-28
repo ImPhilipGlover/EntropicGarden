@@ -38,6 +38,7 @@ def test_forward_message_roundtrip() -> None:
 
     iovm.IoState_new.restype = ctypes.c_void_p
     iovm.IoState_free.argtypes = [ctypes.c_void_p]
+    iovm.IoState_init.argtypes = [ctypes.c_void_p]
     iovm.IoState_argc_argv_.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
     iovm.IoState_lobby.argtypes = [ctypes.c_void_p]
     iovm.IoState_lobby.restype = ctypes.c_void_p
@@ -46,12 +47,12 @@ def test_forward_message_roundtrip() -> None:
     assert state_ptr, "IoState_new returned NULL"
 
     try:
+        iovm.IoState_init(state_ptr)
         iovm.IoState_argc_argv_(state_ptr, 0, None)
 
         lib.bridge_clear_error()
-        init_status = lib.bridge_initialize(1)
-        assert init_status == lib.BRIDGE_SUCCESS, "bridge_initialize failed"
-
+        
+        # Initialize through the prototypal bridge manager (handles low-level bridge init)
         assert initialize_prototypal_bridge(), "Python bridge initialization failed"
 
         lobby_ptr = iovm.IoState_lobby(state_ptr)
@@ -64,7 +65,6 @@ def test_forward_message_roundtrip() -> None:
 
     finally:
         shutdown_prototypal_bridge()
-        lib.bridge_shutdown()
         iovm.IoState_free(state_ptr)
 
 

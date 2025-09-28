@@ -108,7 +108,7 @@ endif()
 # Define the main TELOS source directories
 set(TELOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos/source")
 set(TELOS_IO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos/io")
-set(TELOS_PYTHON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos/python")
+set(TELOS_PYTHON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos/telos")
 
 # =============================================================================
 # OpenTelemetry Collector Configuration
@@ -139,6 +139,10 @@ set(TELOS_OTEL_SETTINGS_PATH "${TELOS_CONFIG_DIR}/otel_settings.json" CACHE INTE
 set(TELOS_CORE_SOURCES
     "${TELOS_SOURCE_DIR}/synaptic_bridge.h"
     "${TELOS_SOURCE_DIR}/synaptic_bridge.c"
+    "${TELOS_SOURCE_DIR}/synaptic_bridge_core.c"
+    "${TELOS_SOURCE_DIR}/synaptic_bridge_shared_memory.c"
+    "${TELOS_SOURCE_DIR}/synaptic_bridge_vsa.c"
+    "${TELOS_SOURCE_DIR}/synaptic_bridge_io.c"
     "${TELOS_SOURCE_DIR}/telos_proxy.h"
     "${TELOS_SOURCE_DIR}/telos_proxy_internal.h"
     "${TELOS_SOURCE_DIR}/telos_proxy.c"
@@ -165,8 +169,10 @@ if(IOVM_FOUND)
         ${COROUTINE_INCLUDE_DIR}
     )
     target_compile_definitions(telos_core PUBLIC HAVE_IOVM_HEADERS=1)
-    # Apply strict error checking to TELOS code only (not legacy IoVM)
+    # Apply strict error checking to TELOS code only (not legacy IoVM or third-party code)
     target_compile_options(telos_core PRIVATE -Werror -Wno-sign-compare)
+    # Disable string truncation warnings for parson library
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/deps/parson/parson.c" PROPERTIES COMPILE_FLAGS "-Wno-stringop-truncation")
 endif()
 
 # =============================================================================
@@ -184,6 +190,10 @@ add_custom_command(
     DEPENDS 
         telos_core
         "${TELOS_SOURCE_DIR}/synaptic_bridge.c"
+        "${TELOS_SOURCE_DIR}/synaptic_bridge_core.c"
+        "${TELOS_SOURCE_DIR}/synaptic_bridge_shared_memory.c"
+        "${TELOS_SOURCE_DIR}/synaptic_bridge_vsa.c"
+        "${TELOS_SOURCE_DIR}/synaptic_bridge_io.c"
         "${TELOS_SOURCE_DIR}/synaptic_bridge.h"
         "${TELOS_PYTHON_DIR}/build_extension.py"
     WORKING_DIRECTORY ${TELOS_PYTHON_DIR}
@@ -294,9 +304,52 @@ install(DIRECTORY "${TELOS_IO_DIR}/"
     FILES_MATCHING PATTERN "*.io"
 )
 
+# Install the IoTelosBridge addon
+install(TARGETS IoTelosBridge
+    LIBRARY DESTINATION lib/io/addons
+    RUNTIME DESTINATION lib/io/addons
+)
+
 # =============================================================================
-# Build Information and Status
+# Prototypal Purity Linter Integration
 # =============================================================================
+
+# Add custom target for running the prototypal purity linter
+add_custom_target(prototypal_lint
+    COMMAND ${Python_EXECUTABLE} "${TELOS_PYTHON_DIR}/prototypal_linter.py" "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Running prototypal purity linter on TELOS codebase"
+    VERBATIM
+)
+
+# Add custom target for linting with verbose output
+add_custom_target(prototypal_lint_verbose
+    COMMAND ${Python_EXECUTABLE} "${TELOS_PYTHON_DIR}/prototypal_linter.py" "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos" --verbose
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Running prototypal purity linter with verbose output"
+    VERBATIM
+)
+
+# Add custom target that runs linter and fails build on errors
+add_custom_target(prototypal_lint_check
+    COMMAND ${Python_EXECUTABLE} "${TELOS_PYTHON_DIR}/prototypal_linter.py" "${CMAKE_CURRENT_SOURCE_DIR}/libs/Telos" --exit-zero
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking prototypal purity - build will fail on violations"
+    VERBATIM
+)
+
+# Add custom target for running the Io-based TelOS compiler
+add_custom_target(telos_compile
+    COMMAND ${CMAKE_BINARY_DIR}/libs/iovm/io ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_telos_compiler.io
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Running Io-orchestrated TelOS compilation with prototypal purity enforcement"
+    VERBATIM
+)
+
+# Make the main build targets depend on the linter check
+add_dependencies(telos_core prototypal_lint_check)
+add_dependencies(telos_python_extension prototypal_lint_check)
+add_dependencies(telos_compile IoTelosBridge)
 
 # Print build configuration summary
 message(STATUS "==========================================")
@@ -312,7 +365,7 @@ message(STATUS "==========================================")
 
 # Add convenience target for building everything
 add_custom_target(telos_all
-    DEPENDS telos_core telos_python_extension
+    DEPENDS prototypal_lint telos_core telos_python_extension
 )
 
 # Add target for running memory safety tests with AddressSanitizer

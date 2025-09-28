@@ -8,19 +8,35 @@
 // protocols defined by the Synaptic Bridge contract.
 //
 
-AddonLoader loadAddonNamed("TelosBridge")
+// Load the TelosBridge addon directly
+addon := Addon clone setRootPath("build/addons") setName("TelosBridge")
 
-// Ensure the Protos registry is available before resolving addon prototypes.
-if(Lobby hasSlot("Protos") not,
-    Exception raise("Protos registry is unavailable; cannot load TelosBridge addon")
-)
+// Check if protos are already registered (addon may have been loaded automatically)
+if(Lobby hasSlot("TelosBridge") and Lobby hasSlot("SharedMemoryHandle"),
+    // Protos already exist, use them directly
+    TelosBridgePrototype := Lobby TelosBridge
+    SharedMemoryHandlePrototype := Lobby SharedMemoryHandle
+,
+    // Try to load the addon to register the protos
+    try(
+        result := addon load
+        if(result isNil,
+            Exception raise("Addon load returned nil")
+        )
+        "Addon loaded successfully" println
+    ) catch(Exception e,
+        "Addon load failed: " .. e error println
+        e pass
+    )
 
-// Resolve the canonical addon prototypes.
-TelosBridgePrototype := Protos Addons at("TelosBridge")
-SharedMemoryHandlePrototype := Protos Addons at("SharedMemoryHandle")
-
-if(TelosBridgePrototype isNil or SharedMemoryHandlePrototype isNil,
-    Exception raise("IoTelosBridge addon did not register expected prototypes")
+    // Check if protos were registered
+    if(Lobby hasSlot("TelosBridge") and Lobby hasSlot("SharedMemoryHandle"),
+        TelosBridgePrototype := Lobby TelosBridge
+        SharedMemoryHandlePrototype := Lobby SharedMemoryHandle
+        "Protos found after addon load" println
+    ,
+        Exception raise("Protos not found after addon load attempt")
+    )
 )
 
 // Primary Io veneer that wraps the compiled addon.
@@ -281,14 +297,14 @@ Telos := Object clone do(
             if(options isNil,
                 return config
             )
-
+            
             if(options type == "Map",
                 proxyId := options at("proxy_id")
                 if(proxyId isNil, proxyId = options at("proxyId"))
                 if(proxyId isNil not,
                     config atPut("proxy_id", proxyId asString)
                 )
-
+                
                 proxyIds := options at("proxy_ids")
                 if(proxyIds isNil, proxyIds = options at("proxyIds"))
                 if(proxyIds isNil not,
@@ -297,28 +313,10 @@ Telos := Object clone do(
                         config atPut("proxy_ids", normalized)
                     )
                 )
-
-                analysisPayload := options at("analysis")
-                if(analysisPayload isNil, analysisPayload = options at("analysisOptions"))
-                if(analysisPayload isNil,
-                    thresholds := options at("thresholds")
-                    if(thresholds isNil not,
-                        if(analysisPayload isNil,
-                            analysisPayload = Map clone atPut("thresholds", thresholds),
-                            analysisPayload atPut("thresholds", thresholds)
-                        )
-                    )
-                )
-                if(analysisPayload isNil not,
-                    if(analysisPayload type == "Map",
-                        config atPut("analysis", analysisPayload),
-                        Exception raise("Bridge metrics analysis options must be a Map")
-                    )
-                )
-
+                
                 return config
             )
-
+            
             normalizedIds := _metricsNormalizeProxyIds(options)
             if(normalizedIds size == 1,
                 config atPut("proxy_id", normalizedIds at(0))
@@ -350,15 +348,15 @@ Telos := Object clone do(
             config
         )
 
-        _metricsBuildRequest := method(action, config,
-            configJson := _metricsEncodeMap(config)
-            "{\"operation\":\"bridge_metrics\",\"action\":\"" .. _metricsEscape(action) .. "\",\"config\":" .. configJson .. "}"
-        )
+        // _metricsBuildRequest := method(action, config,
+        //     configJson := _metricsEncodeMap(config)
+        //     "{\"operation\":\"bridge_metrics\",\"action\":\"" .. _metricsEscape(action) .. "\",\"config\":" .. configJson .. "}"
+        // )
 
-        _metricsSubmit := method(action, config,
-            payload := _metricsBuildRequest(action, config)
-            submitTask(payload, bridgeMetricsBufferSize)
-        )
+        // _metricsSubmit := method(action, config,
+        //     payload := _metricsBuildRequest(action, config)
+        //     submitTask(payload, bridgeMetricsBufferSize)
+        // )
 
         _metricsEnsureSuccess := method(response,
             if(response type != "Map",
@@ -372,75 +370,75 @@ Telos := Object clone do(
             )
         )
 
-        bridgeMetricsSnapshot := method(options,
-            ensureInitialized("bridgeMetricsSnapshot")
-            config := _metricsNormalizeOptions(options)
-            _metricsEnsureSuccess(_metricsSubmit("snapshot", config))
-        )
+        // bridgeMetricsSnapshot := method(options,
+        //     ensureInitialized("bridgeMetricsSnapshot")
+        //     config := _metricsNormalizeOptions(options)
+        //     _metricsEnsureSuccess(_metricsSubmit("snapshot", config))
+        // )
 
-        bridgeMetricsReset := method(options,
-            ensureInitialized("bridgeMetricsReset")
-            config := _metricsNormalizeOptions(options)
-            _metricsEnsureSuccess(_metricsSubmit("reset", config))
-        )
+        // bridgeMetricsReset := method(options,
+        //     ensureInitialized("bridgeMetricsReset")
+        //     config := _metricsNormalizeOptions(options)
+        //     _metricsEnsureSuccess(_metricsSubmit("reset", config))
+        // )
 
-        bridgeMetricsSnapshotAndReset := method(options,
-            ensureInitialized("bridgeMetricsSnapshotAndReset")
-            config := _metricsNormalizeOptions(options)
-            _metricsEnsureSuccess(_metricsSubmit("snapshot_reset", config))
-        )
+        // bridgeMetricsSnapshotAndReset := method(options,
+        //     ensureInitialized("bridgeMetricsSnapshotAndReset")
+        //     config := _metricsNormalizeOptions(options)
+        //     _metricsEnsureSuccess(_metricsSubmit("snapshot_reset", config))
+        // )
 
-        bridgeMetricsSummary := method(options,
-            ensureInitialized("bridgeMetricsSummary")
-            config := _metricsNormalizeOptions(options)
-            _metricsEnsureSuccess(_metricsSubmit("summary", config))
-        )
+        // bridgeMetricsSummary := method(options,
+        //     ensureInitialized("bridgeMetricsSummary")
+        //     config := _metricsNormalizeOptions(options)
+        //     _metricsEnsureSuccess(_metricsSubmit("summary", config))
+        // )
 
-        bridgeMetricsSummaryAndReset := method(options,
-            ensureInitialized("bridgeMetricsSummaryAndReset")
-            config := _metricsNormalizeOptions(options)
-            _metricsEnsureSuccess(_metricsSubmit("summary_reset", config))
-        )
+        // bridgeMetricsSummaryAndReset := method(options,
+        //     ensureInitialized("bridgeMetricsSummaryAndReset")
+        //     config := _metricsNormalizeOptions(options)
+        //     _metricsEnsureSuccess(_metricsSubmit("summary_reset", config))
+        // )
 
-        bridgeMetricsSummaryHistory := method(options,
-            ensureInitialized("bridgeMetricsSummaryHistory")
-            config := _metricsNormalizeHistoryOptions(options)
-            _metricsEnsureSuccess(_metricsSubmit("summary_history", config))
-        )
+        // bridgeMetricsSummaryHistory := method(options,
+        //     ensureInitialized("bridgeMetricsSummaryHistory")
+        //     config := _metricsNormalizeHistoryOptions(options)
+        //     _metricsEnsureSuccess(_metricsSubmit("summary_history", config))
+        // )
 
-        bridgeMetricsClearSummaryHistory := method(
-            ensureInitialized("bridgeMetricsClearSummaryHistory")
-            _metricsEnsureSuccess(_metricsSubmit("summary_history_clear", Map clone))
-        )
+        // bridgeMetricsClearSummaryHistory := method(
+        //     ensureInitialized("bridgeMetricsClearSummaryHistory")
+        //     _metricsEnsureSuccess(_metricsSubmit("summary_history_clear", Map clone))
+        // )
 
-        bridgeMetricsConfigureSummaryHistory := method(options,
-            ensureInitialized("bridgeMetricsConfigureSummaryHistory")
-            config := _metricsNormalizeHistoryOptions(options)
-            _metricsEnsureSuccess(_metricsSubmit("summary_history_config", config))
-        )
+        // bridgeMetricsConfigureSummaryHistory := method(options,
+        //     ensureInitialized("bridgeMetricsConfigureSummaryHistory")
+        //     config := _metricsNormalizeHistoryOptions(options)
+        //     _metricsEnsureSuccess(_metricsSubmit("summary_history_config", config))
+        // )
 
-        bridgeMetricsAnalyze := method(options,
-            ensureInitialized("bridgeMetricsAnalyze")
-            config := _metricsNormalizeOptions(options)
-            _metricsEnsureSuccess(_metricsSubmit("analyze", config))
-        )
+        // bridgeMetricsAnalyze := method(options,
+        //     ensureInitialized("bridgeMetricsAnalyze")
+        //     config := _metricsNormalizeOptions(options)
+        //     _metricsEnsureSuccess(_metricsSubmit("analyze", config))
+        // )
     )
 
     SharedMemoryHandle := SharedMemoryHandlePrototype
 
     start := method(workers,
         result := Bridge initialize(workers)
-        if(result and System hasSlot("log"),
+        if(result and System hasSlot("writeln"),
             currentWorkers := Bridge status at("maxWorkers")
-            System log("TELOS system started with " .. currentWorkers .. " workers")
+            System writeln("TELOS system started with " .. currentWorkers .. " workers")
         )
         result
     )
 
     stop := method(
         result := Bridge shutdown
-        if(result and System hasSlot("log"),
-            System log("TELOS system stopped")
+        if(result and System hasSlot("writeln"),
+            System writeln("TELOS system stopped")
         )
         result
     )
@@ -451,72 +449,26 @@ Telos := Object clone do(
 )
 
 // Expose bridge accessors through the canonical Telos namespace.
-if(Lobby hasSlot("Telos"),
-    // If Telos already exists, we just update its proto.
-    // This is less safe but preserves any existing state.
-    Lobby Telos setProto(Telos),
+// Always replace any existing Telos with our implementation
+Lobby Telos := Telos clone
 
-    // A safer alternative would be to replace it entirely:
-    // Lobby removeSlot("Telos")
-    // Lobby Telos := Telos clone
-,
-    Lobby Telos := Telos clone
+if(System hasSlot("writeln"),
+    System writeln("TELOS Bridge veneer loaded")
 )
 
-if(System hasSlot("log"),
-    System log("TELOS Bridge veneer loaded")
-)
+// doRelativeFile("TelosFederatedMemory.io")
+// Lobby Telos FederatedMemory := TelosFederatedMemory clone
 
-doRelativeFile("TelosTelemetry.io")
-Lobby Telos Telemetry := TelosTelemetry clone
+// doRelativeFile("TelosGauntlet.io")
+// Lobby Telos Gauntlet := TelosGauntletGenerator clone
 
-doRelativeFile("TelosTelemetryDashboard.io")
-Lobby Telos TelemetryDashboard := TelosTelemetryDashboard clone
+// doRelativeFile("TelosZODBManager.io")
+// Lobby Telos ZODB := TelosZODBManager clone
+// System ZODBManager := Lobby Telos ZODB
 
-doRelativeFile("TelosFederatedMemory.io")
-Lobby Telos FederatedMemory := TelosFederatedMemory clone
+// doRelativeFile("TelosConceptRepository.io")
+// Lobby Telos ConceptRepository := TelosConceptRepository clone
+// System ConceptRepository := Lobby Telos ConceptRepository
 
-doRelativeFile("TelosGauntlet.io")
-Lobby Telos Gauntlet := TelosGauntletGenerator clone
-
-Lobby Telos BridgeMetrics := Object clone do(
-    snapshot := method(options,
-        Lobby Telos Bridge bridgeMetricsSnapshot(options)
-    )
-
-    reset := method(options,
-        Lobby Telos Bridge bridgeMetricsReset(options)
-    )
-
-    snapshotAndReset := method(options,
-        Lobby Telos Bridge bridgeMetricsSnapshotAndReset(options)
-    )
-
-    summary := method(options,
-        Lobby Telos Bridge bridgeMetricsSummary(options)
-    )
-
-    summaryAndReset := method(options,
-        Lobby Telos Bridge bridgeMetricsSummaryAndReset(options)
-    )
-
-    summaryHistory := method(options,
-        Lobby Telos Bridge bridgeMetricsSummaryHistory(options)
-    )
-
-    clearSummaryHistory := method(
-        Lobby Telos Bridge bridgeMetricsClearSummaryHistory
-    )
-
-    configureSummaryHistory := method(options,
-        Lobby Telos Bridge bridgeMetricsConfigureSummaryHistory(options)
-    )
-)
-
-doRelativeFile("TelosZODBManager.io")
-Lobby Telos ZODB := TelosZODBManager clone
-System ZODBManager := Lobby Telos ZODB
-
-doRelativeFile("TelosConceptRepository.io")
-Lobby Telos ConceptRepository := TelosConceptRepository clone
-System ConceptRepository := Lobby Telos ConceptRepository
+// doRelativeFile("TelosHRC.io")
+// Lobby Telos HRC := HRC clone

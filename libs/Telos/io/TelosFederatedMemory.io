@@ -10,6 +10,7 @@ TelosFederatedMemory := Object clone do(
         )
         Telos ensureActive
         Telos Bridge
+        markChanged()
     )
 
     escapeString := method(value,
@@ -17,6 +18,7 @@ TelosFederatedMemory := Object clone do(
         rendered = rendered replaceSeq("\\", "\\\\")
         rendered = rendered replaceSeq("\"", "\\\"")
         rendered
+        markChanged()
     )
 
     encodeValue := method(value,
@@ -45,6 +47,7 @@ TelosFederatedMemory := Object clone do(
                 )
             )
         )
+        markChanged()
     )
 
     encodeMap := method(mapValue,
@@ -58,6 +61,7 @@ TelosFederatedMemory := Object clone do(
             )
             "{" .. pairs join(",") .. "}"
         )
+        markChanged()
     )
 
     encodeList := method(seq,
@@ -69,16 +73,19 @@ TelosFederatedMemory := Object clone do(
             )
             "[" .. encoded join(",") .. "]"
         )
+        markChanged()
     )
 
     buildRequest := method(action, config,
         configJson := if(config isNil, "{}", encodeValue(config))
         "{\"operation\":\"federated_memory\",\"action\":\"" .. escapeString(action) .. "\",\"config\":" .. configJson .. "}"
+        markChanged()
     )
 
     submit := method(action, config,
         requestPayload := buildRequest(action, config)
         bridge submitTask(requestPayload, 16384)
+        markChanged()
     )
 
     ensureSuccess := method(response,
@@ -95,32 +102,39 @@ TelosFederatedMemory := Object clone do(
             )
             Exception raise("Federated memory request failed: " .. message)
         )
+        markChanged()
     )
 
     initialize := method(config,
         payload := if(config isNil, Map clone, config)
         ensureSuccess(submit("initialize", payload))
+        markChanged()
     )
 
     status := method(
         ensureSuccess(submit("status", nil))
+        markChanged()
     )
 
     cacheStatistics := method(
         ensureSuccess(submit("cache_statistics", nil))
+        markChanged()
     )
 
     outboxStatus := method(
         ensureSuccess(submit("outbox_status", nil))
+        markChanged()
     )
 
     outboxAnalytics := method(options,
         payload := if(options isNil, nil, options)
         ensureSuccess(submit("get_outbox_analytics", payload))
+        markChanged()
     )
 
     l2Telemetry := method(
         ensureSuccess(submit("l2_telemetry", nil))
+        markChanged()
     )
 
     promoteL1 := method(limit, includeVectors, notifyCoordinator,
@@ -133,6 +147,7 @@ TelosFederatedMemory := Object clone do(
         config atPut("include_vectors", include)
         config atPut("notify_coordinator", notify)
         ensureSuccess(submit("promote_l1", config))
+        markChanged()
     )
 
     triggerPromotionCycle := method(limit,
@@ -141,10 +156,12 @@ TelosFederatedMemory := Object clone do(
             config atPut("limit", limit)
         )
         ensureSuccess(submit("trigger_promotions", config))
+        markChanged()
     )
 
     promotionDaemonStatus := method(
         ensureSuccess(submit("promotion_daemon_status", nil))
+        markChanged()
     )
 
     simulateCoordinatorFailure := method(stopAfter,
@@ -153,11 +170,13 @@ TelosFederatedMemory := Object clone do(
             temp := Map clone; temp atPut("stop_after", stopAfter); temp
         )
         ensureSuccess(submit("simulate_coordinator_failure", config))
+        markChanged()
     )
 
     runBenchmark := method(options,
         payload := if(options isNil, Map clone, options)
         ensureSuccess(submit("run_benchmark", payload))
+        markChanged()
     )
 
     benchmarkHistory := method(limit,
@@ -166,6 +185,7 @@ TelosFederatedMemory := Object clone do(
             temp := Map clone; temp atPut("limit", limit); temp
         )
         ensureSuccess(submit("get_benchmark_history", config))
+        markChanged()
     )
 
     benchmarkSummary := method(limit,
@@ -174,6 +194,7 @@ TelosFederatedMemory := Object clone do(
             temp := Map clone; temp atPut("limit", limit); temp
         )
         ensureSuccess(submit("get_benchmark_summary", config))
+        markChanged()
     )
 
     configureBenchmarkAlerts := method(options,
@@ -182,6 +203,7 @@ TelosFederatedMemory := Object clone do(
             options
         )
         ensureSuccess(submit("configure_benchmark_alerts", payload))
+        markChanged()
     )
 
     benchmarkAlerts := method(options,
@@ -190,10 +212,12 @@ TelosFederatedMemory := Object clone do(
             options
         )
         ensureSuccess(submit("get_benchmark_alerts", payload))
+        markChanged()
     )
 
     clearBenchmarkAlerts := method(
         ensureSuccess(submit("clear_benchmark_alerts", nil))
+        markChanged()
     )
 
     evaluateBenchmarkAlerts := method(options,
@@ -202,6 +226,7 @@ TelosFederatedMemory := Object clone do(
             options
         )
         ensureSuccess(submit("evaluate_benchmark_alerts", payload))
+        markChanged()
     )
 
     benchmarkRecommendations := method(options,
@@ -210,6 +235,7 @@ TelosFederatedMemory := Object clone do(
             options
         )
         ensureSuccess(submit("get_benchmark_recommendations", payload))
+        markChanged()
     )
 
     clearBenchmarkRecommendations := method(options,
@@ -218,6 +244,7 @@ TelosFederatedMemory := Object clone do(
             options
         )
         ensureSuccess(submit("clear_benchmark_recommendations", payload))
+        markChanged()
     )
 
     applyBenchmarkRecommendations := method(options,
@@ -226,33 +253,40 @@ TelosFederatedMemory := Object clone do(
             options
         )
         ensureSuccess(submit("apply_benchmark_recommendations", payload))
+        markChanged()
     )
 
     startBenchmarkDaemon := method(options,
         payload := if(options isNil, Map clone, options)
         ensureSuccess(submit("start_benchmark_daemon", payload))
+        markChanged()
     )
 
     stopBenchmarkDaemon := method(options,
         payload := if(options isNil, nil, options)
         ensureSuccess(submit("stop_benchmark_daemon", payload))
+        markChanged()
     )
 
     triggerBenchmarkRun := method(options,
         payload := if(options isNil, nil, options)
         ensureSuccess(submit("trigger_benchmark_run", payload))
+        markChanged()
     )
 
     benchmarkDaemonStatus := method(
         ensureSuccess(submit("benchmark_daemon_status", nil))
+        markChanged()
     )
 
     validate := method(
         response := ensureSuccess(submit("validate", nil))
         response
+        markChanged()
     )
 
     shutdown := method(
         ensureSuccess(submit("shutdown", nil))
+        markChanged()
     )
 )

@@ -71,8 +71,8 @@ TelosBridgeSmoke := Object clone do(
 
 result := try(TelosBridgeSmoke run)
 if(result type == "Exception",
-    System log("TelosBridgeSmoke failure: " .. result message)
+    writeln("TelosBridgeSmoke failure: " .. result message)
     result pass
 )
 
-System log("TelosBridgeSmoke success")
+writeln("TelosBridgeSmoke success")

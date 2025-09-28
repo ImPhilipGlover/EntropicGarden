@@ -185,14 +185,9 @@ class TestFederatedMemoryPromotions(unittest.TestCase):
         for _ in range(2):
             self.assertIsNotNone(self.l1["get"](oid))
 
-        deadline = time.time() + 3.0
-        promoted_entry = None
-        while time.time() < deadline:
-            promoted_entry = self.l2["get"](oid)
-            if promoted_entry is not None:
-                break
-            time.sleep(0.05)
+        promotion_result = self.fabric["promote_l1_candidates"](None, {"notify_coordinator": False})
 
+        promoted_entry = self.l2["get"](oid)
         self.assertIsNotNone(promoted_entry)
 
         stats = self.fabric["get_cache_statistics"]()

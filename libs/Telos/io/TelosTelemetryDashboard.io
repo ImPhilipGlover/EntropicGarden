@@ -10,6 +10,7 @@ TelosTelemetryDashboard := Object clone do(
             Exception raise("Telos namespace unavailable; load TelosBridge first")
         )
         Telos Telemetry
+        markChanged
     )
 
     bridge := method(
@@ -17,6 +18,7 @@ TelosTelemetryDashboard := Object clone do(
             Exception raise("Telos namespace unavailable; bridge access requires TelosBridge")
         )
         Telos Bridge
+        markChanged
     )
 
     bridgeMetricsInterface := method(
@@ -24,6 +26,7 @@ TelosTelemetryDashboard := Object clone do(
             Exception raise("Telos namespace unavailable; bridge metrics access requires TelosBridge")
         )
         Telos BridgeMetrics
+        markChanged
     )
 
     normalizeLimit := method(limit,
@@ -37,6 +40,7 @@ TelosTelemetryDashboard := Object clone do(
                 (limit asNumber) max(1)
             )
         )
+        markChanged
     )
 
     fetch := method(limit,
@@ -46,6 +50,7 @@ TelosTelemetryDashboard := Object clone do(
         telemetryMap atPut("snapshot", telemetry snapshot(eventLimit))
         telemetryMap atPut("limit", eventLimit)
         telemetryMap
+        markChanged
     )
 
     safeNumber := method(value, fallback,
@@ -56,6 +61,7 @@ TelosTelemetryDashboard := Object clone do(
                 value asNumber
             )
         )
+        markChanged
     )
 
     safeString := method(value, fallback,
@@ -63,18 +69,21 @@ TelosTelemetryDashboard := Object clone do(
             if(fallback isNil, "n/a", fallback),
             value asString
         )
+        markChanged
     )
 
     formatDuration := method(seconds,
         value := safeNumber(seconds, 0)
         rounded := ((value * 1000) floor) / 1000
         (rounded asString) .. "s"
+        markChanged
     )
 
     formatMillis := method(milliseconds,
         value := safeNumber(milliseconds, 0)
         rounded := ((value * 1000) floor) / 1000
         (rounded asString) .. "ms"
+        markChanged
     )
 
     formatPercent := method(rate,
@@ -83,6 +92,7 @@ TelosTelemetryDashboard := Object clone do(
         if(percent > 100, percent = 100)
         rounded := ((percent * 100) floor) / 100
         (rounded asString) .. "%"
+        markChanged
     )
 
     formatTimestamp := method(timestamp,
@@ -93,6 +103,7 @@ TelosTelemetryDashboard := Object clone do(
             date setSecondsSinceEpoch(seconds)
             date asString("%Y-%m-%d %H:%M:%S")
         )
+        markChanged
     )
 
     buildSummaryLines := method(summaryMap,
@@ -116,6 +127,7 @@ TelosTelemetryDashboard := Object clone do(
         lines append("Errors per iteration: " .. ((errorsPerIteration * 1000) floor / 1000) asString)
         lines append("Total replay wallclock: " .. formatDuration(wallclock))
         lines
+        markChanged
     )
 
     buildEventLines := method(snapshotMap,
@@ -166,6 +178,7 @@ TelosTelemetryDashboard := Object clone do(
         )
 
         lines
+        markChanged
     )
 
     normalizeProxyIds := method(statusMap,
@@ -183,6 +196,7 @@ TelosTelemetryDashboard := Object clone do(
             )
         )
         ids
+        markChanged
     )
 
     collectBridgeMetrics := method(options,
@@ -235,6 +249,7 @@ TelosTelemetryDashboard := Object clone do(
                 )
             )
         )
+        markChanged
     )
 
     collectBridgeMetricsSummary := method(options,
@@ -248,6 +263,7 @@ TelosTelemetryDashboard := Object clone do(
                 Map clone
             )
         )
+        markChanged
     )
 
     buildBridgeMetricsLines := method(metricsMap, recentLimit,
@@ -320,6 +336,7 @@ TelosTelemetryDashboard := Object clone do(
         )
 
         lines
+        markChanged
     )
 
     buildBridgeSummaryLines := method(summaryMap,
@@ -380,6 +397,7 @@ TelosTelemetryDashboard := Object clone do(
         )
 
         lines
+        markChanged
     )
 
     render := method(limit,
@@ -389,6 +407,7 @@ TelosTelemetryDashboard := Object clone do(
         combined := summaryLines clone
         combined appendSeq(eventLines)
         combined join("\n")
+        markChanged
     )
 
     log := method(limit,
@@ -398,6 +417,7 @@ TelosTelemetryDashboard := Object clone do(
             output println
         )
         output
+        markChanged
     )
 
     renderBridgeMetrics := method(recentLimit,
@@ -407,6 +427,7 @@ TelosTelemetryDashboard := Object clone do(
         metricsLines := buildBridgeMetricsLines(metricsMap, recentLimit)
         lines appendSeq(metricsLines)
         lines join("\n")
+        markChanged
     )
 
     logBridgeMetrics := method(recentLimit,
@@ -416,6 +437,7 @@ TelosTelemetryDashboard := Object clone do(
             output println
         )
         output
+        markChanged
     )
 
     renderCombined := method(eventLimit, recentLimit,
@@ -429,6 +451,7 @@ TelosTelemetryDashboard := Object clone do(
         combined appendSeq(bridgeSummary)
         combined appendSeq(metricsLines)
         combined join("\n")
+        markChanged
     )
 
     logCombined := method(eventLimit, recentLimit,
@@ -438,5 +461,6 @@ TelosTelemetryDashboard := Object clone do(
             output println
         )
         output
+        markChanged
     )
 )

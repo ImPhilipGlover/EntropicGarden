@@ -97,26 +97,38 @@ Addon := Object clone do(
 )
 
 AddonLoader := Object clone do(
+    // Initialize search paths
+    _searchPaths := nil
+    
     //doc Addon searchPaths Returns the list of paths to search for addons.
-
     searchPaths := method(
-        platform := System platform asLowercase
-        eerieBasePath := nil
-        eerieActiveEnvPath := nil
+        if(_searchPaths == nil,
+            platform := System platform asLowercase
+            eerieBasePath := nil
+            eerieActiveEnvPath := nil
 
-        if(platform == "windows" or platform == "mingw",
-            eerieBasePath := (System installPrefix .. "/eerie/base/addons") asOSPath
-            eerieActiveEnvPath := (System installPrefix .. "/eerie/activeEnv/addons") asOSPath
-            ,
-            eerieBasePath := ("~/.eerie/base/addons" stringByExpandingTilde) asOSPath
-            eerieActiveEnvPath := ("~/.eerie/activeEnv/addons" stringByExpandingTilde) asOSPath
+            if(platform == "windows" or platform == "mingw",
+                eerieBasePath := (System installPrefix .. "/eerie/base/addons") asOSPath
+                eerieActiveEnvPath := (System installPrefix .. "/eerie/activeEnv/addons") asOSPath
+                ,
+                eerieBasePath := ("~/.eerie/base/addons" stringByExpandingTilde) asOSPath
+                eerieActiveEnvPath := ("~/.eerie/activeEnv/addons" stringByExpandingTilde) asOSPath
+            )
+
+            _searchPaths := list("eerie/base/addons", "eerie/activeEnv/addons", eerieBasePath, eerieActiveEnvPath)
         )
-
-        return list("eerie/base/addons", "eerie/activeEnv/addons", eerieBasePath, eerieActiveEnvPath)
+        _searchPaths
     )
 
     //doc Addon appendSearchPath(aSequence) Appends the argument to the list of search paths.
-    appendSearchPath := method(p, searchPaths appendIfAbsent(p); self)
+    appendSearchPath := method(p, 
+        ("Appending path: " .. p) println
+        paths := searchPaths
+        ("Paths before append: " .. paths) println
+        paths append(p)
+        ("Paths after append: " .. paths) println
+        self
+    )
 
     //doc Addon addons Looks for all addons which can be found and returns them as a list of Addon objects. Caches the result the first time it is called.
     addons := method(

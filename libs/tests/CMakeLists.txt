@@ -401,6 +401,29 @@ if(TARGET IoTelosBridge AND TARGET telos_core)
 
     add_test(NAME bridge_send_message_c COMMAND synaptic_bridge_message_test)
 
+    # Small lifecycle test for shared memory handles
+    add_executable(shared_memory_lifecycle_test "${CMAKE_CURRENT_SOURCE_DIR}/test_shared_memory_lifecycle.c")
+
+    target_include_directories(shared_memory_lifecycle_test PRIVATE
+        ${TELOS_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/deps/parson
+    )
+
+    target_link_libraries(shared_memory_lifecycle_test PRIVATE
+        telos_core
+        iovmall
+        basekit
+        coroutine
+        garbagecollector
+    )
+
+    set_target_properties(shared_memory_lifecycle_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
+        BUILD_RPATH "${CMAKE_BINARY_DIR};${CMAKE_BINARY_DIR}/_build/dll"
+    )
+
+    add_test(NAME shared_memory_lifecycle COMMAND shared_memory_lifecycle_test)
+
     set(test_env_vars
         "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../Telos/python:$ENV{PYTHONPATH}"
         "TELOS_ADDON_PATH=${CMAKE_BINARY_DIR}/addons"

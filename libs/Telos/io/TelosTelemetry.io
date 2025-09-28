@@ -9,6 +9,7 @@ TelosTelemetry := Object clone do(
         )
         Telos ensureActive
         Telos Bridge
+        markChanged()
     )
 
     escapeString := method(value,
@@ -16,6 +17,7 @@ TelosTelemetry := Object clone do(
         escaped = escaped replaceSeq("\\", "\\\\")
         escaped = escaped replaceSeq("\"", "\\\"")
         escaped
+        markChanged()
     )
 
     encodeValue := method(value,
@@ -32,6 +34,7 @@ TelosTelemetry := Object clone do(
                 )
             )
         )
+        markChanged()
     )
 
     encodeConfig := method(config,
@@ -45,16 +48,19 @@ TelosTelemetry := Object clone do(
             )
             "{" .. pairs join(",") .. "}"
         )
+        markChanged()
     )
 
     buildRequest := method(action, config,
         configJson := encodeConfig(config)
         "{\"operation\":\"telemetry\",\"action\":\"" .. action .. "\",\"config\":" .. configJson .. "}"
+        markChanged()
     )
 
     submit := method(action, config,
         requestPayload := buildRequest(action, config)
         bridge submitTask(requestPayload, 8192)
+        markChanged()
     )
 
     snapshot := method(limit,
@@ -66,16 +72,19 @@ TelosTelemetry := Object clone do(
     config atPut("limit", effectiveLimit)
         response := submit("snapshot", config)
         validateResponse(response)
+        markChanged()
     )
 
     summary := method(
         response := submit("summary", nil)
         validateResponse(response)
+        markChanged()
     )
 
     clear := method(
         response := submit("clear", nil)
         validateResponse(response)
+        markChanged()
     )
 
     validateResponse := method(response,
@@ -87,6 +96,7 @@ TelosTelemetry := Object clone do(
             errorMessage := response at("error")
             Exception raise("Telemetry request failed: " .. escapeString(errorMessage asString))
         )
+        markChanged()
     )
 
     latestEvent := method(limit,
@@ -96,6 +106,7 @@ TelosTelemetry := Object clone do(
             nil,
             events last
         )
+        markChanged()
     )
 
     logSummary := method(
@@ -107,5 +118,6 @@ TelosTelemetry := Object clone do(
                 ", average_iteration_duration=" .. summaryResponse at("average_iteration_duration"))
         )
         summaryResponse
+        markChanged()
     )
 )

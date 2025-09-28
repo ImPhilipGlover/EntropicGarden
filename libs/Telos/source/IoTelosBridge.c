@@ -203,7 +203,7 @@ static int IoTelosBridge_ensure_trace_context(JSON_Object *request_object) {
 /**
  * Convert a BridgeResult to an Io error if necessary
  */
-static IoObject *IoTelosBridge_resultToIoObject(IoTelosBridge *self, IoObject *locals, BridgeResult result) {
+static IoObject *IoTelosBridge_resultToIoObject(IoTelosBridge *self, IoObject *locals, BridgeResult result, IoMessage *m) {
     IoState *state = IOSTATE;
     
     if (result == BRIDGE_SUCCESS) {
@@ -214,11 +214,10 @@ static IoObject *IoTelosBridge_resultToIoObject(IoTelosBridge *self, IoObject *l
     char errorBuffer[1024];
     bridge_get_last_error(errorBuffer, sizeof(errorBuffer));
     
-    // Create an Io error with the message
-    IoError *error = IoError_newWithCStringMessage_(state, errorBuffer);
-    IoState_exception_(state, IOREF(error));
+    // Raise an Io exception with the error message
+    IoState_error_(state, m, errorBuffer);
     
-    return IOFALSE(self);
+    return IONIL(self);
 }
 
 /**
@@ -321,6 +320,12 @@ IoTelosBridge *IoTelosBridge_proto(void *state) {
         {NULL, NULL},
     };
     
+    // Check if proto already exists
+    IoTelosBridge *existing = IoState_protoWithId_(state, protoId);
+    if (existing != NULL) {
+        return existing;
+    }
+    
     IoTelosBridge *self = IoObject_new(state);
     IoObject_tag_(self, IoTelosBridge_newTag(state));
     IoObject_setDataPointer_(self, calloc(1, sizeof(IoTelosBridgeData)));
@@ -348,7 +353,8 @@ IoObject *IoTelosBridge_initialize(IoTelosBridge *self, IoObject *locals, IoMess
         return IOTRUE(self);
     }
     
-    BridgeResult result = bridge_initialize(workers);
+    BridgeConfig config = {workers, NULL};  // max_workers, log_callback = NULL
+    BridgeResult result = bridge_initialize(&config);
     
     if (result == BRIDGE_SUCCESS) {
         DATA(self)->initialized = 1;
@@ -356,7 +362,7 @@ IoObject *IoTelosBridge_initialize(IoTelosBridge *self, IoObject *locals, IoMess
         return IOTRUE(self);
     }
     
-    return IoTelosBridge_resultToIoObject(self, locals, result);
+    return IoTelosBridge_resultToIoObject(self, locals, result, m);
 }
 
 IoObject *IoTelosBridge_shutdown(IoTelosBridge *self, IoObject *locals, IoMessage *m) {
@@ -420,7 +426,7 @@ IoObject *IoTelosBridge_createSharedMemory(IoTelosBridge *self, IoObject *locals
         return IoSharedMemoryHandle_newWithData(IOSTATE, handle.name, handle.offset, handle.size);
     }
     
-    IoTelosBridge_resultToIoObject(self, locals, result);
+    IoTelosBridge_resultToIoObject(self, locals, result, m);
     return IONIL(self);
 }
 
@@ -453,7 +459,7 @@ IoObject *IoTelosBridge_destroySharedMemory(IoTelosBridge *self, IoObject *local
         handleData->size = 0;
         handleData->lastMappedPointer = NULL;
     }
-    return IoTelosBridge_resultToIoObject(self, locals, result);
+    return IoTelosBridge_resultToIoObject(self, locals, result, m);
 }
 
 IoObject *IoTelosBridge_mapSharedMemory(IoTelosBridge *self, IoObject *locals, IoMessage *m) {
@@ -479,7 +485,7 @@ IoObject *IoTelosBridge_mapSharedMemory(IoTelosBridge *self, IoObject *locals, I
     void *mappedPtr = NULL;
     BridgeResult result = bridge_map_shared_memory(&handle, &mappedPtr);
     if (result != BRIDGE_SUCCESS) {
-        IoTelosBridge_resultToIoObject(self, locals, result);
+        IoTelosBridge_resultToIoObject(self, locals, result, m);
         return IONIL(self);
     }
 
@@ -541,7 +547,7 @@ IoObject *IoTelosBridge_unmapSharedMemory(IoTelosBridge *self, IoObject *locals,
 
     BridgeResult result = bridge_unmap_shared_memory(&handle, mappedPtr);
     if (result != BRIDGE_SUCCESS) {
-        return IoTelosBridge_resultToIoObject(self, locals, result);
+        return IoTelosBridge_resultToIoObject(self, locals, result, m);
     }
 
     if (mappedPtr == handleData->lastMappedPointer) {
@@ -608,7 +614,7 @@ IoObject *IoTelosBridge_executeVSABatch(IoTelosBridge *self, IoObject *locals, I
         (size_t)batchCount
     );
 
-    return IoTelosBridge_resultToIoObject(self, locals, result);
+    return IoTelosBridge_resultToIoObject(self, locals, result, m);
 }
 
 IoObject *IoTelosBridge_annSearch(IoTelosBridge *self, IoObject *locals, IoMessage *m) {
@@ -659,7 +665,7 @@ IoObject *IoTelosBridge_annSearch(IoTelosBridge *self, IoObject *locals, IoMessa
         threshold
     );
 
-    return IoTelosBridge_resultToIoObject(self, locals, result);
+    return IoTelosBridge_resultToIoObject(self, locals, result, m);
 }
 
 IoObject *IoTelosBridge_addVector(IoTelosBridge *self, IoObject *locals, IoMessage *m) {
@@ -694,7 +700,7 @@ IoObject *IoTelosBridge_addVector(IoTelosBridge *self, IoObject *locals, IoMessa
     }
 
     BridgeResult result = bridge_add_vector(vectorId, &vectorHandle, indexName);
-    return IoTelosBridge_resultToIoObject(self, locals, result);
+    return IoTelosBridge_resultToIoObject(self, locals, result, m);
 }
 
 IoObject *IoTelosBridge_updateVector(IoTelosBridge *self, IoObject *locals, IoMessage *m) {
@@ -729,7 +735,7 @@ IoObject *IoTelosBridge_updateVector(IoTelosBridge *self, IoObject *locals, IoMe
     }
 
     BridgeResult result = bridge_update_vector(vectorId, &vectorHandle, indexName);
-    return IoTelosBridge_resultToIoObject(self, locals, result);
+    return IoTelosBridge_resultToIoObject(self, locals, result, m);
 }
 
 IoObject *IoTelosBridge_removeVector(IoTelosBridge *self, IoObject *locals, IoMessage *m) {
@@ -751,7 +757,7 @@ IoObject *IoTelosBridge_removeVector(IoTelosBridge *self, IoObject *locals, IoMe
     }
 
     BridgeResult result = bridge_remove_vector(vectorId, indexName);
-    return IoTelosBridge_resultToIoObject(self, locals, result);
+    return IoTelosBridge_resultToIoObject(self, locals, result, m);
 }
 
 /* =============================================================================
@@ -922,7 +928,7 @@ static IoObject *IoTelosBridge_submitTask(IoTelosBridge *self, IoObject *locals,
     BridgeResult bridgeStatus = bridge_create_shared_memory(requestSize, &requestHandle);
     if (bridgeStatus != BRIDGE_SUCCESS) {
         json_free_serialized_string(serialized_request);
-        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus);
+        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus, m);
     }
 
     void *requestPtr = NULL;
@@ -930,7 +936,7 @@ static IoObject *IoTelosBridge_submitTask(IoTelosBridge *self, IoObject *locals,
     if (bridgeStatus != BRIDGE_SUCCESS) {
         bridge_destroy_shared_memory(&requestHandle);
         json_free_serialized_string(serialized_request);
-        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus);
+        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus, m);
     }
 
     if (requestHandle.size < requestLength + 1) {
@@ -951,14 +957,14 @@ static IoObject *IoTelosBridge_submitTask(IoTelosBridge *self, IoObject *locals,
     if (bridgeStatus != BRIDGE_SUCCESS) {
         bridge_destroy_shared_memory(&requestHandle);
         json_free_serialized_string(serialized_request);
-        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus);
+        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus, m);
     }
 
     bridgeStatus = bridge_create_shared_memory(responseSize, &responseHandle);
     if (bridgeStatus != BRIDGE_SUCCESS) {
         bridge_destroy_shared_memory(&requestHandle);
         json_free_serialized_string(serialized_request);
-        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus);
+        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus, m);
     }
 
     bridgeStatus = bridge_submit_json_task(&requestHandle, &responseHandle);
@@ -966,7 +972,7 @@ static IoObject *IoTelosBridge_submitTask(IoTelosBridge *self, IoObject *locals,
         bridge_destroy_shared_memory(&responseHandle);
         bridge_destroy_shared_memory(&requestHandle);
         json_free_serialized_string(serialized_request);
-        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus);
+        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus, m);
     }
 
     void *responsePtr = NULL;
@@ -975,7 +981,7 @@ static IoObject *IoTelosBridge_submitTask(IoTelosBridge *self, IoObject *locals,
         bridge_destroy_shared_memory(&responseHandle);
         bridge_destroy_shared_memory(&requestHandle);
         json_free_serialized_string(serialized_request);
-        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus);
+        return IoTelosBridge_resultToIoObject(self, locals, bridgeStatus, m);
     }
 
     IoState *state = IOSTATE;
@@ -1075,6 +1081,12 @@ IoSharedMemoryHandle *IoSharedMemoryHandle_proto(void *state) {
         {"size", IoSharedMemoryHandle_size},
         {NULL, NULL},
     };
+    
+    // Check if proto already exists
+    IoSharedMemoryHandle *existing = IoState_protoWithId_(state, handleProtoId);
+    if (existing != NULL) {
+        return existing;
+    }
     
     IoSharedMemoryHandle *self = IoObject_new(state);
     IoObject_tag_(self, IoSharedMemoryHandle_newTag(state));

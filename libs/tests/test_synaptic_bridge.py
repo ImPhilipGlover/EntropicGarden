@@ -37,7 +37,10 @@ class SynapticBridgeSmokeTest(unittest.TestCase):
         self.assertEqual(ffi.string(buf), b"")
 
         # Initialize with stub workers. Even in stub mode we should receive success.
-        result = lib.bridge_initialize(1)
+        config = ffi.new("BridgeConfig*")
+        config.max_workers = 1
+        config.log_callback = ffi.NULL
+        result = lib.bridge_initialize(config)
         self.assertEqual(result, 0)
 
         # Retrieve the informational message populated during stub initialization.
@@ -57,7 +60,10 @@ class SynapticBridgeSmokeTest(unittest.TestCase):
 
         # Ensure bridge is initialized
         lib.bridge_clear_error()
-        result = lib.bridge_initialize(1)
+        config = ffi.new("BridgeConfig*")
+        config.max_workers = 1
+        config.log_callback = ffi.NULL
+        result = lib.bridge_initialize(config)
         self.assertEqual(result, lib.BRIDGE_SUCCESS)
 
         handle = ffi.new("SharedMemoryHandle *")

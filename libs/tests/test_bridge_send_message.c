@@ -24,10 +24,12 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
+    IoState_init(state);
     IoState_argc_argv_(state, 0, NULL);
 
     bridge_clear_error();
-    BridgeResult init_status = bridge_initialize(1);
+    BridgeConfig config = {1, NULL};  // max_workers = 1, log_callback = NULL
+    BridgeResult init_status = bridge_initialize(&config);
     if (init_status != BRIDGE_SUCCESS) {
         print_bridge_error("bridge_initialize");
     }

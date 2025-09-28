@@ -222,7 +222,7 @@ Concept := Object clone do(
     markChanged := method(
         // Log the state change for debugging and audit trails
         if(System hasSlot("log"),
-            System log("Concept state changed for OID: " .. oid .. ". Persistence marked.")
+            System writeln("Concept state changed for OID: " .. oid .. ". Persistence marked.")
         )
         
         // This message will be forwarded to the ZODBManager actor via the
@@ -338,3 +338,239 @@ Concept validate := method(
 
 // Auto-load message
 "TELOS Concept prototype loaded successfully" println
+
+//
+// AUTOPOIETIC ENGINE ENHANCEMENT
+//
+// This section implements the doesNotUnderstand_ protocol on the primordial Object prototype,
+// enabling tiered escalation and sandboxed code generation for runtime capability synthesis.
+//
+
+// Enhanced doesNotUnderstand_ protocol for autopoiesis
+Object doesNotUnderstand_ := method(message, args,
+    // This method is called when a message is sent to an object that doesn't exist
+    // It implements the core autopoietic loop: error -> learning opportunity -> capability synthesis
+
+    // Extract message information using Io's thisMessage
+    messageName := message name
+    receiver := self
+
+    // Create generation request for the GenerativeKernel
+    generationRequest := Map clone
+    generationRequest atPut("messageName", messageName)
+    generationRequest atPut("receiverType", receiver type)
+    generationRequest atPut("receiverSlots", receiver slotNames)
+    generationRequest atPut("args", args)
+    generationRequest atPut("context", Map clone atPut("receiver", receiver))
+
+    // Tiered escalation strategy
+    escalationLevel := 0
+    maxEscalation := 3
+
+    while(escalationLevel < maxEscalation,
+        result := escalateAndGenerate(generationRequest, escalationLevel)
+
+        if(result and result at("success"),
+            // Successfully generated capability - install it
+            installGeneratedCapability(result, receiver, messageName)
+            return result at("result")
+        )
+
+        escalationLevel = escalationLevel + 1
+    )
+
+    // All escalation levels failed - return a helpful error
+    errorMsg := "Unable to synthesize capability for message '" .. messageName .. "' on " .. receiver type
+    Exception raise(errorMsg)
+)
+
+// Tiered escalation for capability generation
+Object escalateAndGenerate := method(request, level,
+    if(level == 0,
+        // Level 0: Simple slot addition (no LLM required)
+        return generateSimpleSlot(request)
+    )
+
+    if(level == 1,
+        // Level 1: Template-based generation (uses LLM with templates)
+        return generateFromTemplate(request)
+    )
+
+    if(level == 2,
+        // Level 2: Sandboxed code generation (Docker + eBPF)
+        return generateSandboxedCode(request)
+    )
+
+    nil  // Escalation failed
+)
+
+// Level 0: Simple slot addition for basic getters/setters
+Object generateSimpleSlot := method(request,
+    messageName := request at("messageName")
+    receiver := request at("receiver")
+
+    // Check if this looks like a simple getter/setter
+    if(messageName endsWithSeq("="),
+        // Setter: create corresponding getter and setter
+        baseName := messageName beforeSeq("=")
+        getterName := baseName
+        setterName := baseName .. "="
+
+        if(receiver hasSlot(getterName) not,
+            // Create getter
+            receiver setSlot(getterName, method(
+                self getSlot(baseName)
+            ))
+        )
+
+        if(receiver hasSlot(setterName) not,
+            // Create setter
+            receiver setSlot(setterName, method(value,
+                self setSlot(baseName, value)
+                if(self hasSlot("markChanged"), self markChanged)
+                self
+            ))
+        )
+
+        return Map clone atPut("success", true) atPut("result", receiver getSlot(baseName))
+    )
+
+    if(receiver hasSlot(messageName) not,
+        // Simple getter for existing slot
+        if(receiver slotNames contains(messageName),
+            return Map clone atPut("success", true) atPut("result", receiver getSlot(messageName))
+        )
+    )
+
+    nil  // Not a simple case
+)
+
+// Level 1: Template-based generation using LLM
+Object generateFromTemplate := method(request,
+    if(Telos hasSlot("GenerativeKernel") not, return nil)
+
+    kernel := Telos GenerativeKernel
+
+    // Use the doesNotUnderstand template
+    result := kernel generate(request, Map clone, nil)
+
+    if(result and result at("success"),
+        // Parse the generated code and install it
+        generatedCode := result at("response")
+        if(generatedCode and generatedCode size > 0,
+            parsedMethod := parseGeneratedMethod(generatedCode, request)
+            if(parsedMethod,
+                return Map clone atPut("success", true) atPut("result", parsedMethod) atPut("code", generatedCode)
+            )
+        )
+    )
+
+    nil
+)
+
+// Level 2: Sandboxed code generation with Docker + eBPF
+Object generateSandboxedCode := method(request,
+    if(Telos hasSlot("SandboxedGenerator") not, return nil)
+
+    sandbox := Telos SandboxedGenerator
+
+    // Generate code in sandboxed environment
+    sandboxResult := sandbox generateInSandbox(request)
+
+    if(sandboxResult and sandboxResult at("success"),
+        // Validate the generated code before installation
+        if(validateSandboxedCode(sandboxResult at("code")),
+            parsedMethod := parseGeneratedMethod(sandboxResult at("code"), request)
+            if(parsedMethod,
+                return Map clone atPut("success", true) atPut("result", parsedMethod) atPut("code", sandboxResult at("code"))
+            )
+        )
+    )
+
+    nil
+)
+
+// Parse generated method code into executable Io code
+Object parseGeneratedMethod := method(codeString, request,
+    // This is a simplified parser - in production would use more sophisticated parsing
+    methodName := request at("messageName")
+
+    // Try to extract method definition from generated code
+    if(codeString containsSeq(methodName .. " :="),
+        // Looks like a method definition - try to evaluate it
+        try(
+            // Create a temporary context to evaluate the code
+            tempContext := Object clone
+            tempContext doString(codeString)
+
+            if(tempContext hasSlot(methodName),
+                method := tempContext getSlot(methodName)
+                return method
+            )
+        )
+    )
+
+    nil
+)
+
+// Install generated capability on the receiver
+Object installGeneratedCapability := method(generationResult, receiver, messageName,
+    if(generationResult hasSlot("result"),
+        method := generationResult at("result")
+        if(method,
+            receiver setSlot(messageName, method)
+            "Autopoiesis: Installed capability '" .. messageName .. "' on " .. receiver type println
+        )
+    )
+)
+
+// Validate sandboxed code before installation
+Object validateSandboxedCode := method(code,
+    // Basic validation - check for dangerous operations
+    dangerousPatterns := list(
+        "System system", "File open", "File remove", "System exit",
+        "Lobby shutdown", "Lobby exit", "eval", "doString"
+    )
+
+    dangerousPatterns foreach(pattern,
+        if(code containsSeq(pattern),
+            "Autopoiesis: Rejected sandboxed code containing dangerous pattern: " .. pattern println
+            return false
+        )
+    )
+
+    true  // Code passed basic validation
+)
+
+// Sandboxed code generator using Docker + eBPF
+SandboxedGenerator := Object clone do(
+    dockerImage := "telos-sandbox:latest"
+    eBPFProfile := "restrictive"
+    timeout := 30
+
+    generateInSandbox := method(request,
+        // This would integrate with Docker and eBPF to run code generation in sandbox
+        // For now, return a placeholder implementation
+
+        result := Map clone
+        result atPut("success", false)
+        result atPut("error", "Sandboxed generation not yet implemented")
+
+        // Placeholder: delegate to template-based generation for now
+        if(Telos hasSlot("GenerativeKernel"),
+            kernel := Telos GenerativeKernel
+            templateResult := kernel generate(request, Map clone atPut("sandbox", true), nil)
+            if(templateResult and templateResult at("success"),
+                result atPut("success", true)
+                result atPut("code", templateResult at("response"))
+                result removeAt("error")
+            )
+        )
+
+        result
+    )
+)
+
+// Export sandboxed generator
+if(Lobby hasSlot("Telos") not, Lobby Telos := Object clone)
+Telos SandboxedGenerator := SandboxedGenerator

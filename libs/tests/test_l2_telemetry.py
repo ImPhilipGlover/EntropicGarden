@@ -19,9 +19,14 @@ def _make_stub_l2_manager(statistics_blob):
     """Create a prototypal stub mimicking the L2 manager telemetry surface."""
     call_tracker = {'count': 0}
 
-    def get_statistics():
+    def get_telemetry():
         call_tracker['count'] += 1
-        return copy.deepcopy(statistics_blob)
+        return {
+            'search_metrics': statistics_blob.get('search_metrics', {}),
+            'eviction_history': statistics_blob.get('eviction_history', []),
+            'diskann_metrics': statistics_blob.get('disk_index', {}).get('metrics', {}).get('diskann', {}),
+            'search_engine_metrics': statistics_blob.get('disk_index', {}).get('metrics', {}).get('search', {}),
+        }
 
     return (
         {
@@ -29,7 +34,8 @@ def _make_stub_l2_manager(statistics_blob):
             'get': lambda *args, **kwargs: None,
             'remove': lambda *args, **kwargs: True,
             'search_similar': lambda *args, **kwargs: [],
-            'get_statistics': get_statistics,
+            'get_statistics': lambda: copy.deepcopy(statistics_blob),
+            'get_telemetry': get_telemetry,
             'clear': lambda: None,
             'close': lambda: None,
             'get_all_oids': lambda: set(),
