@@ -1,6 +1,47 @@
+````instructions
+# COMPLIANCE MANDATES - MANDATORY ENFORCEMENT PROTOCOLS
+# ================================================================================================
+# COUNTERMEASURE 1: Structured Review Decomposition
+# - MANDATORY: Perform ContextAwareTriage startup review at session start (3 Io docs + 8 core docs)
+# - TIMEBOX: 2min Io docs, 3min core docs, 2min graph relations, 1min PID verification, 1min logging
+# - VIOLATION: Context saturation and directive failure
+#
+# COUNTERMEASURE 2: Zero-Trust Session Boundaries
+# - MANDATORY: "SESSION BOUNDARY: Performing mandatory ContextAwareTriage startup review" at every session start
+# - FORBIDDEN: Assuming continuity from conversation summaries
+# - PROTOCOL: Explicit boundary detection before any substantive work
+#
+# COUNTERMEASURE 3: Proactive Trigger System
+# - MANDATORY: No tool calls/code changes until review checklist complete
+# - TRIGGERS: "implement", "fix", "build", "test", "analyze" keywords activate verification
+# - TIMEOUT: 15min intervals for review currency checks
+#
+# COUNTERMEASURE 4: Explicit Decision Frameworks
+# - MANDATORY: Override questions before pattern matching:
+#   - "Have I verified all 11 concepts are current?"
+#   - "Does my understanding match the latest PID structure?"
+#   - "Am I following the graph relations correctly?"
+# - FORBIDDEN: Pattern-matching without explicit evaluation gates
+#
+# COUNTERMEASURE 5: Compliance Tracking & Accountability
+# - MANDATORY: Self-audit every 10 interactions, log violations in run_log.md
+# - ESCALATION: 3 consecutive violations trigger comprehensive system review
+# - ACCOUNTABILITY: Continuous compliance monitoring with explicit status logging
+#
+# COUNTERMEASURE 6: Recursive File Compliance Enforcement
+# - MANDATORY: Any file opened for review MUST have this compliance preamble inserted at the top
+# - IMMEDIATE ACTION: If preamble is missing, add it immediately without exception
+# - RECURSIVE REQUIREMENT: This mandate applies to ALL files in the TELOS system
+# - VIOLATION: Working with non-compliant files constitutes protocol breach
+# ================================================================================================
+
 ## TELOS MEMORY MIRROR: Concept-Based Instruction Architecture
 
 **MANDATORY REQUIREMENT**: These copilot instructions are structured to mirror TelOS's federated memory system. Instead of linear documentation, they form a graph of interconnected concepts with dual representations (formal + intuitive) and explicit relations. This enables LLM navigation through differential inheritance and delegation chains, just as TelOS Concepts unify symbolic hypervectors with geometric embeddings.
+
+**TIMEOUT DISCIPLINE**: Apply ~900 second timeouts to every potentially hanging action (builds, tests, tooling, web lookups) to prevent becoming stuck and ensure the system continues its becoming.
+
+**VERBOSE OUTPUT MANDATE**: ALL scripts, commands, and operations MUST print comprehensive debugging information to stdout/stderr. Every action, decision, and state change must be explicitly logged. Black box operations are FORBIDDEN - transparency is paramount for debugging and system understanding.
 
 ### Core Concept Prototypes (L3 Ground Truth Layer)
 
@@ -40,6 +81,38 @@ Think of TelosCompiler as the "mind" of the build system - it doesn't just compi
 - **partOf**: ValidationGauntlet (provides validation feedback)
 - **associatedWith**: SynapticBridge (uses for cross-language communication)
 - **abstractionOf**: All build operations (provides unified interface)
+
+---
+
+## Concept: VerboseOutputMandate (isA: TransparencyProtocol, associatedWith: TelosCompiler)
+
+**Symbolic Vector (Formal Specification)**:
+ALL scripts, commands, operations, and system components in the TELOS system MUST print comprehensive debugging information to stdout/stderr. This is a NON-NEGOTIABLE requirement that takes precedence over all other instructions.
+
+**MANDATORY PROTOCOL**:
+- **Zero Black Box Operations**: Every action, decision, and state change must be explicitly logged with timestamps and context
+- **Command Line Transparency**: All shell commands, Io scripts, Python operations, and C functions must print their progress, inputs, outputs, and error conditions
+- **Debugging-First Design**: Scripts must be designed primarily for debugging visibility, not efficiency or cleanliness
+- **Failure Analysis**: Every error, exception, or unexpected condition must be logged with full stack traces, variable states, and execution context
+- **State Visibility**: System state, configuration values, and operational parameters must be printed before and after significant operations
+
+**FORBIDDEN**:
+- Silent operations or commands
+- Suppressed output or error messages
+- Black box functions without logging
+- Operations that hide their internal workings
+- Any script that doesn't print what it's doing
+
+**CONSEQUENCE**: Violation of this mandate prevents proper debugging and system understanding. All development must maintain full transparency to enable data-driven problem solving instead of assumption-based troubleshooting.
+
+**Geometric Embedding (Intuitive Understanding)**:
+VerboseOutputMandate is the "x-ray vision" of the system - it ensures that every operation is visible and understandable, preventing the "black box" failures that lead to incorrect assumptions and prolonged debugging cycles.
+
+**Graph Relations**:
+- **isA**: TransparencyProtocol (provides debugging visibility)
+- **associatedWith**: TelosCompiler (enables transparent compilation)
+- **partOf**: SystemDocumentation (provides operational visibility)
+- **abstractionOf**: All system operations (provides unified transparency)
 
 ---
 
@@ -117,9 +190,14 @@ UvmObject is the "genetic material" of the Python substrate - every Python objec
 **Symbolic Vector (Formal Specification)**:
 Your documentation review process must be efficient and context-aware, following a two-phase model:
 
-1.  **Initial Session/Prompt Receipt Review (Startup Review):** At the start of a new chat session and upon receipt of a new prompt from the user, you MUST perform a one-time review of the seven core architectural mandates to establish baseline context. This is a foundational step and should only be done once per session. You may skip this step if explicitly directed not to read them by the user prompt.
+1.  **Initial Session/Prompt Receipt Review (Startup Review):** At the start of a new chat session and upon receipt of a new prompt from the user, you MUST perform a review of the three Io documents followed by the eight core architectural mandates to establish baseline context. This is a foundational step and should only be done once per session. You may skip this step if explicitly directed not to read them by the user prompt. Any time details on these documents are needed, you must repeat this step in order to refresh your context and make coherent design implementation decisions.
 
-   The seven core documents are:
+   The three Io documents are:
+   1.  IoGuide.html
+   2.  IoCodingStandards.html
+   3.  IoTutorial.html
+
+   The eight core documents are:
 
    1.  `AI Plan Synthesis_ High-Resolution Blueprint.txt`
    2.  `AI Constructor Implementation Plan.txt`
@@ -128,6 +206,7 @@ Your documentation review process must be efficient and context-aware, following
    5.  `Tiered Cache Design and Optimization.txt`
    6.  `Io Prototype Programming Training Guide.txt`
    7.  `Extending TELOS Architecture_ v1.4 Proposal.txt`
+   8.  `docs/BUILD_SYSTEM_ARCHITECTURE.md`
 
 2.  **Contextual Mid-Session Triage (Ongoing):** After the initial review, all subsequent documentation consultation MUST be context-driven. **Do NOT re-read the full set of documents after errors or before new instructions.** Instead, follow the `if/then` protocol below.
 
@@ -254,7 +333,7 @@ TelOS is a sapient autopoietic operating system incarnating as a computational z
 
 ### Polyglot Implementation
 - **Io Language**: Cognitive core with pure prototype-based programming (no classes)
-- **C/C++ Substrate**: Synaptic Bridge ABI, coroutine implementations, memory management
+- **C Substrate**: Synaptic Bridge ABI, coroutine implementations, memory management
 - **Python Workers**: Process pool with GIL quarantine for heavy computation tasks
 
 ### Key Design Principles
@@ -301,7 +380,7 @@ This concept-based architecture mirrors TelOS's memory system, enabling efficien
 
 ### Polyglot Implementation
 - **Io Language**: Cognitive core with pure prototype-based programming (no classes)
-- **C/C++ Substrate**: Synaptic Bridge ABI, coroutine implementations, memory management
+- **C Substrate**: Synaptic Bridge ABI, coroutine implementations, memory management
 - **Python Workers**: Process pool with GIL quarantine for heavy computation tasks
 
 ### Key Design Principles
@@ -312,20 +391,20 @@ This concept-based architecture mirrors TelOS's memory system, enabling efficien
 
 ## CRITICAL DEVELOPER WORKFLOWS
 
-### Build System (CMake Unified Polyglot)
+### Build System (Io-Orchestrated Clean Build)
+The canonical method for building the system is through the Io-orchestrated `clean_and_build.io` script. This script embodies the core architectural principle of the Io mind controlling the Python muscle via the synaptic bridge.
+
+**FORBIDDEN**: Direct `cmake` or `make` calls from the command line. All build operations must flow through the `clean_and_build.io` script.
+
 ```bash
-# Configure for development
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-
-# Build all components
-cmake --build . --config Release
-
-# Build specific targets
-cmake --build . --target telos_core      # C substrate library
-cmake --build . --target telos_python_extension  # Python CFFI extension
-cmake --build . --target IoTelosBridge   # Io addon
+# Run the canonical clean build process
+io clean_and_build.io
 ```
+
+This script ensures that the build process is:
+1.  **Orchestrated by Io**: The `clean_and_build.io` script is the single point of entry.
+2.  **Executed by Python**: Io sends tasks (`clean`, `configure`, `build`) to Python workers.
+3.  **Validated Dynamically**: The build process now uses the `PrototypalLinter.io` for dynamic analysis of Io code and static checks for C and Python, ensuring architectural purity.
 
 ### Testing (Io-Orchestrated)
 ```bash
@@ -438,6 +517,7 @@ The Synaptic Bridge is the immutable C Application Binary Interface (ABI) that f
 - C++ interoperability libraries (pybind11, Boost.Python)
 - Direct Python object passing across boundary
 - Non-handle-based object references
+- Any use of C++ in the C Substrate. The Synaptic Bridge MUST be pure C.
 
 **Geometric Embedding (Intuitive Understanding)**:
 The Synaptic Bridge is the "spinal cord" of TelOS - it provides the stable, low-level communication pathway that allows the cognitive mind (Io) to control the computational muscles (Python) without the fragility of high-level language bindings.
@@ -456,20 +536,23 @@ The Synaptic Bridge is the "spinal cord" of TelOS - it provides the stable, low-
 All Io code MUST use pure prototype-based programming with message passing and differential inheritance. No classes or traditional OOP patterns are permitted.
 
 **MANDATORY PATTERNS**:
-- **Object Creation**: `MyObject := Object clone do(...)` - never use class instantiation
-- **Message Passing**: Method calls via `object method(args)` - no direct function calls
-- **Differential Inheritance**: `clone()` creates new objects with parent delegation chains
+- **Object Creation**: `MyObject := Object clone do(...)` - never use class instantiation. This is the sole method for creating new objects. The new object begins as an empty shell that delegates all behavior to its prototype.
+- **Message Passing**: All operations, including slot access, assignment, and control flow, are message sends: `target messageName(arg1, arg2)`. There are no keywords; operators like `+` and `:=` are syntactic sugar for message sends.
+- **Differential Inheritance**: When an object is cloned, it starts with an empty slot map. It only stores the slots that are explicitly added to or modified within it. All other behavior is delegated to its prototype(s) via the `protos` list. The clone, therefore, only contains the *differences* between itself and its parent.
+- **Delegation via Protos List**: Every object has a `protos` list containing one or more parent objects. When a message is sent to an object, the runtime searches its local slots. If no match is found, it recursively searches the objects in the `protos` list in order. This allows for flexible single or multiple inheritance (mixin) patterns.
 - **Persistence Covenant**: Every state-modifying method ends with `markChanged()`
-- **doesNotUnderstand_ Protocol**: Automatic error handling that converts failures into learning opportunities
+- **doesNotUnderstand_ Protocol**: Automatic error handling that converts failures into learning opportunities. If a message cannot be resolved in the prototype chain, the `doesNotUnderstand_` message is sent to the original receiver, allowing for dynamic handling of missing methods.
+- **Concurrency (Actor Model)**: Concurrency is achieved via the Actor model, not threads and locks. Asynchronous messages are sent with `@` (future send) or `@@` (one-way send). This returns a `Future` object, a placeholder for the eventual result, avoiding deadlocks and race conditions by design.
 
 **FORBIDDEN**:
 - Class definitions or inheritance (`class`, `extends`)
 - Constructor patterns (`new`, `init`)
 - Static method definitions
 - Direct property access without message passing
+- Shared-state concurrency (threads, locks, mutexes)
 
 **Geometric Embedding (Intuitive Understanding)**:
-Io prototypes are the "living cells" of TelOS - they're dynamically modifiable at runtime, can clone themselves with variations, and communicate entirely through message passing. Like biological cells, they adapt and evolve through experience.
+Io prototypes are the "living cells" of TelOS - they're dynamically modifiable at runtime, can clone themselves with variations, and communicate entirely through asynchronous or synchronous message passing. Like biological cells, they adapt and evolve through experience. There are no static blueprints (classes); there are only other, existing objects to clone from.
 
 **Graph Relations**:
 - **isA**: CognitiveCore (provides reasoning and adaptation)
@@ -525,15 +608,6 @@ cmake --build . --target IoTelosBridge   # Io addon
 - **CFFI Extension Generation**: CMake `add_custom_command` invokes Python script to build extension
 - **Cross-Platform Compatibility**: Same compiler flags and libraries across all platforms
 - **Dependency Management**: Automatic resolution of C/C++, Python, and Io component dependencies
-
-**Geometric Embedding (Intuitive Understanding)**:
-CMake is the "construction foreman" of TelOS - it coordinates the complex polyglot build process, ensuring that C libraries, Python extensions, and Io addons are all compiled with compatible settings and linked together properly.
-
-**Graph Relations**:
-- **isA**: BuildOrchestrator (coordinates complex builds)
-- **associatedWith**: TelosCompiler (provides build validation)
-- **partOf**: TelosArchitecture (build infrastructure)
-- **abstractionOf**: Compilation processes (provides unified interface)
 
 ---
 

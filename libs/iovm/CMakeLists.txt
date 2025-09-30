@@ -129,12 +129,12 @@ else()
 endif(WIN32)
 
 # Build the io executable
-add_executable(io source/main.c)
-target_include_directories(io PRIVATE 
+add_executable(iovm source/main.c)
+target_include_directories(iovm PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../basekit/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../coroutine/source
     ${CMAKE_CURRENT_SOURCE_DIR}/../garbagecollector/source
 )
-target_link_libraries(io iovmall)
-install(TARGETS io RUNTIME DESTINATION bin)
+target_link_libraries(iovm iovmall)
+install(TARGETS iovm RUNTIME DESTINATION bin)

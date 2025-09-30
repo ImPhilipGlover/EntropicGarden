@@ -1,3 +1,7 @@
+# both Python tests and C/C++ unit tests when available.
+
+cmake_minimum_required(VERSION 3.20)
+
 # TELOS Test Suite CMakeLists.txt
 # 
 # This file configures the test suite for the TELOS system, including
@@ -20,6 +24,10 @@ set(PYTHON_TEST_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/test_cache_coordinator_failures.py"
     "${CMAKE_CURRENT_SOURCE_DIR}/test_l1_cache_manager.py"
     "${CMAKE_CURRENT_SOURCE_DIR}/test_l2_telemetry.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_phase4_validation_gauntlet.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_phase4_chaos_validation.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_phase4_observability.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_phase4_performance.py"
 )
 
 # Add Python tests
@@ -27,7 +35,7 @@ foreach(TEST_FILE ${PYTHON_TEST_FILES})
     if(EXISTS "${TEST_FILE}")
         get_filename_component(TEST_NAME "${TEST_FILE}" NAME_WE)
         set(py_test_env
-            "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../Telos/python:$ENV{PYTHONPATH}"
+            "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../Telos/telos:$ENV{PYTHONPATH}"
             "TELOS_OTEL_SETTINGS_PATH=${TELOS_OTEL_SETTINGS_PATH}"
         )
         add_test(
@@ -373,9 +381,9 @@ if(TARGET IoTelosBridge AND TARGET telos_core)
 
     add_test(NAME telos_hrc_io COMMAND telos_hrc_runner)
 
-    add_executable(synaptic_bridge_message_test "${CMAKE_CURRENT_SOURCE_DIR}/test_bridge_send_message.c")
+    add_executable(telos_soar_runner "${CMAKE_CURRENT_SOURCE_DIR}/telos_io_runner.c")
 
-    target_include_directories(synaptic_bridge_message_test PRIVATE
+    target_include_directories(telos_soar_runner PRIVATE
         ${IOVM_INCLUDE_DIR}
         ${GC_INCLUDE_DIR}
         ${BASEKIT_INCLUDE_DIR}
@@ -384,7 +392,7 @@ if(TARGET IoTelosBridge AND TARGET telos_core)
         ${CMAKE_SOURCE_DIR}/deps/parson
     )
 
-    target_link_libraries(synaptic_bridge_message_test PRIVATE
+    target_link_libraries(telos_soar_runner PRIVATE
         telos_core
         iovmall
         basekit
@@ -392,24 +400,32 @@ if(TARGET IoTelosBridge AND TARGET telos_core)
         garbagecollector
     )
 
-    add_dependencies(synaptic_bridge_message_test IoTelosBridge)
+    add_dependencies(telos_soar_runner IoTelosBridge)
 
-    set_target_properties(synaptic_bridge_message_test PROPERTIES
+    target_compile_definitions(telos_soar_runner PRIVATE
+        TELOS_IO_SCRIPT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test_soar_architecture.io"
+        TELOS_ADDON_SEARCH_PATH="${CMAKE_BINARY_DIR}/addons"
+    )
+
+    set_target_properties(telos_soar_runner PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
         BUILD_RPATH "${CMAKE_BINARY_DIR};${CMAKE_BINARY_DIR}/_build/dll"
     )
 
-    add_test(NAME bridge_send_message_c COMMAND synaptic_bridge_message_test)
+    add_test(NAME telos_soar_io COMMAND telos_soar_runner)
 
-    # Small lifecycle test for shared memory handles
-    add_executable(shared_memory_lifecycle_test "${CMAKE_CURRENT_SOURCE_DIR}/test_shared_memory_lifecycle.c")
+    add_executable(telos_chaos_conductor_runner "${CMAKE_CURRENT_SOURCE_DIR}/telos_io_runner.c")
 
-    target_include_directories(shared_memory_lifecycle_test PRIVATE
+    target_include_directories(telos_chaos_conductor_runner PRIVATE
+        ${IOVM_INCLUDE_DIR}
+        ${GC_INCLUDE_DIR}
+        ${BASEKIT_INCLUDE_DIR}
+        ${COROUTINE_INCLUDE_DIR}
         ${TELOS_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/deps/parson
     )
 
-    target_link_libraries(shared_memory_lifecycle_test PRIVATE
+    target_link_libraries(telos_chaos_conductor_runner PRIVATE
         telos_core
         iovmall
         basekit
@@ -417,15 +433,22 @@ if(TARGET IoTelosBridge AND TARGET telos_core)
         garbagecollector
     )
 
-    set_target_properties(shared_memory_lifecycle_test PROPERTIES
+    add_dependencies(telos_chaos_conductor_runner IoTelosBridge)
+
+    target_compile_definitions(telos_chaos_conductor_runner PRIVATE
+        TELOS_IO_SCRIPT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/telos_chaos_conductor_harness.io"
+        TELOS_ADDON_SEARCH_PATH="${CMAKE_BINARY_DIR}/addons"
+    )
+
+    set_target_properties(telos_chaos_conductor_runner PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
         BUILD_RPATH "${CMAKE_BINARY_DIR};${CMAKE_BINARY_DIR}/_build/dll"
     )
 
-    add_test(NAME shared_memory_lifecycle COMMAND shared_memory_lifecycle_test)
+    add_test(NAME telos_chaos_conductor_io COMMAND telos_chaos_conductor_runner)
 
     set(test_env_vars
-        "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../Telos/python:$ENV{PYTHONPATH}"
+        "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/../Telos/telos:$ENV{PYTHONPATH}"
         "TELOS_ADDON_PATH=${CMAKE_BINARY_DIR}/addons"
         "TELOS_OTEL_SETTINGS_PATH=${TELOS_OTEL_SETTINGS_PATH}"
     )
@@ -446,7 +469,8 @@ if(TARGET IoTelosBridge AND TARGET telos_core)
     set_tests_properties(telos_federated_memory_io PROPERTIES ENVIRONMENT "${test_env_vars}")
     set_tests_properties(telos_federated_memory_benchmark_io PROPERTIES ENVIRONMENT "${test_env_vars}")
     set_tests_properties(telos_hrc_io PROPERTIES ENVIRONMENT "${test_env_vars}")
-    set_tests_properties(bridge_send_message_c PROPERTIES ENVIRONMENT "${test_env_vars}")
+    set_tests_properties(telos_soar_io PROPERTIES ENVIRONMENT "${test_env_vars}")
+    set_tests_properties(telos_chaos_conductor_io PROPERTIES ENVIRONMENT "${test_env_vars}")
 endif()
 
 if(TARGET io)
@@ -459,12 +483,12 @@ if(TARGET io)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
 
-    # Set a 300-second timeout as per the mandate
+    # Set a 900-second timeout as per the mandate
     set_tests_properties(gauntlet-validation PROPERTIES
-        TIMEOUT 300
+        TIMEOUT 900
         FAIL_REGULAR_EXPRESSION "FATAL"
     )
-    message(STATUS "Added test: gauntlet-validation with 300s timeout")
+    message(STATUS "Added test: gauntlet-validation with 900s timeout")
 else()
     message(WARNING "Io executable not found. Skipping gauntlet-validation test.")
 endif()

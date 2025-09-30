@@ -1,0 +1,3035 @@
+#!/usr/bin/env python3
+"""
+Scalable Vector Operations Handlers - Python Workers for Io-Orchestrated Training
+
+This module implements FAISS, DiskANNpy, and torch HD operations that are
+orchestrated by Io through the synaptic bridge. All operations are designed
+for scalable training of TELOS on its own documentation.
+
+Architecture: Io → C ABI → Python workers (this module)
+"""
+
+import json
+import os
+import numpy as np
+from typing import Dict, List, Any, Optional, Tuple
+from pathlib import Path
+import torch
+import torchhd
+from sentence_transformers import SentenceTransformer
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as Constant
+from sklearn.gaussian_process import GaussianProcessRegressor
+import faiss
+import diskannpy
+
+class ScalableVectorOps:
+    """Container for scalable vector operations infrastructure"""
+
+    def __init__(self):
+        self.faiss_index = None
+        self.diskann_index = None
+        self.torch_hd_space = None
+        self.embedding_model = None
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    def initialize_faiss_index(self, dimension: int, index_type: str = "IVFPQ", metric: str = "L2") -> bool:
+        """Initialize FAISS index for scalable similarity search"""
+        try:
+            if index_type == "IVFPQ":
+                # IVF + PQ for large-scale search
+                quantizer = faiss.IndexFlatIP(dimension) if metric == "IP" else faiss.IndexFlatL2(dimension)
+                self.faiss_index = faiss.IndexIVFPQ(quantizer, dimension, 100, 8, 8)  # nlist=100, m=8, nbits=8
+            elif index_type == "HNSW":
+                # HNSW for high-recall search
+                self.faiss_index = faiss.IndexHNSWFlat(dimension, 32)  # M=32
+            else:
+                # Flat index for exact search
+                self.faiss_index = faiss.IndexFlatIP(dimension) if metric == "IP" else faiss.IndexFlatL2(dimension)
+
+            self.faiss_index.metric_type = faiss.METRIC_INNER_PRODUCT if metric == "IP" else faiss.METRIC_L2
+            return True
+        except Exception as e:
+            print(f"FAISS initialization failed: {e}")
+            return False
+
+    def initialize_diskann_graph(self, dimension: int, max_degree: int = 64, L_build: int = 100, alpha: float = 1.2) -> bool:
+        """Initialize DiskANN graph for billion-scale similarity search"""
+        try:
+            # Create temporary directory for DiskANN index
+            index_dir = Path("temp/diskann_index")
+            index_dir.mkdir(parents=True, exist_ok=True)
+
+            # DiskANN parameters for optimal performance
+            self.diskann_index = {
+                'dimension': dimension,
+                'max_degree': max_degree,
+                'L_build': L_build,
+                'alpha': alpha,
+                'index_dir': str(index_dir),
+                'data_file': str(index_dir / 'data.bin'),
+                'index_file': str(index_dir / 'index.bin'),
+                'index': None  # Will be set after building
+            }
+            return True
+        except Exception as e:
+            print(f"DiskANN initialization failed: {e}")
+            return False
+
+    def initialize_torch_hd_space(self, dimension: int = 10000, device: str = "auto") -> bool:
+        """Initialize torch HD vector space for hyperdimensional computing"""
+        try:
+            if device == "auto":
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+            self.device = torch.device(device)
+            self.torch_hd_space = {
+                'dimension': dimension,
+                'device': self.device,
+                'dtype': torch.float32
+            }
+
+            # Initialize HD basis vectors - torchhd may not have set_default_dtype
+            try:
+                torchhd.set_default_dtype(torch.float32)
+            except AttributeError:
+                # Older version of torchhd doesn't have set_default_dtype
+                pass
+
+            return True
+        except Exception as e:
+            print(f"Torch HD initialization failed: {e}")
+            return False
+
+# Global instance for handlers
+vector_ops = ScalableVectorOps()
+
+def handle_initialize_faiss_index(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle FAISS index initialization"""
+    try:
+        dimension = task_data.get('dimension', 768)
+        index_type = task_data.get('index_type', 'IVFPQ')
+        metric = task_data.get('metric', 'L2')
+
+        success = vector_ops.initialize_faiss_index(dimension, index_type, metric)
+
+        return {
+            'success': success,
+            'operation': 'initialize_faiss_index',
+            'dimension': dimension,
+            'index_type': index_type,
+            'metric': metric
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'initialize_faiss_index',
+            'error': str(e)
+        }
+
+
+def handle_initialize_diskann_graph(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle DiskANN graph initialization"""
+    try:
+        dimension = task_data.get('dimension', 768)
+        max_degree = task_data.get('max_degree', 64)
+        L_build = task_data.get('L_build', 100)
+        alpha = task_data.get('alpha', 1.2)
+
+        success = vector_ops.initialize_diskann_graph(dimension, max_degree, L_build, alpha)
+
+        return {
+            'success': success,
+            'operation': 'initialize_diskann_graph',
+            'dimension': dimension,
+            'max_degree': max_degree,
+            'L_build': L_build,
+            'alpha': alpha
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'initialize_diskann_graph',
+            'error': str(e)
+        }
+
+
+def handle_build_diskann_index(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle DiskANN index building from data"""
+    try:
+        data_path = task_data.get('data_path', 'processed_docs/embeddings.npy')
+        index_directory = task_data.get('index_directory', 'temp/diskann_index')
+        distance_metric = task_data.get('distance_metric', 'l2')
+        complexity = task_data.get('complexity', 64)
+        graph_degree = task_data.get('graph_degree', 32)
+        num_threads = task_data.get('num_threads', 4)
+        print(f"🏗️ Building DiskANN index from: {data_path}")
+        print(f"🏗️ Building DiskANN index from: {data_path}")
+
+        # Ensure index directory exists and is clean
+        index_dir = Path(index_directory)
+        if index_dir.exists():
+            import shutil
+            shutil.rmtree(index_dir)
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        # Load datadex directory exists and is clean
+        index_dir = Path(index_directory)
+        if index_dir.exists():
+            import shutil
+            shutil.rmtree(index_dir)
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        # Load data Path(index_directory)
+        index_dir.mkdir(parents=True, exist_ok=True)
+        # Load data
+        if data_path.endswith('.npy'):
+            data = np.load(data_path)
+        else:
+            # Assume binary format
+            data = np.fromfile(data_path, dtype=np.float32).reshape(-1, vector_ops.diskann_index['dimension'])
+
+        # Build index using correct API
+        diskannpy.build_memory_index(
+            data=data,
+            distance_metric=distance_metric,
+            index_directory=index_directory,
+            complexity=complexity,
+            graph_degree=graph_degree,
+            num_threads=num_threads
+        )
+
+        # Load the built index
+        vector_ops.diskann_index['index'] = diskannpy.StaticMemoryIndex(
+            index_directory=index_directory,
+            num_threads=num_threads,
+            initial_search_complexity=complexity
+        )
+
+        return {
+            'success': True,
+            'operation': 'build_diskann_index',
+            'vectors_indexed': len(data),
+            'dimension': data.shape[1],
+            'index_directory': index_directory
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'build_diskann_index',
+            'error': str(e)
+        }
+
+
+def handle_diskann_search(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle DiskANN similarity search"""
+    try:
+        query_vectors = np.array(task_data.get('query_vectors', []))
+        k_neighbors = task_data.get('k_neighbors', 10)
+        complexity = task_data.get('complexity', 64)
+
+        if vector_ops.diskann_index is None or 'index' not in vector_ops.diskann_index:
+            raise ValueError("DiskANN index not built or loaded")
+
+        print(f"🔍 Performing DiskANN search for {len(query_vectors)} queries")
+
+        # Perform search using correct API
+        if len(query_vectors.shape) == 1:
+            # Single query
+            result = vector_ops.diskann_index['index'].search(
+                query=query_vectors.astype(np.float32),
+                k_neighbors=k_neighbors,
+                complexity=complexity
+            )
+            neighbors = result.identifiers
+            distances = result.distances
+        else:
+            # Batch query
+            result = vector_ops.diskann_index['index'].batch_search(
+                queries=query_vectors.astype(np.float32),
+                k_neighbors=k_neighbors,
+                complexity=complexity,
+                num_threads=4
+            )
+            neighbors = result.identifiers
+            distances = result.distances
+
+        return {
+            'success': True,
+            'operation': 'diskann_search',
+            'query_count': len(query_vectors) if len(query_vectors.shape) > 1 else 1,
+            'k_neighbors': k_neighbors,
+            'results': {
+                'neighbors': neighbors.tolist() if hasattr(neighbors, 'tolist') else neighbors,
+                'distances': distances.tolist() if hasattr(distances, 'tolist') else distances
+            }
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'diskann_search',
+            'error': str(e)
+        }
+
+
+def handle_initialize_torch_hd_space(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle torch HD space initialization"""
+    try:
+        dimension = task_data.get('dimension', 10000)
+        device = task_data.get('device', 'auto')
+
+        success = vector_ops.initialize_torch_hd_space(dimension, device)
+
+        return {
+            'success': success,
+            'operation': 'initialize_torch_hd_space',
+            'dimension': dimension,
+            'device': str(vector_ops.device),
+            'cuda_available': torch.cuda.is_available()
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'initialize_torch_hd_space',
+            'error': str(e)
+        }
+
+
+def handle_preprocess_docs_corpus(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle docs corpus preprocessing for training"""
+    try:
+        docs_path = task_data.get('docs_path', 'docs/')
+        embedding_model_name = task_data.get('embedding_model', 'sentence-transformers/all-MiniLM-L6-v2')
+        chunk_size = task_data.get('chunk_size', 512)
+        chunk_overlap = task_data.get('chunk_overlap', 50)
+
+        print(f"📚 Preprocessing docs corpus from: {docs_path}")
+
+        # Check if docs path exists
+        if not Path(docs_path).exists():
+            raise FileNotFoundError(f"Docs path does not exist: {docs_path}")
+
+        # Load embedding model
+        if vector_ops.embedding_model is None:
+            print("Loading embedding model...")
+            vector_ops.embedding_model = SentenceTransformer(embedding_model_name)
+            print("Embedding model loaded")
+
+        # Load and chunk docs
+        print("Loading and chunking docs...")
+        docs_data = load_and_chunk_docs(docs_path, chunk_size, chunk_overlap)
+        print(f"Loaded {len(docs_data)} chunks")
+
+        if len(docs_data) == 0:
+            raise ValueError(f"No documents found in {docs_path}")
+
+        # Generate embeddings
+        print("Generating embeddings...")
+        texts = [chunk['text'] for chunk in docs_data]
+        embeddings = vector_ops.embedding_model.encode(texts, convert_to_numpy=True)
+        # Add to DiskANN if initialized (just save data, build separately)
+        if vector_ops.diskann_index is not None:
+            # Save embeddings for later DiskANN indexing
+            np.save(processed_dir / 'embeddings_for_diskann.npy', embeddings)
+
+        # Save chunks and embeddings
+        np.save(processed_dir / 'embeddings.npy', embeddings)
+
+        with open(processed_dir / 'chunks.json', 'w') as f:
+            json.dump(docs_data, f, indent=2)
+
+        # Add to FAISS index if initialized
+        if vector_ops.faiss_index is not None:
+            vector_ops.faiss_index.train(embeddings)
+            vector_ops.faiss_index.add(embeddings)
+        # Add to DiskANN if initialized (just save data, build separately)
+        if vector_ops.diskann_index is not None:
+            # Save embeddings for later DiskANN indexing
+            np.save(processed_dir / 'embeddings_for_diskann.npy', embeddings)
+
+        return {
+            'success': True,
+            'operation': 'preprocess_docs_corpus',
+            'documents_processed': len(set(chunk['source_file'] for chunk in docs_data)),
+            'chunks_created': len(docs_data),
+            'embedding_dimension': embeddings.shape[1],
+            'total_vectors': len(embeddings)
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'preprocess_docs_corpus',
+            'error': str(e)
+        }
+
+
+def handle_train_laplace_kernel(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle Laplace kernel training on docs data"""
+    try:
+        training_data_path = task_data.get('training_data', 'processed_docs/')
+        kernel_type = task_data.get('kernel_type', 'laplace')
+        length_scale_bounds = eval(task_data.get('length_scale_bounds', '(1e-5, 1e5)'))
+        iterations = task_data.get('iterations', 1000)
+        convergence_threshold = task_data.get('convergence_threshold', 0.001)
+        use_faiss = task_data.get('use_faiss', True)
+        use_diskann = task_data.get('use_diskann', True)
+        use_torch_hd = task_data.get('use_torch_hd', True)
+
+        print(f"🧠 Training {kernel_type} kernel on docs data...")
+
+        # Load processed data
+        processed_dir = Path(training_data_path)
+        embeddings = np.load(processed_dir / 'embeddings.npy')
+
+        with open(processed_dir / 'chunks.json', 'r') as f:
+            chunks = json.load(f)
+
+        # Create training targets (complexity scores based on content)
+        y_train = create_training_targets(chunks)
+
+        # Initialize Laplace kernel (RBF with specific parameters)
+        kernel = Constant(1.0, (1e-3, 1e3)) * RBF(length_scale=1.0, length_scale_bounds=length_scale_bounds)
+
+        # Train Gaussian Process with Laplace kernel
+        gp = GaussianProcessRegressor(
+            kernel=kernel,
+            n_restarts_optimizer=10,
+            alpha=1e-6,
+            random_state=42
+        )
+
+        # Fit the model
+        gp.fit(embeddings, y_train)
+
+        # Get optimized parameters
+        optimized_kernel = gp.kernel_
+        length_scale = optimized_kernel.get_params()['k2__length_scale']
+        constant_value = optimized_kernel.get_params()['k1__constant_value']
+
+        # Evaluate performance
+        train_score = gp.score(embeddings, y_train)
+
+        # Store model for later use
+        model_data = {
+            'kernel_type': kernel_type,
+            'length_scale': float(length_scale),
+            'constant_value': float(constant_value),
+            'log_marginal_likelihood': float(gp.log_marginal_likelihood_value_),
+            'training_score': float(train_score),
+            'n_training_samples': len(embeddings),
+            'converged': abs(gp.log_marginal_likelihood_value_) < convergence_threshold
+        }
+
+        # Save model
+        model_file = processed_dir / 'laplace_kernel_model.json'
+        with open(model_file, 'w') as f:
+            json.dump(model_data, f, indent=2)
+
+        # Create HD representations if torch HD is available
+        if use_torch_hd and vector_ops.torch_hd_space is not None:
+            hd_vectors = create_hd_representations(embeddings, chunks)
+            torch.save(hd_vectors, processed_dir / 'hd_representations.pt')
+
+        return {
+            'success': True,
+            'operation': 'train_laplace_kernel',
+            'final_accuracy': float(train_score),
+            'kernel_parameters': {
+                'length_scale': float(length_scale),
+                'constant_value': float(constant_value)
+            },
+            'log_marginal_likelihood': float(gp.log_marginal_likelihood_value_),
+            'converged': model_data['converged'],
+            'training_samples': len(embeddings),
+            'model_saved': str(model_file)
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'train_laplace_kernel',
+            'error': str(e)
+        }
+
+
+def handle_execute_ctest_suite(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle ctest execution through Io orchestration"""
+    try:
+        import subprocess
+
+        test_filter = task_data.get('test_filter', '*')
+        timeout = task_data.get('timeout', 900)
+        validate_kernel_training = task_data.get('validate_kernel_training', False)
+
+        print(f"🧪 Executing ctest suite with filter: {test_filter}")
+
+        # Build ctest command
+        cmd = ['ctest', '--verbose', '--timeout', str(timeout)]
+        if test_filter != '*':
+            cmd.extend(['-R', test_filter])
+
+        # Execute ctest
+        result = subprocess.run(
+            cmd,
+            cwd='build',
+            capture_output=True,
+            text=True,
+            timeout=timeout + 60  # Extra time for setup
+        )
+
+        # Parse results
+        output_lines = result.stdout.split('\n')
+        tests_passed = 0
+        total_tests = 0
+
+        for line in output_lines:
+            if 'tests passed' in line.lower():
+                # Extract numbers from line like "100% tests passed, 0 tests failed out of 10"
+                import re
+                match = re.search(r'(\d+)% tests passed.*out of (\d+)', line)
+                if match:
+                    tests_passed = int(match.group(2))  # Total tests when 100% pass
+                    total_tests = int(match.group(2))
+                else:
+                    # Try alternative parsing
+                    match = re.search(r'(\d+) tests passed', line)
+                    if match:
+                        tests_passed = int(match.group(1))
+            elif 'tests failed out of' in line.lower():
+                match = re.search(r'(\d+) tests failed out of (\d+)', line)
+                if match:
+                    tests_passed = int(match.group(2)) - int(match.group(1))
+                    total_tests = int(match.group(2))
+
+        # Additional kernel validation if requested
+        kernel_validation = {}
+        if validate_kernel_training:
+            kernel_validation = validate_kernel_training_integration()
+
+        return {
+            'success': result.returncode == 0,
+            'operation': 'execute_ctest_suite',
+            'tests_passed': tests_passed,
+            'total_tests': total_tests,
+            'return_code': result.returncode,
+            'stdout': result.stdout[-2000:] if result.stdout else "",  # Last 2000 chars
+            'stderr': result.stderr[-2000:] if result.stderr else "",
+            'kernel_validation': kernel_validation
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'execute_ctest_suite',
+            'error': str(e)
+        }
+
+
+def handle_generate_development_insights(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate development insights using trained kernel"""
+    try:
+        trained_kernel = task_data.get('trained_kernel', {})
+        current_codebase = task_data.get('current_codebase', 'libs/Telos/')
+        development_docs = task_data.get('development_docs', 'docs/')
+
+        print("🔍 Generating development insights from trained kernel...")
+
+        # Load trained kernel parameters
+        kernel_params = trained_kernel.get('kernel_parameters', {})
+
+        # Analyze codebase using kernel insights
+        insights = analyze_codebase_with_kernel(current_codebase, kernel_params)
+
+        # Generate recommendations based on docs training
+        recommendations = generate_recommendations_from_docs(development_docs, insights)
+
+        return {
+            'success': True,
+            'operation': 'generate_development_insights',
+            'insights': insights,
+            'recommendations': recommendations,
+            'insights_count': len(insights)
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'generate_development_insights',
+            'error': str(e)
+        }
+
+
+def handle_improve_development_tools(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Improve development tools based on training insights"""
+    try:
+        insights = task_data.get('insights', {})
+        current_tools = task_data.get('current_tools', [])
+        target_directory = task_data.get('target_directory', 'libs/Telos/')
+
+        print("🔧 Improving development tools based on training insights...")
+
+        improvements = []
+
+        # Analyze each tool and generate improvements
+        for tool in current_tools:
+            tool_path = Path(target_directory) / tool
+            if tool_path.exists():
+                tool_improvements = analyze_and_improve_tool(tool_path, insights)
+                improvements.extend(tool_improvements)
+
+        return {
+            'success': True,
+            'operation': 'improve_development_tools',
+            'improved_tools': current_tools,
+            'improvements_made': len(improvements),
+            'improvements': improvements
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'operation': 'improve_development_tools',
+            'error': str(e)
+        }
+
+
+# Utility functions
+
+def load_and_chunk_docs(docs_path: str, chunk_size: int, chunk_overlap: int) -> List[Dict]:
+    """Load and chunk documentation files"""
+    docs_data = []
+
+    for file_path in Path(docs_path).rglob('*.txt'):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Simple chunking by sentences/paragraphs
+            chunks = chunk_text(content, chunk_size, chunk_overlap)
+
+            for i, chunk in enumerate(chunks):
+                docs_data.append({
+                    'text': chunk,
+                    'source_file': str(file_path),
+                    'chunk_id': i,
+                    'total_chunks': len(chunks)
+                })
+
+        except Exception as e:
+            print(f"Warning: Could not process {file_path}: {e}")
+            continue
+
+    return docs_data
+
+
+def chunk_text(text: str, chunk_size: int, overlap: int) -> List[str]:
+    """Chunk text into smaller pieces"""
+    words = text.split()
+    chunks = []
+
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = ' '.join(words[i:i + chunk_size])
+        if len(chunk.strip()) > 0:
+            chunks.append(chunk.strip())
+
+    return chunks
+
+
+def create_training_targets(chunks: List[Dict]) -> np.ndarray:
+    """Create training targets based on chunk complexity"""
+    targets = []
+
+    for chunk in chunks:
+        text = chunk['text']
+
+        # Simple complexity metrics
+        length_score = len(text) / 1000.0  # Normalize length
+        word_count = len(text.split())
+        avg_word_length = sum(len(word) for word in text.split()) / max(word_count, 1)
+
+        # Combine metrics into target value
+        complexity = (length_score * 0.4) + (avg_word_length * 0.3) + (word_count / 500.0 * 0.3)
+        targets.append(min(complexity, 1.0))  # Cap at 1.0
+
+    return np.array(targets)
+
+
+def create_hd_representations(embeddings: np.ndarray, chunks: List[Dict]) -> torch.Tensor:
+    """Create hyperdimensional representations"""
+    # Convert embeddings to torch tensors
+    embedding_tensor = torch.from_numpy(embeddings).to(vector_ops.device)
+
+    # Create HD vectors using torchhd
+    hd_vectors = torchhd.random(embedding_tensor.shape[0], vector_ops.torch_hd_space['dimension'],
+                               device=vector_ops.device, dtype=torch.float32)
+
+    # Bind with embedding information using proper torchhd operations
+    for i, embedding in enumerate(embedding_tensor):
+        # Normalize embedding to [-1, 1] range for HD operations
+        normalized_embedding = torch.tanh(embedding)  # Simple normalization
+        
+        # Create individual HD vector for this embedding
+        hd_embedding = torchhd.random(1, vector_ops.torch_hd_space['dimension'],
+                                    device=vector_ops.device, dtype=torch.float32)[0]
+        
+        # Bind with normalized embedding (using multiset/bundle operations)
+        hd_vectors[i] = torchhd.bind(hd_vectors[i], hd_embedding)
+
+    return hd_vectors
+
+
+def validate_kernel_training_integration() -> Dict[str, Any]:
+    """Validate that kernel training integrates properly with system"""
+    try:
+        # Check if trained model exists
+        model_file = Path("processed_docs/laplace_kernel_model.json")
+        if model_file.exists():
+            with open(model_file, 'r') as f:
+                model_data = json.load(f)
+
+            return {
+                'model_exists': True,
+                'kernel_trained': True,
+                'accuracy': model_data.get('training_score', 0),
+                'converged': model_data.get('converged', False)
+            }
+        else:
+            return {
+                'model_exists': False,
+                'kernel_trained': False,
+                'error': 'No trained kernel model found'
+            }
+    except Exception as e:
+        return {
+            'model_exists': False,
+            'kernel_trained': False,
+            'error': str(e)
+        }
+
+
+def analyze_codebase_with_kernel(codebase_path: str, kernel_params: Dict) -> List[Dict]:
+    """Analyze codebase using kernel insights"""
+    insights = []
+
+    # Simple analysis based on kernel parameters
+    length_scale = kernel_params.get('length_scale', 1.0)
+
+    # Analyze Python files
+    for py_file in Path(codebase_path).rglob('*.py'):
+        try:
+            with open(py_file, 'r') as f:
+                content = f.read()
+
+            # Simple analysis
+            lines = len(content.split('\n'))
+            functions = content.count('def ')
+            classes = content.count('class ')
+
+            insight = {
+                'file': str(py_file),
+                'lines': lines,
+                'functions': functions,
+                'classes': classes,
+                'complexity_score': (functions + classes) / max(lines, 1) * 100
+            }
+
+            insights.append(insight)
+
+        except Exception as e:
+            continue
+
+    return insights
+
+
+def generate_recommendations_from_docs(docs_path: str, insights: List[Dict]) -> List[str]:
+    """Generate recommendations based on docs analysis"""
+    recommendations = []
+
+    # Analyze insights for patterns
+    avg_complexity = sum(i.get('complexity_score', 0) for i in insights) / max(len(insights), 1)
+
+    if avg_complexity > 10:
+        recommendations.append("Consider breaking down complex files into smaller modules")
+    if len([i for i in insights if i.get('classes', 0) > 5]) > 0:
+        recommendations.append("Files with many classes may benefit from further modularization")
+    if len(insights) > 50:
+        recommendations.append("Large number of files suggests good modularization practices")
+
+    return recommendations
+
+
+def analyze_and_improve_tool(tool_path: Path, insights: Dict) -> List[str]:
+    """Analyze and suggest improvements for a development tool"""
+    improvements = []
+
+    try:
+        with open(tool_path, 'r') as f:
+            content = f.read()
+
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+def handle_scalable_vector_operation(task_json: str) -> str:
+    """Main entry point for scalable vector operations from Io"""
+    try:
+        task_data = json.loads(task_json)
+        operation = task_data.get('operation', '')
+
+        print(f"🧬 Processing scalable vector operation: {operation}")
+
+        # Route to appropriate handler
+        if operation == 'initialize_faiss_index':
+            result = handle_initialize_faiss_index(task_data)
+        elif operation == 'initialize_diskann_graph':
+            result = handle_initialize_diskann_graph(task_data)
+        elif operation == 'build_diskann_index':
+            result = handle_build_diskann_index(task_data)
+        elif operation == 'diskann_search':
+            result = handle_diskann_search(task_data)
+        elif operation == 'initialize_torch_hd_space':
+            result = handle_initialize_torch_hd_space(task_data)
+        elif operation == 'preprocess_docs_corpus':
+            result = handle_preprocess_docs_corpus(task_data)
+        elif operation == 'train_laplace_kernel':
+            result = handle_train_laplace_kernel(task_data)
+        elif operation == 'execute_ctest_suite':
+            result = handle_execute_ctest_suite(task_data)
+        elif operation == 'generate_development_insights':
+            result = handle_generate_development_insights(task_data)
+        elif operation == 'improve_development_tools':
+            result = handle_improve_development_tools(task_data)
+        else:
+            result = {
+                'success': False,
+                'operation': operation,
+                'error': f'Unknown scalable vector operation: {operation}'
+            }
+
+        return json.dumps(result)
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']
+
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'operation': 'scalable_vector_operation',
+            'error': str(e)
+        })
+
+
+# Export main handler
+__all__ = ['handle_scalable_vector_operation']

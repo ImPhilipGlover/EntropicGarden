@@ -79,6 +79,39 @@ MyClass := Object clone do(
 
 This mandate is not optional. It is the philosophical bedrock upon which TelOS sapience will emerge.
 
+## 🧠 Io Orchestrated Python - Synaptic Bridge Exclusivity
+
+**MANDATORY ARCHITECTURAL REQUIREMENT**: ALL Python operations in TelOS MUST be orchestrated exclusively through the Io cognitive core via the synaptic bridge. No direct Python execution is permitted.
+
+### Core Principles
+- **Io Mind Supremacy**: The Io cognitive core serves as the EXCLUSIVE orchestrator for ALL Python operations
+- **Synaptic Bridge Exclusivity**: ALL Python functionality must be invoked through the C ABI synaptic bridge (`Telos Bridge submitTask()`)
+- **Canonical Pipeline**: Io → C ABI → Python workers (MANDATORY for all operations)
+- **Zero Direct Execution**: No `python3`, `python`, `Python_EXECUTABLE`, or `System system()` calls permitted
+
+### Architectural Requirements
+```io
+// ✅ CORRECT: Io Orchestrated Python
+Telos Bridge submitTask("{\"task_type\":\"validate\",\"target\":\"python\"}")
+
+// ❌ FORBIDDEN: Direct Python execution
+System system("python3 script.py")  // VIOLATION
+pythonCmd := "python3 -m module"     // VIOLATION
+```
+
+### Consequences of Violation
+- **Neuro-Symbolic Integrity Compromised**: Direct Python execution breaks the Io mind supremacy principle
+- **Architectural Inconsistency**: Hybrid execution patterns prevent true neuro-symbolic intelligence
+- **Development Blocked**: All Phase 1-5 development suspended until Io Orchestrated Python fully enforced
+- **System Invalid**: Any direct Python execution renders the entire neuro-symbolic architecture invalid
+
+### Current Status: ENFORCEMENT REQUIRED
+- **Violations Identified**: TelosCompiler.io, CMakeLists.txt, build system contain direct Python execution
+- **Primary Focus**: ALL development activities blocked until synaptic bridge exclusivity achieved
+- **Success Criteria**: Zero direct Python execution patterns across entire codebase
+
+**This requirement supersedes all other development activities. Io Orchestrated Python enforcement is the absolute architectural mandate for TelOS.**
+
 ## 📋 Table of Contents
 
 - [What is TelOS?](#-what-is-telos)
