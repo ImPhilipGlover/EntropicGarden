@@ -1,0 +1,2096 @@
+//
+// HRCOrchestrator.io - Central Coordinator for Hierarchical Reflective Cognition
+//
+// This file implements the HRCOrchestrator actor that manages cognitive cycles,
+// handles doesNotUnderstand messages, and coordinates the Io actor society.
+// It provides the central intelligence for Phase 3 Cognitive Core.
+//
+
+HRCOrchestrator := Object clone
+
+HRCOrchestrator setSlot("thetaSuccess", 0.8)
+HRCOrchestrator setSlot("thetaDisc", 0.3)
+HRCOrchestrator setSlot("maxIterations", 10)
+HRCOrchestrator setSlot("cycleTimeout", 30.0)
+
+HRCOrchestrator setSlot("IMPASSE_TYPES", Map clone do(
+    atPut("state_no_change", "State No-Change Impasse")
+    atPut("operator_tie", "Operator Tie Impasse")
+    atPut("operator_no_change", "Operator No-Change Impasse")
+    atPut("operator_failure", "Operator Failure Impasse")
+))
+
+HRCOrchestrator setSlot("reasoningStrategies", Map clone do(
+    atPut("vsa_native", Map clone do(
+        atPut("name", "VSA-Native Search")
+        atPut("expected_success", 0.7)
+        atPut("expected_cost", 0.2)
+        atPut("goal_value", 1.0)
+    ))
+    atPut("graph_disambiguation", Map clone do(
+        atPut("name", "Graph Disambiguation")
+        atPut("expected_success", 0.8)
+        atPut("expected_cost", 0.5)
+        atPut("goal_value", 1.0)
+    ))
+    atPut("llm_decomposition", Map clone do(
+        atPut("name", "LLM Query Decomposition")
+        atPut("expected_success", 0.9)
+        atPut("expected_cost", 0.8)
+        atPut("goal_value", 1.0)
+    ))
+    atPut("global_search", Map clone do(
+        atPut("name", "Global Summary Search")
+        atPut("expected_success", 0.6)
+        atPut("expected_cost", 0.9)
+        atPut("goal_value", 1.0)
+    ))
+    atPut("multi_hop_retrieval", Map clone do(
+        atPut("name", "Multi-Hop Retrieval")
+        atPut("expected_success", 0.85)
+        atPut("expected_cost", 1.2)
+        atPut("goal_value", 1.0)
+    ))
+    atPut("vsa_rag_fusion", Map clone do(
+        atPut("name", "VSA-RAG Fusion")
+        atPut("expected_success", 0.9)
+        atPut("expected_cost", 1.0)
+        atPut("goal_value", 1.2)
+    ))
+))
+
+HRCOrchestrator setSlot("activeCycles", Map clone)
+HRCOrchestrator setSlot("cycleHistory", list())
+HRCOrchestrator setSlot("autopoiesisEnabled", true)
+HRCOrchestrator setSlot("pendingResolutions", list())
+
+HRCOrchestrator setSlot("startCognitiveCycle", method(query, context,
+    // Enhanced cognitive cycle using SOAR architecture
+    "Starting enhanced SOAR cognitive cycle" println
+
+    // Initialize SOAR architecture if needed
+    if(workingMemory isNil or workingMemory at("goal_stack") isNil,
+        self initSOARArchitecture
+    )
+
+    // Use SOAR cognitive cycle for enhanced reasoning
+    result := self runSOARCognitiveCycle(query, context)
+
+    // Fallback to original method if SOAR fails
+    if(result at("success") not,
+        "SOAR cycle failed, falling back to original method" println
+        result = self startCognitiveCycleOriginal(query, context)
+    )
+
+    result
+))
+
+HRCOrchestrator setSlot("startCognitiveCycleOriginal", method(query, context,
+    // Original cognitive cycle method as fallback
+    // Handle special query types
+    if(query at("type") == "adaptive_learning",
+        // Route chaos learning to specialized handler
+        result := self processChaosLearning(query)
+        self markChanged
+        result
+    )
+
+    cycleId := uniqueId
+    cycle := CognitiveCycle clone setCycleId(cycleId) setQuery(query) setContext(context)
+    activeCycles atPut(cycleId, cycle)
+
+    // Start the cycle asynchronously
+    cycle start
+    self markChanged
+
+    cycleId
+HRCOrchestrator setSlot("handleDoesNotUnderstand", method(message, receiver, args,
+    // Create a cognitive cycle to handle the unknown message
+    query := Map clone
+    query atPut("type", "doesNotUnderstand")
+    query atPut("message", message name)
+    query atPut("receiver", receiver)
+    query atPut("args", args)
+
+    context := Map clone
+    context atPut("trigger", "doesNotUnderstand")
+    context atPut("receiverType", receiver type)
+    context atPut("messageName", message name)
+
+    cycleId := startCognitiveCycle(query, context)
+
+    // Return a placeholder that will be resolved when cycle completes
+    result := PendingResolution clone setCycleId(cycleId)
+    self markChanged
+    result
+))HRCOrchestrator setSlot("getCycleStatus", method(cycleId,
+    cycle := activeCycles at(cycleId)
+    if(cycle,
+        cycle getStatus,
+        Map clone atPut("error", "Cycle not found") atPut("cycleId", cycleId)
+    )
+))
+
+HRCOrchestrator setSlot("addPendingResolution", method(resolution,
+    pendingResolutions append(resolution)
+    self markChanged
+))
+
+HRCOrchestrator setSlot("processPendingResolutions", method(
+    if(pendingResolutions size > 0,
+        resolution := pendingResolutions removeFirst()
+        // Process the resolution - in practice this would trigger appropriate handlers
+        self markChanged
+        resolution
+    ,
+        nil
+    )
+))
+
+HRCOrchestrator setSlot("completeCycle", method(cycleId, result,
+    cycle := activeCycles at(cycleId)
+    if(cycle,
+        cycle complete(result)
+        activeCycles removeAt(cycleId)
+        cycleHistory append(cycle)
+
+        // Update strategy utilities based on outcome
+        if(result at("strategy"),
+            strategyName := result at("strategy")
+            actualCost := cycle iterations  // Use iterations as cost proxy
+            updateStrategyUtilities(strategyName, result, actualCost)
+
+            // Update world model with observed outcomes
+            updateWorldModel(strategyName, result at("observation", "unknown"), result)
+        )
+
+        // Trigger autopoiesis if enabled and cycle was successful
+        if(autopoiesisEnabled and result at("success"),
+            triggerAutopoiesis(cycle)
+        )
+
+        // Trigger chaos experiment for antifragile evolution
+        triggerChaosExperiment(result, Map clone atPut("cycle_id", cycleId))
+
+        // Learn from experience in GenerativeWorldModel
+        if(Telos hasSlot("GenerativeWorldModel") and Telos GenerativeWorldModel learningEnabled,
+            strategy := result at("strategy")
+            if(strategy,
+                // Create learning experience for the GenerativeWorldModel
+                experience := Map clone
+                experience atPut("type", if(result at("success", false), "strategy_success", "strategy_failure"))
+                experience atPut("strategy", strategy)
+                experience atPut("success", result at("success", false))
+                experience atPut("confidence", result at("confidence", 0.5))
+                experience atPut("cost", cycle iterations)  // Use iterations as cost proxy
+                experience atPut("effects", Map clone do(
+                    atPut("goal_progress", if(result at("success", false), 0.2, -0.1))
+                    atPut("uncertainty_level", if(result at("success", false), -0.1, 0.1))
+                    atPut("working_memory_load", cycle iterations * 0.01)  // Some cognitive cost
+                ))
+
+                context := Map clone
+                context atPut("query_type", cycle query at("type"))
+                context atPut("cycle_duration", cycle iterations)
+                context atPut("time_pressure", false)  // Could be enhanced with actual timing
+
+                Telos GenerativeWorldModel learnFromExperience(strategy, experience, context)
+            )
+        )
+    )
+    self markChanged
+))
+
+HRCOrchestrator setSlot("triggerAutopoiesis", method(cycle,
+    // Analyze cycle for patterns and trigger prompt evolution
+    analysis := analyzeCycleForAutopoiesis(cycle)
+
+    if(analysis at("shouldEvolve"),
+        PromptTemplate evolveTemplate(analysis)
+    )
+    self markChanged
+))
+
+HRCOrchestrator setSlot("analyzeCycleForAutopoiesis", method(cycle,
+    analysis := Map clone
+    analysis atPut("cycleId", cycle cycleId)
+    analysis atPut("queryType", cycle query at("type"))
+    analysis atPut("iterations", cycle iterations)
+    analysis atPut("success", cycle result at("success"))
+
+    // Determine if this pattern warrants template evolution
+    shouldEvolve := false
+
+    if(cycle query at("type") == "doesNotUnderstand",
+        // Check if this is a recurring unknown message
+        similarCycles := cycleHistory select(c,
+            c query at("type") == "doesNotUnderstand" and
+            c query at("message") == cycle query at("message")
+        )
+
+        if(similarCycles size > 2,
+            shouldEvolve = true
+            analysis atPut("evolutionReason", "recurring_unknown_message")
+        )
+    )
+
+    if(cycle iterations > maxIterations / 2,
+        // Complex cycles might benefit from better prompts
+        shouldEvolve = true
+        analysis atPut("evolutionReason", "high_iteration_complexity")
+    )
+
+    analysis atPut("shouldEvolve", shouldEvolve)
+    self markChanged
+    analysis
+))
+
+HRCOrchestrator setSlot("selectReasoningStrategy", method(query, context,
+    // First, check for applicable procedural chunks (learned rules)
+    queryConditions := Map clone
+    queryConditions atPut("query_type", query at("type"))
+    queryConditions atPut("has_graph_data", context at("has_graph_data", false))
+    queryConditions atPut("time_pressure", context at("time_pressure", false))
+
+    applicableChunk := retrieveProceduralChunk(queryConditions)
+    if(applicableChunk,
+        "Using learned procedural chunk for strategy selection" println
+        applicableChunk at("actions") at("select_strategy")
+    ,
+        // Fall back to utility-based selection
+        planWithActiveInference(query, context)
+    )
+))
+
+HRCOrchestrator setSlot("calculateUtility", method(strategy, query, context,
+    p := strategy at("expected_success", 0.5)  // Probability of success
+    g := strategy at("goal_value", 1.0)        // Goal importance
+    c := strategy at("expected_cost", 0.5)     // Expected cost
+
+    // Adjust based on query characteristics
+    if(query at("type") == "complex_multi_hop",
+        // Boost LLM decomposition for complex queries
+        if(strategy at("name") == "LLM Query Decomposition",
+            p = p + 0.2
+        )
+        // Boost multi-hop retrieval for complex queries
+        if(strategy at("name") == "Multi-Hop Retrieval",
+            p = p + 0.25
+        )
+    )
+
+    if(query at("type") == "doesNotUnderstand",
+        // Prefer VSA search for unknown messages initially
+        if(strategy at("name") == "VSA-Native Search",
+            p = p + 0.1
+        )
+    )
+
+    // Context-based adjustments
+    if(context at("has_graph_data", false),
+        // Boost graph disambiguation if graph data is available
+        if(strategy at("name") == "Graph Disambiguation",
+            p = p + 0.15
+        )
+    )
+
+    if(context at("time_pressure", false),
+        // Reduce cost penalty for fast strategies under time pressure
+        if(strategy at("name") == "VSA-Native Search",
+            c = c * 0.8
+        )
+    )
+
+    utility := (p * g) - c
+    self markChanged
+    utility
+))
+
+HRCOrchestrator setSlot("updateStrategyUtilities", method(strategyName, outcome, actualCost,
+    strategy := reasoningStrategies at(strategyName)
+    if(strategy,
+        // Enhanced ACT-R style learning with metacognitive adaptation
+        alpha := 0.1  // Base learning rate
+        beta := 0.05  // Cost learning rate
+
+        // Update success probability with recency weighting
+        currentSuccess := strategy at("expected_success", 0.5)
+        success := if(outcome at("success", false), 1, 0)
+
+        // Apply recency bias - more recent outcomes have higher weight
+        recencyWeight := calculateRecencyWeight(outcome)
+        effectiveAlpha := alpha * recencyWeight
+
+        newSuccess := (1 - effectiveAlpha) * currentSuccess + effectiveAlpha * success
+        strategy atPut("expected_success", newSuccess)
+
+        // Update expected cost with adaptive learning
+        currentCost := strategy at("expected_cost", 0.5)
+        newCost := (1 - beta) * currentCost + beta * actualCost
+        strategy atPut("expected_cost", newCost)
+
+        // Update goal value based on strategic importance
+        updateGoalValue(strategy, outcome)
+
+        // Update trial count and performance metrics
+        trialCount := strategy at("trial_count", 0) + 1
+        strategy atPut("trial_count", trialCount)
+
+        // Track performance history for metacognitive analysis
+        updatePerformanceHistory(strategyName, outcome, actualCost)
+
+        // Metacognitive reflection: adjust strategy parameters based on performance trends
+        performMetacognitiveReflection(strategyName)
+
+        self markChanged
+    )
+))
+
+HRCOrchestrator setSlot("calculateRecencyWeight", method(outcome,
+    // Calculate recency weight for learning - more recent outcomes matter more
+    // This implements a form of exponential moving average weighting
+    baseWeight := 1.0
+
+    // Boost weight for outcomes in the last hour
+    if(outcome at("timestamp"),
+        ageHours := (Date now seconds - outcome at("timestamp") seconds) / 3600
+        if(ageHours < 1, baseWeight = baseWeight * 1.5)
+        if(ageHours < 0.1, baseWeight = baseWeight * 2.0)  // Very recent
+    )
+
+    baseWeight
+))
+
+HRCOrchestrator setSlot("updateGoalValue", method(strategy, outcome,
+    // Dynamically adjust goal value based on strategic performance
+    currentGoalValue := strategy at("goal_value", 1.0)
+
+    if(outcome at("success", false),
+        // Successful strategies get slight goal value increase
+        newGoalValue := currentGoalValue * 1.02
+        // Cap at reasonable maximum
+        if(newGoalValue > 2.0, newGoalValue = 2.0)
+        strategy atPut("goal_value", newGoalValue)
+    ,
+        // Failed strategies get slight decrease, but not below minimum
+        newGoalValue := currentGoalValue * 0.98
+        if(newGoalValue < 0.5, newGoalValue = 0.5)
+        strategy atPut("goal_value", newGoalValue)
+    )
+))
+
+HRCOrchestrator setSlot("updatePerformanceHistory", method(strategyName, outcome, actualCost,
+    // Maintain rolling performance history for metacognitive analysis
+    if(performanceHistory isNil, performanceHistory := Map clone)
+    if(performanceHistory at(strategyName) isNil,
+        performanceHistory atPut(strategyName, list())
+    )
+
+    history := performanceHistory at(strategyName)
+    performanceEntry := Map clone
+    performanceEntry atPut("timestamp", Date now)
+    performanceEntry atPut("success", outcome at("success", false))
+    performanceEntry atPut("cost", actualCost)
+    performanceEntry atPut("confidence", outcome at("confidence", 0))
+
+    history append(performanceEntry)
+
+    // Keep only last 50 entries to prevent unbounded growth
+    if(history size > 50,
+        history removeFirst()
+    )
+
+    self markChanged
+))
+
+HRCOrchestrator setSlot("performMetacognitiveReflection", method(strategyName,
+    // Analyze performance trends and adjust strategy parameters metacognitively
+    strategy := reasoningStrategies at(strategyName)
+    history := performanceHistory at(strategyName)
+
+    if(history and history size >= 5,  // Need minimum history for analysis
+        // Calculate recent performance metrics
+        recentOutcomes := history slice(-10)  // Last 10 outcomes
+        successRate := recentOutcomes count(h, h at("success")) / recentOutcomes size
+        avgCost := recentOutcomes sum(h, h at("cost")) / recentOutcomes size
+        avgConfidence := recentOutcomes sum(h, h at("confidence", 0)) / recentOutcomes size
+
+        // Metacognitive adjustments based on performance analysis
+        currentSuccess := strategy at("expected_success", 0.5)
+        currentCost := strategy at("expected_cost", 0.5)
+
+        // If success rate is significantly different from expected, adjust expectations
+        successDelta := successRate - currentSuccess
+        if(successDelta abs > 0.2,  // Significant deviation
+            adjustment := successDelta * 0.1  // Gradual adjustment
+            newSuccess := currentSuccess + adjustment
+            newSuccess = newSuccess clamp(0.1, 0.95)  // Reasonable bounds
+            strategy atPut("expected_success", newSuccess)
+        )
+
+        // Adjust cost expectations based on recent experience
+        costDelta := avgCost - currentCost
+        if(costDelta abs > 0.1,
+            adjustment := costDelta * 0.05
+            newCost := currentCost + adjustment
+            newCost = newCost clamp(0.1, 2.0)
+            strategy atPut("expected_cost", newCost)
+        )
+
+        // Adjust goal value based on overall utility trend
+        recentUtility := successRate - (avgCost / 2.0)  // Simplified utility
+        if(recentUtility > 0.7,
+            // High utility strategy - increase importance
+            currentGoal := strategy at("goal_value", 1.0)
+            strategy atPut("goal_value", currentGoal * 1.05 clamp(0.5, 2.5))
+        )
+    )
+))
+
+HRCOrchestrator setSlot("getStrategyStats", method(strategyName,
+    strategy := reasoningStrategies at(strategyName)
+    if(strategy,
+        stats := Map clone
+        stats atPut("name", strategy at("name"))
+        stats atPut("expected_success", strategy at("expected_success", 0.5))
+        stats atPut("expected_cost", strategy at("expected_cost", 0.5))
+        stats atPut("trial_count", strategy at("trial_count", 0))
+        stats atPut("goal_value", strategy at("goal_value", 1.0))
+        stats
+    ,
+        nil
+    )
+))
+
+HRCOrchestrator setSlot("detectImpasse", method(failureCondition, cycle,
+    impasseType := nil
+    subGoal := nil
+
+    if(failureCondition == "no_vsa_result",
+        impasseType = "state_no_change"
+        subGoal = "Formulate new query via graph expansion, LLM-driven query rewriting"
+    )
+
+    if(failureCondition == "multiple_similar_results",
+        impasseType = "operator_tie"
+        subGoal = "Retrieve full symbolic Concept objects and perform weighted pathfinding"
+    )
+
+    if(failureCondition == "no_applicable_operators",
+        impasseType = "operator_no_change"
+        subGoal = "Search knowledge base for applicable operators or invoke GenerativeKernel"
+    )
+
+    if(failureCondition == "generation_failed",
+        impasseType = "operator_failure"
+        subGoal = "Retry generation with different prompt or escalate to human intervention"
+    )
+
+    result := Map clone atPut("type", impasseType) atPut("subGoal", subGoal)
+    self markChanged
+    result
+))
+
+HRCOrchestrator setSlot("worldModel", Map clone do(
+    atPut("state_space", Map clone)  // Current beliefs about world states
+    atPut("transition_model", Map clone)  // P(s'|s,a) - state transition probabilities
+    atPut("observation_model", Map clone)  // P(o|s) - observation likelihoods
+    atPut("prior_preferences", Map clone)  // Preferred sensory states
+    atPut("learning_rate", 0.01)  // Learning rate for model updates
+    atPut("prediction_horizon", 5)  // How far ahead to predict
+))
+
+HRCOrchestrator setSlot("initWorldModel", method(
+    // Initialize with basic state space
+    worldModel at("state_space") atPut("current_query", nil)
+    worldModel at("state_space") atPut("available_strategies", reasoningStrategies keys)
+    worldModel at("state_space") atPut("system_load", 0.5)
+    worldModel at("state_space") atPut("knowledge_coverage", 0.7)
+
+    // Initialize transition model with basic probabilities
+    worldModel at("transition_model") atPut("strategy_success", Map clone do(
+        atPut("vsa_native", 0.7)
+        atPut("graph_disambiguation", 0.8)
+        atPut("llm_decomposition", 0.9)
+        atPut("global_search", 0.6)
+        atPut("multi_hop_retrieval", 0.85)
+    ))
+
+    // Initialize observation model
+    worldModel at("observation_model") atPut("success_indicators", list("result_found", "high_confidence", "fast_response"))
+    worldModel at("observation_model") atPut("failure_indicators", list("no_result", "low_confidence", "timeout"))
+
+    // Initialize prior preferences (what states we want to achieve)
+    worldModel at("prior_preferences") atPut("success_probability", 0.9)
+    worldModel at("prior_preferences") atPut("response_time", 0.1)  // Lower is better
+    worldModel at("prior_preferences") atPut("resource_usage", 0.3)  // Lower is better
+
+    self markChanged
+))
+
+HRCOrchestrator setSlot("updateWorldModel", method(action, observation, outcome,
+    // Update transition probabilities based on observed outcomes
+    if(action and observation,
+        transitionKey := "#{action}_to_#{observation}" interpolate
+        currentProb := worldModel at("transition_model") at(transitionKey, 0.5)
+        // Simple Bayesian update
+        if(outcome at("success", false),
+            newProb := currentProb + (1 - currentProb) * worldModel at("learning_rate")
+        ,
+            newProb := currentProb - currentProb * worldModel at("learning_rate")
+        )
+        worldModel at("transition_model") atPut(transitionKey, newProb)
+    )
+
+    // Update state beliefs
+    if(outcome at("strategy"),
+        strategy := outcome at("strategy")
+        successRate := worldModel at("transition_model") at("strategy_success") at(strategy, 0.5)
+        newSuccessRate := if(outcome at("success", false),
+            successRate + (1 - successRate) * worldModel at("learning_rate")
+        ,
+            successRate - successRate * worldModel at("learning_rate")
+        )
+        worldModel at("transition_model") at("strategy_success") atPut(strategy, newSuccessRate)
+    )
+
+    self markChanged
+))
+
+HRCOrchestrator setSlot("calculateExpectedFreeEnergy", method(policy, currentState,
+    efe := 0
+
+    // EFE = Expected Energy - Entropy
+    // Where Expected Energy = sum over time of [log Q(s_t) - log P(o_t|s_t)]
+    // and Entropy = -sum P(s_t) log P(s_t)
+
+    horizon := worldModel at("prediction_horizon")
+
+    // Simplified EFE calculation for strategy selection
+    // Focus on immediate expected outcomes rather than full temporal horizon
+    expectedEnergy := 0
+    entropy := 0
+
+    // Calculate expected energy (surprise minimization)
+    policy foreach(action,
+        // Predict outcome probability for this action
+        successProb := worldModel at("transition_model") at("strategy_success") at(action, 0.5)
+        preferredSuccess := worldModel at("prior_preferences") at("success_probability", 0.9)
+
+        // Energy term: KL divergence between predicted and preferred outcomes
+        if(successProb > 0 and preferredSuccess > 0,
+            energyTerm := successProb * (successProb log / preferredSuccess log) +
+                         (1 - successProb) * ((1 - successProb) log / (1 - preferredSuccess) log)
+            expectedEnergy = expectedEnergy + energyTerm
+        )
+    )
+
+    // Calculate entropy (exploration bonus)
+    policy foreach(action,
+        prob := 1 / policy size  // Assume uniform policy for simplicity
+        if(prob > 0, entropy = entropy - prob * (prob log))
+    )
+
+    efe := expectedEnergy - entropy
+    self markChanged
+    efe
+))
+
+HRCOrchestrator setSlot("planWithActiveInference", method(query, context,
+    // Enhanced Active Inference implementation using GenerativeWorldModel
+    // Uses Free Energy Principle for goal-directed planning
+
+    // Check if GenerativeWorldModel is available
+    if(Telos hasSlot("GenerativeWorldModel") and Telos GenerativeWorldModel modelEnabled,
+        // Use comprehensive GenerativeWorldModel for planning
+        goal := Map clone
+        goal atPut("description", query at("type"))
+        goal atPut("complexity", calculateQueryComplexity(query))
+
+        currentState := Map clone
+        currentState atPut("cognitive_state", Map clone do(
+            atPut("working_memory_load", 0.5)
+            atPut("attention_focus", "neutral")
+            atPut("knowledge_coverage", context at("has_graph_data", false) ifTrue(0.8, 0.4))
+            atPut("uncertainty_level", query at("type") == "doesNotUnderstand" ifTrue(0.8, 0.3))
+            atPut("goal_progress", 0.0)
+        ))
+        currentState atPut("system_state", Map clone do(
+            atPut("memory_pressure", 0.3)
+            atPut("network_latency", 50)
+            atPut("error_rate", 0.02)
+            atPut("resource_utilization", 0.6)
+        ))
+        currentState atPut("task_state", Map clone do(
+            atPut("task_complexity", calculateQueryComplexity(query))
+            atPut("time_remaining", context at("time_pressure", false) ifTrue(0.3, 0.8))
+            atPut("success_probability", 0.5)
+            atPut("risk_level", query at("type") == "complex_multi_hop" ifTrue(0.7, 0.2))
+        ))
+
+        constraints := Map clone
+        constraints atPut("time_pressure", context at("time_pressure", false))
+        constraints atPut("requires_planning", query at("type") == "complex_multi_hop")
+        constraints atPut("has_graph_data", context at("has_graph_data", false))
+
+        planningResult := Telos GenerativeWorldModel planWithActiveInference(goal, currentState, constraints)
+
+        if(planningResult and planningResult at("policy") and planningResult at("policy") size > 0,
+            selectedStrategy := planningResult at("policy") first
+
+            // Learn from this planning decision
+            outcome := Map clone
+            outcome atPut("type", "planning_decision")
+            outcome atPut("strategy", selectedStrategy)
+            outcome atPut("confidence", planningResult at("confidence", 0.5))
+
+            Telos GenerativeWorldModel learnFromExperience("plan_strategy", outcome, Map clone atPut("query_type", query at("type")))
+
+            "Selected strategy via GenerativeWorldModel: #{selectedStrategy} (confidence: #{planningResult at('confidence')})" interpolate println
+            self markChanged
+            return selectedStrategy
+        )
+    )
+
+    // Fallback to original implementation if GenerativeWorldModel unavailable
+    ("Falling back to original Active Inference implementation" interpolate) println
+
+    // Step 1: Update generative world model with current observations
+    updateGenerativeModel(query, context)
+
+    // Step 2: Generate candidate policies (action sequences)
+    candidatePolicies := generateCandidatePolicies(query, context)
+
+    // Step 3: Evaluate policies using Expected Free Energy (EFE)
+    bestPolicy := nil
+    minEFE := 1000  // Large initial value
+
+    candidatePolicies foreach(policy,
+        // Calculate EFE for this policy
+        efe := calculateExpectedFreeEnergy(policy, query, context)
+
+        // Apply epistemic affordance bonus for information-seeking policies
+        epistemicBonus := calculateEpistemicValue(policy, query)
+        totalEFE := efe - epistemicBonus  // Subtract because we minimize EFE
+
+        if(totalEFE < minEFE,
+            minEFE = totalEFE
+            bestPolicy = policy
+        )
+    )
+
+    // Step 4: Return first action of best policy
+    result := if(bestPolicy and bestPolicy size > 0,
+        bestPolicy first,
+        "vsa_native"  // Default fallback
+    )
+
+    "Selected strategy via fallback Active Inference: #{result} (EFE: #{minEFE})" interpolate println
+    self markChanged
+    result
+))
+
+HRCOrchestrator setSlot("updateGenerativeModel", method(query, context,
+    // Update the generative world model with current query and context
+    // This implements the perception aspect of Active Inference
+
+    currentState := Map clone
+    currentState atPut("query_type", query at("type"))
+    currentState atPut("query_complexity", calculateQueryComplexity(query))
+    currentState atPut("available_resources", context at("has_graph_data", false))
+    currentState atPut("time_constraints", context at("time_pressure", false))
+
+    // Update state space
+    worldModel at("state_space") atPut("current_state", currentState)
+
+    // Update transition model based on recent outcomes
+    updateTransitionProbabilities()
+
+    // Update observation model
+    updateObservationLikelihoods()
+
+    self markChanged
+))
+
+HRCOrchestrator setSlot("generateCandidatePolicies", method(query, context,
+    // Generate diverse candidate policies for evaluation
+    baseStrategies := reasoningStrategies keys
+
+    policies := list()
+
+    // Single-action policies (immediate strategies)
+    baseStrategies foreach(strategy,
+        policies append(list(strategy))
+    )
+
+    // Multi-action policies for complex queries
+    if(query at("type") == "complex_multi_hop" or context at("requires_planning", false),
+        // Sequential policies
+        policies append(list("vsa_native", "graph_disambiguation"))
+        policies append(list("llm_decomposition", "global_search"))
+        policies append(list("vsa_native", "llm_decomposition", "graph_disambiguation"))
+
+        // Parallel exploration policies
+        policies append(list("global_search", "vsa_native"))  // Information gathering first
+    )
+
+    // Context-specific policies
+    if(context at("has_graph_data", false),
+        policies append(list("graph_disambiguation", "vsa_native"))  // Leverage graph data
+    )
+
+    if(context at("time_pressure", false),
+        // Fast policies only
+        fastPolicies := policies select(p, p size == 1 and reasoningStrategies at(p first) at("expected_cost", 1.0) < 0.5)
+        policies = fastPolicies
+    )
+
+    policies
+))
+
+HRCOrchestrator setSlot("calculateExpectedFreeEnergy", method(policy, query, context,
+    // Calculate Expected Free Energy (EFE) for a policy
+    // EFE = Expected Energy - Entropy (information gain)
+
+    efe := 0
+    horizon := worldModel at("prediction_horizon", 3)  // Look ahead 3 steps
+
+    // Simulate policy execution and calculate EFE
+    expectedEnergy := 0
+    entropy := 0
+
+    // For each step in the policy
+    policy foreach(step, action,
+        // Predict outcomes for this action
+        predictedOutcomes := predictActionOutcomes(action, query, context)
+
+        // Calculate expected energy (surprise minimization)
+        stepEnergy := 0
+        predictedOutcomes foreach(outcome,
+            probability := outcome at("probability", 0.5)
+            surprise := calculateSurprise(outcome, query)
+            stepEnergy = stepEnergy + (probability * surprise)
+        )
+        expectedEnergy = expectedEnergy + stepEnergy
+
+        // Calculate entropy (uncertainty/exploration bonus)
+        stepEntropy := 0
+        predictedOutcomes foreach(outcome,
+            prob := outcome at("probability", 0.01)  // Avoid log(0)
+            stepEntropy = stepEntropy - (prob * (prob log))
+        )
+        entropy = entropy + stepEntropy
+    )
+
+    efe := expectedEnergy - entropy
+    efe
+))
+
+HRCOrchestrator setSlot("calculateEpistemicValue", method(policy, query,
+    // Calculate epistemic affordance (information gain value)
+    // This encourages exploration and learning
+
+    epistemicValue := 0
+
+    // Policies that gather information have higher epistemic value
+    if(policy contains("global_search"), epistemicValue = epistemicValue + 0.2)
+    if(policy contains("llm_decomposition"), epistemicValue = epistemicValue + 0.15)
+
+    // Complex queries benefit more from information gathering
+    if(query at("type") == "complex_multi_hop",
+        epistemicValue = epistemicValue * 1.5
+    )
+
+    // Multi-step policies have higher epistemic value (learning opportunity)
+    if(policy size > 1,
+        epistemicValue = epistemicValue + (policy size * 0.1)
+    )
+
+    epistemicValue
+))
+
+HRCOrchestrator setSlot("predictActionOutcomes", method(action, query, context,
+    // Predict possible outcomes for an action based on world model
+    outcomes := list()
+
+    strategy := reasoningStrategies at(action)
+    if(strategy,
+        // Base success outcome
+        successOutcome := Map clone
+        successOutcome atPut("type", "success")
+        successOutcome atPut("probability", strategy at("expected_success", 0.5))
+        successOutcome atPut("expected_cost", strategy at("expected_cost", 0.5))
+        successOutcome atPut("confidence", 0.8)
+        outcomes append(successOutcome)
+
+        // Failure outcome
+        failureOutcome := Map clone
+        failureOutcome atPut("type", "failure")
+        failureOutcome atPut("probability", 1 - strategy at("expected_success", 0.5))
+        failureOutcome atPut("expected_cost", strategy at("expected_cost", 0.5) * 1.2)  // Failures cost more
+        failureOutcome atPut("confidence", 0.2)
+        outcomes append(failureOutcome)
+
+        // Context-specific outcomes
+        if(context at("has_graph_data", false) and action == "graph_disambiguation",
+            // Higher success probability with graph data
+            successOutcome atPut("probability", successOutcome at("probability") * 1.3 clamp(0, 1))
+            failureOutcome atPut("probability", 1 - successOutcome at("probability"))
+        )
+    )
+
+    outcomes
+))
+
+HRCOrchestrator setSlot("calculateSurprise", method(outcome, query,
+    // Calculate surprisal (negative log probability) for an outcome
+    probability := outcome at("probability", 0.5)
+
+    if(probability > 0,
+        -(probability log) / 2.302585  // Convert to log10 for numerical stability
+    ,
+        10  // High surprise for impossible events
+    )
+))
+
+HRCOrchestrator setSlot("calculateQueryComplexity", method(query,
+    // Calculate query complexity for world model
+    complexity := 0.5
+
+    if(query at("type") == "complex_multi_hop", complexity = 0.9)
+    if(query at("type") == "doesNotUnderstand", complexity = 0.7)
+    if(query at("message") and query at("message") size > 200, complexity = complexity + 0.2)
+
+    complexity
+))
+
+HRCOrchestrator setSlot("updateTransitionProbabilities", method(
+    // Update transition model based on recent cycle outcomes
+    // This implements the learning aspect of Active Inference
+
+    recentCycles := cycleHistory slice(-10)  // Last 10 cycles
+
+    recentCycles foreach(cycle,
+        if(cycle result and cycle result at("strategy"),
+            strategy := cycle result at("strategy")
+            success := cycle result at("success", false)
+
+            // Update transition probabilities
+            transitionKey := "#{strategy}_success" interpolate
+            currentProb := worldModel at("transition_model") at("strategy_success") at(strategy, 0.5)
+
+            // Bayesian update
+            alpha := if(success, 1, 0)
+            beta := if(success, 0, 1)
+            newProb := (currentProb * 10 + alpha) / (10 + alpha + beta)  // Beta distribution update
+
+            worldModel at("transition_model") at("strategy_success") atPut(strategy, newProb)
+        )
+    )
+
+    self markChanged
+))
+
+HRCOrchestrator setSlot("updateObservationLikelihoods", method(
+    // Update observation model based on recent outcomes
+    // P(o|s) - probability of observing outcome given strategy
+
+    recentCycles := cycleHistory slice(-5)
+
+    recentCycles foreach(cycle,
+        if(cycle result,
+            strategy := cycle result at("strategy")
+            success := cycle result at("success", false)
+            confidence := cycle result at("confidence", 0.5)
+
+            observation := if(success, "success_high_confidence", "failure_low_confidence")
+
+            // Update likelihood
+            likelihoodKey := "#{strategy}_#{observation}" interpolate
+            currentLikelihood := worldModel at("observation_model") at(likelihoodKey, 0.5)
+
+            // Simple averaging update
+            observed := if(success and confidence > 0.7, 1, 0)
+            newLikelihood := (currentLikelihood + observed) / 2
+
+            worldModel at("observation_model") atPut(likelihoodKey, newLikelihood)
+        )
+    )
+
+    self markChanged
+))
+
+HRCOrchestrator setSlot("chaosEnabled", false)
+HRCOrchestrator setSlot("chaosExperimentProbability", 0.1)
+
+HRCOrchestrator setSlot("triggerChaosExperiment", method(cycleOutcome, context,
+    if(chaosEnabled not, return nil)
+
+    // Only trigger chaos experiments for successful cycles to test resilience
+    if(cycleOutcome at("success", false) not, return nil)
+
+    // Random chance to trigger experiment
+    if(Random value > chaosExperimentProbability, return nil)
+
+    // Select appropriate experiment based on cycle characteristics
+    experimentId := selectChaosExperiment(cycleOutcome, context)
+    if(experimentId,
+        "Triggering chaos experiment #{experimentId} after successful cognitive cycle" interpolate println
+        result := startChaosExperiment(experimentId, cycleOutcome)
+        self markChanged
+        result
+    )
+))
+
+HRCOrchestrator setSlot("selectChaosExperiment", method(cycleOutcome, context,
+    strategy := cycleOutcome at("strategy")
+
+    // Map strategies to relevant chaos experiments
+    experimentMap := Map clone do(
+        atPut("vsa_native", "CEP-001")  // Test federated memory latency
+        atPut("graph_disambiguation", "CEP-002")  // Test transactional outbox
+        atPut("llm_decomposition", "CEP-003")  // Test LLM transducer
+        atPut("global_search", "CEP-004")  // Test cognitive core operator tie
+        atPut("multi_hop_retrieval", "CEP-005")  // Test multi-hop retrieval
+    )
+
+    result := experimentMap at(strategy, "CEP-005")  // Default to memory pressure test
+    self markChanged
+    result
+))
+
+HRCOrchestrator setSlot("startChaosExperiment", method(experimentId, context,
+    if(Telos hasSlot("ChaosConductor"),
+        result := Telos ChaosConductor startExperiment(experimentId, Map clone atPut("context", context))
+        if(result at("success"),
+            "Chaos experiment #{experimentId} started successfully" interpolate println
+            self markChanged
+            result
+        ,
+            "Failed to start chaos experiment: #{result at('error')}" interpolate println
+            nil
+        )
+    ,
+        "ChaosConductor not available" println
+        nil
+    )
+))
+
+HRCOrchestrator setSlot("setChaosEnabled", method(enabled,
+    self chaosEnabled := enabled
+    "Chaos experiments #{if(enabled, \"enabled\", \"disabled\")}" interpolate println
+    self markChanged
+))
+
+HRCOrchestrator setSlot("setChaosProbability", method(probability,
+    self chaosExperimentProbability := probability
+    "Chaos experiment probability set to #{probability}" interpolate println
+    self markChanged
+))
+
+HRCOrchestrator setSlot("getChaosStatus", method(
+    status := Map clone
+    status atPut("enabled", chaosEnabled)
+    status atPut("probability", chaosExperimentProbability)
+
+    if(Telos hasSlot("ChaosConductor"),
+        status atPut("conductor_available", true)
+        status atPut("active_experiments", Telos ChaosConductor activeExperiments size)
+        status atPut("experiment_history", Telos ChaosConductor experimentHistory size)
+    ,
+        status atPut("conductor_available", false)
+    )
+
+    self markChanged
+    status
+))
+
+HRCOrchestrator setSlot("runChaosGauntlet", method(options,
+    if(Telos hasSlot("ChaosConductor"),
+        "Running Systemic Crucible validation gauntlet..." println
+        result := Telos ChaosConductor runValidationGauntlet(options)
+        "Gauntlet completed: #{result at('passed')}/#{result at('total_experiments')} experiments passed" interpolate println
+        self markChanged
+        result
+    ,
+        result := Map clone atPut("error", "ChaosConductor not available")
+        self markChanged
+        result
+    )
+))
+
+HRCOrchestrator setSlot("storeProceduralChunk", method(chunkId, chunk,
+    // Store a procedural chunk learned from a cognitive cycle
+    if(proceduralMemory isNil, proceduralMemory := Map clone)
+    proceduralMemory atPut(chunkId, chunk)
+
+    // Update strategy utilities based on chunk learning
+    if(chunk at("actions") at("select_strategy"),
+        strategyName := chunk at("actions") at("select_strategy")
+        strategy := reasoningStrategies at(strategyName)
+        if(strategy,
+            // Boost expected success for strategies that have chunks
+            currentSuccess := strategy at("expected_success", 0.5)
+            strategy atPut("expected_success", currentSuccess + 0.05)  // Small boost
+        )
+    )
+
+    "Stored procedural chunk #{chunkId} in system memory" interpolate println
+))
+
+HRCOrchestrator setSlot("retrieveProceduralChunk", method(queryConditions,
+    // Try to find a matching procedural chunk for the given conditions
+    matchingChunk := nil
+    bestMatchScore := 0
+
+    proceduralMemory foreach(chunkId, chunk,
+        matchScore := calculateChunkMatch(chunk at("conditions"), queryConditions)
+        if(matchScore > bestMatchScore,
+            bestMatchScore = matchScore
+            matchingChunk = chunk
+        )
+    )
+
+    if(matchingChunk and bestMatchScore > 0.7,  // High confidence threshold
+        // Update chunk usage statistics
+        matchingChunk atPut("usage_count", matchingChunk at("usage_count", 0) + 1)
+        matchingChunk atPut("last_used", Date now)
+        matchingChunk atPut("strength", matchingChunk at("strength", 1.0) + 0.1)  // Strengthen with use
+
+        matchingChunk
+    ,
+        nil
+    )
+))
+
+HRCOrchestrator setSlot("calculateChunkMatch", method(chunkConditions, queryConditions,
+    // Calculate how well chunk conditions match query conditions
+    score := 0
+    totalConditions := 0
+
+    chunkConditions foreach(key, value,
+        totalConditions = totalConditions + 1
+        if(queryConditions at(key) == value,
+            score = score + 1
+        )
+    )
+
+    if(totalConditions > 0,
+        score / totalConditions,
+        0
+    )
+))
+
+// Chaos Engineering Integration
+HRCOrchestrator setSlot("chaosEnabled", false)
+HRCOrchestrator setSlot("chaosProbability", 0.1)
+
+HRCOrchestrator setSlot("setChaosEnabled", method(enabled,
+    self setSlot("chaosEnabled", enabled)
+    self markChanged
+    enabled
+))
+
+HRCOrchestrator setSlot("setChaosProbability", method(probability,
+    self setSlot("chaosProbability", probability)
+    self markChanged
+    probability
+))
+
+HRCOrchestrator setSlot("getChaosStatus", method(
+    status := Map clone
+    status atPut("enabled", chaosEnabled)
+    status atPut("probability", chaosProbability)
+    status
+))
+
+HRCOrchestrator setSlot("selectChaosExperiment", method(cycleOutcome, options,
+    if(chaosEnabled not, return nil)
+
+    strategy := cycleOutcome at("strategy", "unknown")
+    experimentMap := Map clone do(
+        atPut("vsa_native", "CEP-001")
+        atPut("graph_disambiguation", "CEP-002")
+        atPut("llm_decomposition", "CEP-003")
+        atPut("global_search", "CEP-004")
+    )
+
+    experimentId := experimentMap at(strategy)
+    if(experimentId isNil, experimentId = "CEP-005")  // Default to memory pressure test
+
+    experimentId
+))
+
+HRCOrchestrator setSlot("triggerChaosExperiment", method(cycleOutcome, options,
+    if(chaosEnabled not, return nil)
+
+    // Check if chaos should be triggered based on probability
+    if(Random value < chaosProbability,
+        experimentId := selectChaosExperiment(cycleOutcome, options)
+        if(experimentId and Telos hasSlot("ChaosConductor"),
+            ("Triggering chaos experiment: " .. experimentId) println
+            Telos ChaosConductor startExperiment(experimentId, options)
+        )
+    )
+))
+
+HRCOrchestrator setSlot("processChaosLearning", method(learningQuery, options,
+    "Processing chaos learning query..." println
+
+    experimentId := learningQuery at("experiment_id")
+    failureMode := learningQuery at("failure_mode")
+    breachDetails := learningQuery at("breach_details")
+
+    // Update strategy expectations based on chaos learning
+    if(failureMode == "failed" and breachDetails,
+        metric := breachDetails at("metric")
+        if(metric == "p99_hybrid_query_latency",
+            // Reduce expected success for VSA operations under latency pressure
+            strategy := reasoningStrategies at("vsa_native")
+            if(strategy,
+                currentSuccess := strategy at("expected_success", 0.7)
+                strategy atPut("expected_success", currentSuccess * 0.95)
+                ("Updated VSA strategy success expectation to: " .. strategy at("expected_success")) println
+            )
+        )
+    )
+
+    self markChanged
+))
+
+// Persistence covenant
+HRCOrchestrator setSlot("markChanged", method(
+    // For future ZODB integration
+    self
+))
+
+// Export to global namespace
+if(Lobby hasSlot("Telos") not, Lobby Telos := Object clone)
+if(Telos hasSlot("HRC") not, Telos HRC := HRCOrchestrator)
+
+// SOAR Cognitive Architecture Enhancement
+// Implements recursive cognitive cycles and impasse resolution
+
+HRCOrchestrator setSlot("workingMemory", Map clone do(
+    atPut("current_state", Map clone)
+    atPut("goal_stack", list())  // Stack of active goals
+    atPut("operator_set", list())  // Currently applicable operators
+    atPut("preferences", list())  // Operator preferences
+    atPut("impasse_stack", list())  // Stack of active impasses
+))
+
+HRCOrchestrator setSlot("productionRules", list())
+
+HRCOrchestrator setSlot("initSOARArchitecture", method(
+    // Initialize SOAR working memory structures
+    workingMemory at("goal_stack") empty
+    workingMemory at("operator_set") empty
+    workingMemory at("preferences") empty
+    workingMemory at("impasse_stack") empty
+
+    // Initialize production rules for SOAR cognition
+    initProductionRules()
+
+    self markChanged
+))
+
+HRCOrchestrator setSlot("initProductionRules", method(
+    // Define production rules for SOAR-style cognition
+    productionRules empty
+
+    // Rule 1: Detect state no-change impasse
+    rule1 := Map clone do(
+        atPut("name", "detect_state_no_change")
+        atPut("condition", block(state, goal,
+            // Check if state hasn't changed for multiple cycles
+            cyclesWithoutProgress := state at("cycles_without_change", 0)
+            cyclesWithoutProgress > 3
+        ))
+        atPut("action", block(self, state, goal,
+            self createImpasseSubgoal("state_no_change", goal, state)
+        ))
+    )
+    productionRules append(rule1)
+
+    // Rule 2: Detect operator tie impasse
+    rule2 := Map clone do(
+        atPut("name", "detect_operator_tie")
+        atPut("condition", block(state, goal,
+            operators := state at("operator_set", list())
+            operators size > 1 and self hasOperatorTie(operators)
+        ))
+        atPut("action", block(self, state, goal,
+            self createImpasseSubgoal("operator_tie", goal, state)
+        ))
+    )
+    productionRules append(rule2)
+
+    // Rule 3: Detect operator no-change impasse
+    rule3 := Map clone do(
+        atPut("name", "detect_operator_no_change")
+        atPut("condition", block(state, goal,
+            operators := state at("operator_set", list())
+            operators size == 0 and state at("attempted_operators", list()) size > 0
+        ))
+        atPut("action", block(self, state, goal,
+            self createImpasseSubgoal("operator_no_change", goal, state)
+        ))
+    )
+    productionRules append(rule3)
+
+    // Rule 4: Handle operator failure
+    rule4 := Map clone do(
+        atPut("name", "handle_operator_failure")
+        atPut("condition", block(state, goal,
+            lastOperator := state at("last_operator")
+            lastResult := state at("last_result")
+            lastOperator and lastResult and lastResult at("success") == false
+        ))
+        atPut("action", block(self, state, goal,
+            self createImpasseSubgoal("operator_failure", goal, state)
+        ))
+    )
+    productionRules append(rule4)
+
+    // Rule 5: Apply selected operator
+    rule5 := Map clone do(
+        atPut("name", "apply_selected_operator")
+        atPut("condition", block(state, goal,
+            selectedOp := state at("selected_operator")
+            selectedOp and state at("impasse_stack", list()) size == 0
+        ))
+        atPut("action", block(self, state, goal,
+            self applyOperator(selectedOp, goal, state)
+        ))
+    )
+    productionRules append(rule5)
+
+    self markChanged
+))
+
+HRCOrchestrator setSlot("hasOperatorTie", method(operators,
+    // Check if there's a tie between operators (similar utilities)
+    if(operators size < 2, return false)
+
+    utilities := operators map(op, self calculateOperatorUtility(op))
+    maxUtil := utilities max
+    count := utilities count(u, u == maxUtil)
+
+    count > 1  // Tie if multiple operators have same max utility
+))
+
+HRCOrchestrator setSlot("createImpasseSubgoal", method(impasseType, parentGoal, state,
+    // Create a subgoal to resolve an impasse
+    impasseId := "impasse_#{uniqueId}" interpolate
+
+    subGoal := Map clone do(
+        atPut("id", impasseId)
+        atPut("type", "impasse_resolution")
+        atPut("impasse_type", impasseType)
+        atPut("parent_goal", parentGoal)
+        atPut("state", state clone)
+        atPut("created_at", Date now)
+        atPut("status", "active")
+    )
+
+    // Push to goal stack (SOAR uses LIFO)
+    workingMemory at("goal_stack") append(subGoal)
+
+    // Push to impasse stack for tracking
+    workingMemory at("impasse_stack") append(Map clone do(
+        atPut("id", impasseId)
+        atPut("type", impasseType)
+        atPut("goal", subGoal)
+        atPut("parent_state", state)
+    ))
+
+    "Created impasse subgoal: #{impasseType} for goal #{parentGoal at('id', 'unknown')}" interpolate println
+
+    self markChanged
+    subGoal
+))
+
+HRCOrchestrator setSlot("applyOperator", method(operator, goal, state,
+    // Apply a selected operator to the current state
+    "Applying operator: #{operator at('name', 'unknown')}" interpolate println
+
+    // Update state to reflect operator application
+    state atPut("last_operator", operator)
+    state atPut("operator_applied_at", Date now)
+
+    // Execute the operator based on its type
+    result := self executeOperator(operator, goal, state)
+
+    // Update state with result
+    state atPut("last_result", result)
+
+    if(result at("success", false),
+        // Success - update goal progress
+        self updateGoalProgress(goal, result)
+        "Operator #{operator at('name')} succeeded" interpolate println
+    ,
+        // Failure - this may trigger an impasse
+        "Operator #{operator at('name')} failed: #{result at('error', 'unknown')}" interpolate println
+    )
+
+    self markChanged
+    result
+))
+
+HRCOrchestrator setSlot("executeOperator", method(operator, goal, state,
+    // Execute an operator based on its type
+    operatorType := operator at("type", "unknown")
+
+    result := Map clone do(
+        atPut("operator", operator at("name"))
+        atPut("executed_at", Date now)
+    )
+
+    if(operatorType == "reasoning_strategy",
+        // Execute a reasoning strategy
+        strategyName := operator at("strategy")
+        if(strategyName == "vsa_rag_fusion",
+            // Special handling for VSA-RAG fusion
+            result = self executeVSARAGFusion(goal at("query"), state at("context", Map clone))
+        ,
+            result = self executeReasoningStrategy(strategyName, goal, state)
+        )
+    ,
+    if(operatorType == "impasse_resolution",
+        // Execute impasse resolution
+        impasseType := operator at("impasse_type")
+        result = self executeImpasseResolution(impasseType, goal, state)
+    ,
+    if(operatorType == "subgoal_creation",
+        // Create and execute a subgoal
+        subGoalSpec := operator at("subgoal_spec")
+        result = self executeSubgoalCreation(subGoalSpec, goal, state)
+    ,
+        // Unknown operator type
+        result atPut("success", false)
+        result atPut("error", "Unknown operator type: #{operatorType}" interpolate)
+    ))
+
+    result
+))
+
+HRCOrchestrator setSlot("executeReasoningStrategy", method(strategyName, goal, state,
+    // Execute a specific reasoning strategy as an operator
+    strategy := reasoningStrategies at(strategyName)
+    if(strategy isNil,
+        return Map clone do(
+            atPut("success", false)
+            atPut("error", "Unknown strategy: #{strategyName}" interpolate)
+        )
+    )
+
+    // Simulate strategy execution with current success probability
+    successProb := strategy at("expected_success", 0.5)
+    success := Random value < successProb
+
+    result := Map clone do(
+        atPut("success", success)
+        atPut("strategy", strategyName)
+        atPut("confidence", successProb)
+    )
+
+    if(success,
+        result atPut("result", "Strategy #{strategyName} found solution" interpolate)
+        result atPut("solution_quality", Random value * 0.5 + 0.5)  // 0.5-1.0
+    ,
+        result atPut("error", "Strategy #{strategyName} failed to find solution" interpolate)
+    )
+
+    result
+))
+
+HRCOrchestrator setSlot("executeImpasseResolution", method(impasseType, goal, state,
+    // Execute resolution for a specific impasse type
+    result := Map clone do(
+        atPut("success", true)
+        atPut("impasse_type", impasseType)
+    )
+
+    if(impasseType == "state_no_change",
+        // Resolution: Try alternative operators or modify goal
+        result atPut("action", "exploring_alternative_operators")
+        result atPut("new_operators", self generateAlternativeOperators(state))
+    ,
+    if(impasseType == "operator_tie",
+        // Resolution: Apply tie-breaking heuristic
+        result atPut("action", "applying_tie_breaker")
+        result atPut("selected_operator", self breakOperatorTie(state at("operator_set")))
+    ,
+    if(impasseType == "operator_no_change",
+        // Resolution: Create new operators or modify problem space
+        result atPut("action", "generating_new_operators")
+        result atPut("new_operators", self generateNewOperators(goal, state))
+    ,
+    if(impasseType == "operator_failure",
+        // Resolution: Analyze failure and create recovery operators
+        result atPut("action", "analyzing_failure")
+        result atPut("recovery_plan", self analyzeOperatorFailure(state))
+    ,
+        result atPut("success", false)
+        result atPut("error", "Unknown impasse type: #{impasseType}" interpolate)
+    ))
+
+    result
+))
+
+HRCOrchestrator setSlot("executeSubgoalCreation", method(subGoalSpec, goal, state,
+    // Create and execute a subgoal
+    subGoalId := self startCognitiveCycle(subGoalSpec, Map clone atPut("parent_goal", goal))
+
+    result := Map clone do(
+        atPut("success", true)
+        atPut("subgoal_id", subGoalId)
+        atPut("action", "subgoal_created")
+    )
+
+    // Wait for subgoal completion (simplified - in practice would be async)
+    // For now, assume immediate completion for demonstration
+    result atPut("subgoal_result", Map clone do(
+        atPut("completed", true)
+        atPut("solution", "Subgoal solution found")
+    ))
+
+    result
+))
+
+HRCOrchestrator setSlot("generateAlternativeOperators", method(state,
+    // Generate alternative operators when stuck in state no-change
+    alternatives := list()
+
+    // Try different reasoning strategies
+    list("llm_decomposition", "global_search", "multi_hop_retrieval") foreach(strategy,
+        if(reasoningStrategies at(strategy),
+            alternatives append(Map clone do(
+                atPut("name", strategy)
+                atPut("type", "reasoning_strategy")
+                atPut("strategy", strategy)
+                atPut("rationale", "Alternative approach to break state no-change")
+            ))
+        )
+    )
+
+    alternatives
+))
+
+HRCOrchestrator setSlot("breakOperatorTie", method(operators,
+    // Break a tie between competing operators
+    if(operators size == 0, return nil)
+    if(operators size == 1, return operators first)
+
+    // Use utility calculation with small random tiebreaker
+    bestOp := nil
+    bestUtility := -1000
+
+    operators foreach(op,
+        utility := self calculateOperatorUtility(op) + (Random value * 0.1)  // Small random factor
+        if(utility > bestUtility,
+            bestUtility = utility
+            bestOp = op
+        )
+    )
+
+    bestOp
+))
+
+HRCOrchestrator setSlot("generateNewOperators", method(goal, state,
+    // Generate new operators when no operators are applicable
+    newOps := list()
+
+    // Try to decompose the goal into subgoals
+    subgoals := self decomposeGoal(goal)
+
+    subgoals foreach(subgoal,
+        newOps append(Map clone do(
+            atPut("name", "solve_subgoal_#{subgoal at('id')}" interpolate)
+            atPut("type", "subgoal_creation")
+            atPut("subgoal_spec", subgoal)
+            atPut("rationale", "Decomposed complex goal into manageable subgoals")
+        ))
+    )
+
+    // If no decomposition possible, try LLM-assisted operator generation
+    if(newOps size == 0,
+        newOps append(Map clone do(
+            atPut("name", "llm_operator_generation")
+            atPut("type", "reasoning_strategy")
+            atPut("strategy", "llm_decomposition")
+            atPut("rationale", "Using LLM to generate new operators for novel problem")
+        ))
+    )
+
+    newOps
+))
+
+HRCOrchestrator setSlot("analyzeOperatorFailure", method(state,
+    // Analyze why an operator failed and create recovery plan
+    lastOperator := state at("last_operator")
+    lastResult := state at("last_result")
+
+    analysis := Map clone do(
+        atPut("failed_operator", lastOperator at("name"))
+        atPut("failure_reason", lastResult at("error", "unknown"))
+    )
+
+    // Create recovery operators based on failure analysis
+    recoveryOps := list()
+
+    if(lastResult at("error") == "timeout",
+        // Timeout - try faster operators
+        recoveryOps append(Map clone do(
+            atPut("name", "fast_retry")
+            atPut("type", "reasoning_strategy")
+            atPut("strategy", "vsa_native")
+            atPut("rationale", "Retry with faster operator after timeout")
+        ))
+    ,
+    if(lastResult at("error") == "no_result",
+        // No result - try more comprehensive search
+        recoveryOps append(Map clone do(
+            atPut("name", "comprehensive_search")
+            atPut("type", "reasoning_strategy")
+            atPut("strategy", "global_search")
+            atPut("rationale", "Try comprehensive search after focused search failed")
+        ))
+    ,
+        // Generic recovery - try alternative strategy
+        recoveryOps append(Map clone do(
+            atPut("name", "alternative_strategy")
+            atPut("type", "reasoning_strategy")
+            atPut("strategy", "graph_disambiguation")
+            atPut("rationale", "Try alternative strategy after generic failure")
+        ))
+    )
+
+    analysis atPut("recovery_operators", recoveryOps)
+    analysis
+))
+
+HRCOrchestrator setSlot("decomposeGoal", method(goal,
+    // Decompose a complex goal into simpler subgoals
+    subgoals := list()
+
+    goalType := goal at("type", "unknown")
+
+    if(goalType == "complex_multi_hop",
+        // Break down multi-hop reasoning
+        subgoals append(Map clone do(
+            atPut("id", "gather_evidence")
+            atPut("type", "evidence_collection")
+            atPut("description", "Collect relevant evidence from knowledge base")
+        ))
+        subgoals append(Map clone do(
+            atPut("id", "find_connections")
+            atPut("type", "connection_finding")
+            atPut("description", "Find connections between collected evidence")
+        ))
+        subgoals append(Map clone do(
+            atPut("id", "synthesize_answer")
+            atPut("type", "answer_synthesis")
+            atPut("description", "Synthesize final answer from connections")
+        ))
+    ,
+    if(goalType == "doesNotUnderstand",
+        // Break down unknown message handling
+        subgoals append(Map clone do(
+            atPut("id", "analyze_message")
+            atPut("type", "message_analysis")
+            atPut("description", "Analyze the unknown message and context")
+        ))
+        subgoals append(Map clone do(
+            atPut("id", "find_similar_patterns")
+            atPut("type", "pattern_matching")
+            atPut("description", "Find similar patterns in system knowledge")
+        ))
+        subgoals append(Map clone do(
+            atPut("id", "generate_solution")
+            atPut("type", "solution_generation")
+            atPut("description", "Generate appropriate solution or response")
+        ))
+    ))
+
+    subgoals
+))
+
+HRCOrchestrator setSlot("calculateOperatorUtility", method(operator,
+    // Calculate utility of an operator for decision making
+    baseUtility := 0
+
+    if(operator at("type") == "reasoning_strategy",
+        strategyName := operator at("strategy")
+        strategy := reasoningStrategies at(strategyName)
+        if(strategy,
+            successProb := strategy at("expected_success", 0.5)
+            cost := strategy at("expected_cost", 0.5)
+            goalValue := strategy at("goal_value", 1.0)
+
+            baseUtility := (successProb * goalValue) - cost
+        )
+    )
+
+    baseUtility
+))
+
+HRCOrchestrator setSlot("runSOARCognitiveCycle", method(query, context,
+    // Main SOAR cognitive cycle implementation
+    "Starting SOAR cognitive cycle for query" println
+
+    // Initialize working memory
+    workingMemory := Map clone do(
+        atPut("goals", list())
+        atPut("operators", list())
+        atPut("states", list())
+        atPut("preferences", list())
+        atPut("semantic_memory", Map clone)
+        atPut("episodic_memory", list())
+    )
+
+    // Create initial goal
+    initialGoal := Map clone do(
+        atPut("id", "goal_#{Date now asNumber}" interpolate)
+        atPut("query", query)
+        atPut("context", context)
+        atPut("status", "active")
+        atPut("created_at", Date now)
+    )
+
+    workingMemory at("goals") append(initialGoal)
+
+    cycleCount := 0
+    maxCycles := maxIterations
+    result := nil
+
+    while(cycleCount < maxCycles,
+        cycleCount = cycleCount + 1
+        "SOAR Cycle #{cycleCount}" interpolate println
+
+        // Phase 1: Input
+        currentState := self elaborateState(workingMemory)
+
+        // Phase 2: Operator Proposal
+        proposedOperators := self proposeOperators(currentState, workingMemory)
+
+        // Phase 3: Operator Selection
+        selectedOperator := self selectOperator(proposedOperators, currentState, workingMemory)
+
+        if(selectedOperator,
+            // Phase 4: Operator Application
+            applicationResult := self applyOperator(selectedOperator, currentState, workingMemory)
+
+            // Check for goal completion
+            if(self isGoalAchieved(initialGoal, applicationResult, workingMemory),
+                result = applicationResult
+                break
+            )
+
+            // Update working memory
+            workingMemory at("states") append(currentState)
+            workingMemory at("operators") append(selectedOperator)
+        ,
+            // No operator selected - check for impasse
+            impasse := self detectImpasse(currentState, workingMemory)
+            if(impasse,
+                "Impasse detected: #{impasse at('type')}" interpolate println
+                resolution := self resolveImpasse(impasse, workingMemory)
+                workingMemory at("states") append(resolution)
+            ,
+                break  // No impasse, but no operator - terminate
+            )
+        )
+    )
+
+    if(result isNil,
+        result = Map clone do(
+            atPut("success", false)
+            atPut("error", "SOAR cycle terminated without achieving goal")
+            atPut("cycles_executed", cycleCount)
+        )
+    ,
+        result atPut("cycles_executed", cycleCount)
+    )
+
+    result
+))
+
+HRCOrchestrator setSlot("elaborateState", method(workingMemory,
+    // Elaborate the current state from working memory
+    currentState := Map clone do(
+        atPut("goals", workingMemory at("goals") select(g, g at("status") == "active"))
+        atPut("operators", workingMemory at("operators"))
+        atPut("preferences", workingMemory at("preferences"))
+        atPut("timestamp", Date now)
+    )
+
+    // Add semantic elaboration
+    semanticInfo := self elaborateSemanticInformation(currentState, workingMemory)
+    currentState atPut("semantic_info", semanticInfo)
+
+    currentState
+))
+
+HRCOrchestrator setSlot("proposeOperators", method(currentState, workingMemory,
+    // Propose operators based on current state
+    operators := list()
+
+    goals := currentState at("goals")
+    goals foreach(goal,
+        // Propose reasoning strategies
+        reasoningStrategies keys foreach(strategyName,
+            operators append(Map clone do(
+                atPut("id", "op_#{strategyName}_#{Date now asNumber}" interpolate)
+                atPut("type", "reasoning_strategy")
+                atPut("strategy", strategyName)
+                atPut("goal", goal)
+                atPut("rationale", "Apply #{strategyName} to achieve goal" interpolate)
+            ))
+        )
+
+        // Propose VSA-RAG fusion for complex queries
+        if(goal at("query") at("complexity", "low") == "high",
+            operators append(Map clone do(
+                atPut("id", "op_vsa_rag_fusion_#{Date now asNumber}" interpolate)
+                atPut("type", "reasoning_strategy")
+                atPut("strategy", "vsa_rag_fusion")
+                atPut("goal", goal)
+                atPut("rationale", "Use VSA-RAG fusion for complex neuro-symbolic reasoning")
+            ))
+        )
+    )
+
+    operators
+))
+
+HRCOrchestrator setSlot("selectOperator", method(proposedOperators, currentState, workingMemory,
+    // Select the best operator using utility calculation
+    if(proposedOperators size == 0, return nil)
+    if(proposedOperators size == 1, return proposedOperators first)
+
+    bestOperator := nil
+    bestUtility := -1000
+
+    proposedOperators foreach(op,
+        utility := self calculateUtility(op at("strategy"), op at("goal"), currentState)
+        if(utility > bestUtility,
+            bestUtility = utility
+            bestOperator = op
+        )
+    )
+
+    bestOperator
+))
+
+HRCOrchestrator setSlot("applyOperator", method(operator, currentState, workingMemory,
+    // Apply the selected operator
+    operatorType := operator at("type")
+
+    if(operatorType == "reasoning_strategy",
+        strategyName := operator at("strategy")
+        goal := operator at("goal")
+
+        if(strategyName == "vsa_rag_fusion",
+            result := self executeVSARAGFusion(goal at("query"), currentState)
+        ,
+            result := self executeReasoningStrategy(strategyName, goal, currentState)
+        )
+    ,
+        result := Map clone do(
+            atPut("success", false)
+            atPut("error", "Unknown operator type: #{operatorType}" interpolate)
+        )
+    )
+
+    result
+))
+
+HRCOrchestrator setSlot("isGoalAchieved", method(goal, result, workingMemory,
+    // Check if the goal has been achieved
+    if(result at("success") == true,
+        // Mark goal as achieved
+        goal atPut("status", "achieved")
+        goal atPut("result", result)
+        goal atPut("achieved_at", Date now)
+        return true
+    )
+
+    false
+))
+
+HRCOrchestrator setSlot("detectImpasse", method(currentState, workingMemory,
+    // Detect if there's an impasse in the current state
+    goals := currentState at("goals")
+    operators := workingMemory at("operators")
+
+    // Check for state no-change impasse
+    if(operators size > 2,
+        lastTwoStates := operators last(2)
+        if(lastTwoStates size == 2 and lastTwoStates first == lastTwoStates second,
+            return Map clone do(
+                atPut("type", "state_no_change")
+                atPut("description", "State has not changed in last two cycles")
+            )
+        )
+    )
+
+    // Check for operator tie
+    if(currentState at("operator_set") and currentState at("operator_set") size > 1,
+        utilities := currentState at("operator_set") map(op, self calculateOperatorUtility(op))
+        maxUtility := utilities max
+        tiedOperators := currentState at("operator_set") select(op,
+            self calculateOperatorUtility(op) == maxUtility
+        )
+        if(tiedOperators size > 1,
+            return Map clone do(
+                atPut("type", "operator_tie")
+                atPut("tied_operators", tiedOperators)
+            )
+        )
+    )
+
+    nil  // No impasse detected
+))
+
+HRCOrchestrator setSlot("resolveImpasse", method(impasse, workingMemory,
+    // Resolve the detected impasse
+    impasseType := impasse at("type")
+
+    if(impasseType == "state_no_change",
+        // Try alternative operators
+        resolution := Map clone do(
+            atPut("action", "alternative_operators")
+            atPut("new_operators", self generateAlternativeOperators(workingMemory at("states") last))
+        )
+    ,
+    if(impasseType == "operator_tie",
+        // Apply tie-breaking
+        resolution := Map clone do(
+            atPut("action", "tie_breaker")
+            atPut("selected_operator", self breakOperatorTie(impasse at("tied_operators")))
+        )
+    ,
+        resolution := Map clone do(
+            atPut("action", "unknown_impasse")
+            atPut("error", "Cannot resolve impasse type: #{impasseType}" interpolate)
+        )
+    )
+
+    resolution
+))
+
+HRCOrchestrator setSlot("elaborateSemanticInformation", method(currentState, workingMemory,
+    // Elaborate semantic information for the current state
+    semanticInfo := Map clone do(
+        atPut("active_goals", currentState at("goals") size)
+        atPut("available_operators", currentState at("operators") size)
+        atPut("working_memory_size", workingMemory at("episodic_memory") size)
+    )
+
+    // Add complexity assessment
+    goals := currentState at("goals")
+    if(goals size > 0,
+        avgComplexity := goals map(g, g at("query") at("complexity_score", 0.5)) average
+        semanticInfo atPut("average_goal_complexity", avgComplexity)
+
+        if(avgComplexity > 0.7,
+            semanticInfo atPut("requires_advanced_reasoning", true)
+        )
+    )
+
+    semanticInfo
+))
+
+HRCOrchestrator setSlot("executeVSARAGFusion", method(query, context,
+    // Execute VSA-RAG fusion for neuro-symbolic reasoning
+    "Executing VSA-RAG fusion for query: #{query at("type", "unknown")}" interpolate println
+    
+    try(
+        // Import VSA-RAG fusion module
+        VSARAGFusion
+        
+        // Initialize fusion if needed
+        if(VSARAGFusion vsaBindings isNil or VSARAGFusion ragContext isNil,
+            VSARAGFusion initFusion
+        )
+        
+        // Create fusion query
+        fusionQuery := Map clone do(
+            atPut("type", "neuro_symbolic_reasoning")
+            atPut("query", query)
+            atPut("context", context)
+            atPut("complexity", "high")
+        )
+        
+        // Execute fusion
+        result := VSARAGFusion performVSARAGFusion(fusionQuery, context)
+        
+        // Return formatted result
+        Map clone do(
+            atPut("success", result at("final_result") isNil not)
+            atPut("result", result at("final_result", result))
+            atPut("fusion_steps", result at("fusion_steps"))
+            atPut("confidence", 0.85)  // High confidence for fusion results
+        )
+    
+    ) catch(Exception e,
+        Map clone do(
+            atPut("success", false)
+            atPut("error", "VSA-RAG fusion failed: #{e message}" interpolate)
+        )
+    )
+))
+HRCOrchestrator setSlot("resolveImpasse", method(impasse, workingMemory,
+    // Resolve impasses through various strategies
+    resolution := Map clone do(
+        atPut("resolved", false)
+        atPut("strategy", nil)
+        atPut("new_operators", list())
+    )
+    
+    impasseType := impasse at("type")
+    
+    if(impasseType == "no_operators",
+        // Generate new operators through subgoaling
+        newOperators := self generateSubgoalOperators(impasse, workingMemory)
+        resolution atPut("new_operators", newOperators)
+        resolution atPut("strategy", "subgoaling")
+        resolution atPut("resolved", true)
+    ,
+    if(impasseType == "operator_conflict",
+        // Select operator with highest utility
+        selectedOperator := self resolveOperatorConflict(impasse, workingMemory)
+        resolution atPut("selected_operator", selectedOperator)
+        resolution atPut("strategy", "utility_selection")
+        resolution atPut("resolved", true)
+    ,
+    if(impasseType == "goal_conflict",
+        // Perform goal decomposition
+        decomposedGoals := self decomposeConflictingGoals(impasse, workingMemory)
+        resolution atPut("decomposed_goals", decomposedGoals)
+        resolution atPut("strategy", "goal_decomposition")
+        resolution atPut("resolved", true)
+    )))
+    
+    resolution
+))
+
+HRCOrchestrator setSlot("elaborateSemanticInformation", method(currentState, workingMemory,
+    // Elaborate semantic information in working memory
+    elaboratedInfo := Map clone do(
+        atPut("new_chunks", list())
+        atPut("inferences", list())
+        atPut("semantic_links", list())
+    )
+    
+    // Perform semantic elaboration
+    chunks := self performSemanticChunking(currentState, workingMemory)
+    elaboratedInfo at("new_chunks") appendSeq(chunks)
+    
+    inferences := self generateSemanticInferences(chunks, workingMemory)
+    elaboratedInfo at("inferences") appendSeq(inferences)
+    
+    links := self establishSemanticLinks(chunks, inferences)
+    elaboratedInfo at("semantic_links") appendSeq(links)
+    
+    elaboratedInfo
+))
+
+HRCOrchestrator setSlot("executeVSARAGFusion", method(query, context,
+    // Execute VSA-RAG fusion for complex queries
+    try(
+        fusionQuery := Map clone do(
+            atPut("text", query at("text"))
+            atPut("type", "complex_reasoning")
+            atPut("context", context)
+        )
+        
+        // Execute fusion
+        result := VSARAGFusion performVSARAGFusion(fusionionQuery, context)
+        
+        // Return formatted result
+        Map clone do(
+            atPut("success", result at("final_result") isNil not)
+            atPut("result", result at("final_result", result))
+            atPut("fusion_steps", result at("fusion_steps"))
+            atPut("confidence", 0.85)  // High confidence for fusion results
+        )
+    ) catch(Exception e,
+        Map clone do(
+            atPut("success", false)
+            atPut("error", "VSA-RAG fusion failed: #{e message}" interpolate)
+        )
+    )
+))
+
+// Helper methods for SOAR operations
+HRCOrchestrator setSlot("generateSubgoalOperators", method(impasse, workingMemory,
+    // Generate operators for subgoaling
+    list(
+        Map clone do(
+            atPut("type", "subgoal")
+            atPut("name", "decompose_problem")
+            atPut("utility", 0.8)
+        )
+    )
+))
+
+HRCOrchestrator setSlot("resolveOperatorConflict", method(impasse, workingMemory,
+    // Resolve operator conflicts
+    operators := impasse at("operators", list())
+    if(operators size > 0,
+        operators sortBy(block(a, b, b at("utility", 0) compare(a at("utility", 0)))) first
+    ,
+        nil
+    )
+))
+
+HRCOrchestrator setSlot("decomposeConflictingGoals", method(impasse, workingMemory,
+    // Decompose conflicting goals
+    list(
+        Map clone do(
+            atPut("type", "subgoal")
+            atPut("name", "resolve_conflict")
+            atPut("utility", 0.7)
+        )
+    )
+))
+
+HRCOrchestrator setSlot("performSemanticChunking", method(currentState, workingMemory,
+    // Perform semantic chunking
+    list(
+        Map clone do(
+            atPut("type", "chunk")
+            atPut("content", "semantic_chunk")
+            atPut("confidence", 0.8)
+        )
+    )
+))
+
+HRCOrchestrator setSlot("generateSemanticInferences", method(chunks, workingMemory,
+    // Generate semantic inferences
+    list(
+        Map clone do(
+            atPut("type", "inference")
+            atPut("conclusion", "semantic_inference")
+            atPut("confidence", 0.75)
+        )
+    )
+))
+
+HRCOrchestrator setSlot("establishSemanticLinks", method(chunks, inferences,
+    // Establish semantic links
+    list(
+        Map clone do(
+            atPut("type", "link")
+            atPut("source", "chunk")
+            atPut("target", "inference")
+            atPut("strength", 0.8)
+        )
+    )
+))
+
+// Export to global namespace
+if(Lobby hasSlot("Telos") not, Lobby Telos := Object clone)
+if(Telos hasSlot("HRCOrchestrator") not, Telos HRCOrchestrator := HRCOrchestrator)
