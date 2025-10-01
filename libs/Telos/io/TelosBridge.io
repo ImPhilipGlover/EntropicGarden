@@ -177,25 +177,26 @@ Telos Bridge do(
         "TelosBridge [Io]: self type: " .. self type println
         
         bridgeStatus := try(
-            "TelosBridge [Io]: About to call self proto status_simple()" println
-            result := self proto status_simple()
-            "TelosBridge [Io]: self proto status_simple() call succeeded, result: " .. (result or "nil") println
+            result := self proto status()
+            "TelosBridge [Io]: result from proto status(): " .. (result or "nil") .. " (type: " .. (result type) .. ")" println
             result
         )
         
-        "TelosBridge [Io]: try block completed, bridgeStatus: " .. (bridgeStatus or "nil") println
+        "TelosBridge [Io]: try block completed, bridgeStatus: " .. (bridgeStatus or "nil") .. " (type: " .. ((bridgeStatus and bridgeStatus type) or "nil") .. ")" println
         
-        if(bridgeStatus and bridgeStatus != nil,
+        "TelosBridge [Io]: checking condition: bridgeStatus != nil -> " .. (bridgeStatus != nil) println
+        
+        if(bridgeStatus != nil,
             "TelosBridge [Io]: bridgeStatus type: " .. (bridgeStatus type) println
             "TelosBridge [Io]: bridgeStatus value: " .. bridgeStatus println
             "TelosBridge [Io]: returning bridge status directly" println
             return bridgeStatus
         ,
-            "TelosBridge [Io]: ERROR - status_simple() returned nil or failed" println
+            "TelosBridge [Io]: ERROR - status() returned nil or failed" println
             "TelosBridge [Io]: bridgeStatus value: " .. (bridgeStatus or "nil") println
             "TelosBridge [Io]: bridgeStatus type: " .. ((bridgeStatus and bridgeStatus type) or "nil") println
             statusMap := Map clone
-            statusMap atPut("error", "status_simple() returned nil")
+            statusMap atPut("error", "status() returned nil")
             statusMap atPut("bridgeStatus_value", bridgeStatus)
             statusMap atPut("bridgeStatus_type", bridgeStatus and bridgeStatus type)
             "TelosBridge [Io]: returning error map" println
