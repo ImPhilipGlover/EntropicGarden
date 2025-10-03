@@ -256,9 +256,9 @@ def _build_prompt_impl(self, template: Dict[str, Any], context: Dict[str, Any]) 
 
     # Inject context using template rules
     injection_rules = template.get('context_injection_rules', {})
-    for placeholder, context_key in injection_rules.items():
+    for template_var, context_key in injection_rules.items():
         if context_key in context:
-            prompt += f'{placeholder}: {context[context_key]}\n\n'
+            prompt += f'{template_var}: {context[context_key]}\n\n'
 
     prompt += template.get('output_instructions', '')
 

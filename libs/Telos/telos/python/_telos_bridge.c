@@ -611,98 +611,68 @@ static void (*_cffi_call_python_org)(struct _cffi_externpy_s *, char *);
 
         #include "synaptic_bridge.h"
         
-        // Forward declarations for TelosProxy functions
-        typedef struct TelosProxyObject TelosProxyObject;
-        TelosProxyObject* TelosProxy_CreateFromHandle(IoObjectHandle ioHandle, const char *objectId);
-        int TelosProxy_InitType(PyObject *module);
-        
-        // Module initialization function to set up IoProxy type
-        static int _telos_bridge_init_types(PyObject *module) {
-            return TelosProxy_InitType(module);
-        }
-        
 
 /************************************************************/
 
 static void *_cffi_types[] = {
-/*  0 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(BridgeConfig const *)
-/*  1 */ _CFFI_OP(_CFFI_OP_POINTER, 70), // BridgeConfig const *
-/*  2 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/*  3 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(SharedMemoryHandle const *)
-/*  4 */ _CFFI_OP(_CFFI_OP_POINTER, 72), // SharedMemoryHandle const *
-/*  5 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/*  6 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(SharedMemoryHandle const *, int, SharedMemoryHandle const *, double)
-/*  7 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/*  8 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7), // int
-/*  9 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 10 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 14), // double
-/* 11 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 12 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(SharedMemoryHandle const *, void * *)
-/* 13 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 14 */ _CFFI_OP(_CFFI_OP_POINTER, 18), // void * *
+/*  0 */ _CFFI_OP(_CFFI_OP_FUNCTION, 42), // BridgeConfig *()(int, char const *, char const *, size_t, char const *)
+/*  1 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7), // int
+/*  2 */ _CFFI_OP(_CFFI_OP_POINTER, 55), // char const *
+/*  3 */ _CFFI_OP(_CFFI_OP_NOOP, 2),
+/*  4 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 28), // size_t
+/*  5 */ _CFFI_OP(_CFFI_OP_NOOP, 2),
+/*  6 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/*  7 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(BridgeConfig const *)
+/*  8 */ _CFFI_OP(_CFFI_OP_POINTER, 50), // BridgeConfig const *
+/*  9 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 10 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(BridgeStatus *)
+/* 11 */ _CFFI_OP(_CFFI_OP_POINTER, 52), // BridgeStatus *
+/* 12 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 13 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(SharedMemoryHandle *)
+/* 14 */ _CFFI_OP(_CFFI_OP_POINTER, 54), // SharedMemoryHandle *
 /* 15 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 16 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(SharedMemoryHandle const *, void *)
-/* 17 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 18 */ _CFFI_OP(_CFFI_OP_POINTER, 77), // void *
+/* 16 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(SharedMemoryHandle const *, void * *)
+/* 17 */ _CFFI_OP(_CFFI_OP_POINTER, 54), // SharedMemoryHandle const *
+/* 18 */ _CFFI_OP(_CFFI_OP_POINTER, 22), // void * *
 /* 19 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 20 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(char *, size_t)
-/* 21 */ _CFFI_OP(_CFFI_OP_POINTER, 75), // char *
-/* 22 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 28), // size_t
+/* 20 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(SharedMemoryHandle const *, void *)
+/* 21 */ _CFFI_OP(_CFFI_OP_NOOP, 17),
+/* 22 */ _CFFI_OP(_CFFI_OP_POINTER, 57), // void *
 /* 23 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 24 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(char const *, SharedMemoryHandle const *, SharedMemoryHandle const *, size_t)
-/* 25 */ _CFFI_OP(_CFFI_OP_POINTER, 75), // char const *
-/* 26 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 27 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 28 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 28),
-/* 29 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 30 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(int64_t, SharedMemoryHandle const *, char const *)
-/* 31 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 23), // int64_t
-/* 32 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 33 */ _CFFI_OP(_CFFI_OP_NOOP, 25),
-/* 34 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 35 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(int64_t, char const *)
-/* 36 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 23),
-/* 37 */ _CFFI_OP(_CFFI_OP_NOOP, 25),
+/* 24 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(char *, size_t)
+/* 25 */ _CFFI_OP(_CFFI_OP_POINTER, 55), // char *
+/* 26 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 28),
+/* 27 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 28 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(char const *, char *, size_t)
+/* 29 */ _CFFI_OP(_CFFI_OP_NOOP, 2),
+/* 30 */ _CFFI_OP(_CFFI_OP_NOOP, 25),
+/* 31 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 28),
+/* 32 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 33 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(size_t, SharedMemoryHandle *)
+/* 34 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 28),
+/* 35 */ _CFFI_OP(_CFFI_OP_NOOP, 14),
+/* 36 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 37 */ _CFFI_OP(_CFFI_OP_FUNCTION, 51), // BridgeResult()(void)
 /* 38 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 39 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(size_t, SharedMemoryHandle *)
-/* 40 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 28),
-/* 41 */ _CFFI_OP(_CFFI_OP_POINTER, 72), // SharedMemoryHandle *
-/* 42 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 43 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(void *)
-/* 44 */ _CFFI_OP(_CFFI_OP_NOOP, 18),
-/* 45 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 46 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(void *, char const *, SharedMemoryHandle const *)
-/* 47 */ _CFFI_OP(_CFFI_OP_NOOP, 18),
-/* 48 */ _CFFI_OP(_CFFI_OP_NOOP, 25),
-/* 49 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 50 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 51 */ _CFFI_OP(_CFFI_OP_FUNCTION, 71), // BridgeResult()(void *, char const *, SharedMemoryHandle const *, SharedMemoryHandle const *)
-/* 52 */ _CFFI_OP(_CFFI_OP_NOOP, 18),
-/* 53 */ _CFFI_OP(_CFFI_OP_NOOP, 25),
-/* 54 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 55 */ _CFFI_OP(_CFFI_OP_NOOP, 4),
-/* 56 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 57 */ _CFFI_OP(_CFFI_OP_FUNCTION, 73), // TelosProxyObject *()(void *, char const *)
-/* 58 */ _CFFI_OP(_CFFI_OP_NOOP, 18),
-/* 59 */ _CFFI_OP(_CFFI_OP_NOOP, 25),
-/* 60 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 61 */ _CFFI_OP(_CFFI_OP_FUNCTION, 8), // int()(void *)
-/* 62 */ _CFFI_OP(_CFFI_OP_NOOP, 18),
-/* 63 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 64 */ _CFFI_OP(_CFFI_OP_FUNCTION, 77), // void()(int, char const *)
-/* 65 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
-/* 66 */ _CFFI_OP(_CFFI_OP_NOOP, 25),
-/* 67 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 68 */ _CFFI_OP(_CFFI_OP_FUNCTION, 77), // void()(void)
-/* 69 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
-/* 70 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 0), // BridgeConfig
-/* 71 */ _CFFI_OP(_CFFI_OP_ENUM, 0), // BridgeResult
-/* 72 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 1), // SharedMemoryHandle
-/* 73 */ _CFFI_OP(_CFFI_OP_POINTER, 74), // TelosProxyObject *
-/* 74 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 2), // TelosProxyObject
-/* 75 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 2), // char
-/* 76 */ _CFFI_OP(_CFFI_OP_POINTER, 64), // void(*)(int, char const *)
-/* 77 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 0), // void
+/* 39 */ _CFFI_OP(_CFFI_OP_FUNCTION, 1), // int()(void)
+/* 40 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 41 */ _CFFI_OP(_CFFI_OP_FUNCTION, 57), // void()(BridgeConfig *)
+/* 42 */ _CFFI_OP(_CFFI_OP_POINTER, 50), // BridgeConfig *
+/* 43 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 44 */ _CFFI_OP(_CFFI_OP_FUNCTION, 57), // void()(int, char const *)
+/* 45 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 7),
+/* 46 */ _CFFI_OP(_CFFI_OP_NOOP, 2),
+/* 47 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 48 */ _CFFI_OP(_CFFI_OP_FUNCTION, 57), // void()(void)
+/* 49 */ _CFFI_OP(_CFFI_OP_FUNCTION_END, 0),
+/* 50 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 0), // BridgeConfig
+/* 51 */ _CFFI_OP(_CFFI_OP_ENUM, 0), // BridgeResult
+/* 52 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 1), // BridgeStatus
+/* 53 */ _CFFI_OP(_CFFI_OP_ENUM, 1), // LogLevel
+/* 54 */ _CFFI_OP(_CFFI_OP_STRUCT_UNION, 2), // SharedMemoryHandle
+/* 55 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 2), // char
+/* 56 */ _CFFI_OP(_CFFI_OP_POINTER, 44), // void(*)(int, char const *)
+/* 57 */ _CFFI_OP(_CFFI_OP_PRIMITIVE, 0), // void
 };
 
 _CFFI_UNUSED_FN
@@ -711,6 +681,10 @@ static void _cffi_checkfld_typedef_BridgeConfig(BridgeConfig *p)
   /* only to generate compile-time warnings or errors */
   (void)p;
   (void)((p->max_workers) | 0);  /* check that 'BridgeConfig.max_workers' is an integer */
+  { char const * *tmp = &p->log_level; (void)tmp; }
+  { char const * *tmp = &p->log_file; (void)tmp; }
+  (void)((p->shared_memory_size) | 0);  /* check that 'BridgeConfig.shared_memory_size' is an integer */
+  { char const * *tmp = &p->worker_path; (void)tmp; }
   { void(* *tmp)(int, char const *) = &p->log_callback; (void)tmp; }
 }
 struct _cffi_align_typedef_BridgeConfig { char x; BridgeConfig y; };
@@ -806,6 +780,87 @@ static int _cffi_const_BRIDGE_ERROR_RESOURCE_EXHAUSTED(unsigned long long *o)
   return n;
 }
 
+static int _cffi_const_BRIDGE_ERROR_NOT_IMPLEMENTED(unsigned long long *o)
+{
+  int n = (BRIDGE_ERROR_NOT_IMPLEMENTED) <= 0;
+  *o = (unsigned long long)((BRIDGE_ERROR_NOT_IMPLEMENTED) | 0);  /* check that BRIDGE_ERROR_NOT_IMPLEMENTED is an integer */
+  return n;
+}
+
+static int _cffi_const_BRIDGE_ERROR_INITIALIZATION_FAILED(unsigned long long *o)
+{
+  int n = (BRIDGE_ERROR_INITIALIZATION_FAILED) <= 0;
+  *o = (unsigned long long)((BRIDGE_ERROR_INITIALIZATION_FAILED) | 0);  /* check that BRIDGE_ERROR_INITIALIZATION_FAILED is an integer */
+  return n;
+}
+
+static int _cffi_const_BRIDGE_ERROR_SHARED_MEMORY_FAILED(unsigned long long *o)
+{
+  int n = (BRIDGE_ERROR_SHARED_MEMORY_FAILED) <= 0;
+  *o = (unsigned long long)((BRIDGE_ERROR_SHARED_MEMORY_FAILED) | 0);  /* check that BRIDGE_ERROR_SHARED_MEMORY_FAILED is an integer */
+  return n;
+}
+
+static int _cffi_const_BRIDGE_ERROR_PYTHON_FAILED(unsigned long long *o)
+{
+  int n = (BRIDGE_ERROR_PYTHON_FAILED) <= 0;
+  *o = (unsigned long long)((BRIDGE_ERROR_PYTHON_FAILED) | 0);  /* check that BRIDGE_ERROR_PYTHON_FAILED is an integer */
+  return n;
+}
+
+static int _cffi_const_BRIDGE_ERROR_IO_FAILED(unsigned long long *o)
+{
+  int n = (BRIDGE_ERROR_IO_FAILED) <= 0;
+  *o = (unsigned long long)((BRIDGE_ERROR_IO_FAILED) | 0);  /* check that BRIDGE_ERROR_IO_FAILED is an integer */
+  return n;
+}
+
+static int _cffi_const_BRIDGE_ERROR_UNKNOWN(unsigned long long *o)
+{
+  int n = (BRIDGE_ERROR_UNKNOWN) <= 0;
+  *o = (unsigned long long)((BRIDGE_ERROR_UNKNOWN) | 0);  /* check that BRIDGE_ERROR_UNKNOWN is an integer */
+  return n;
+}
+
+_CFFI_UNUSED_FN
+static void _cffi_checkfld_typedef_BridgeStatus(BridgeStatus *p)
+{
+  /* only to generate compile-time warnings or errors */
+  (void)p;
+  (void)((p->initialized) | 0);  /* check that 'BridgeStatus.initialized' is an integer */
+  (void)((p->max_workers) | 0);  /* check that 'BridgeStatus.max_workers' is an integer */
+  (void)((p->active_workers) | 0);  /* check that 'BridgeStatus.active_workers' is an integer */
+}
+struct _cffi_align_typedef_BridgeStatus { char x; BridgeStatus y; };
+
+static int _cffi_const_LOG_LEVEL_DEBUG(unsigned long long *o)
+{
+  int n = (LOG_LEVEL_DEBUG) <= 0;
+  *o = (unsigned long long)((LOG_LEVEL_DEBUG) | 0);  /* check that LOG_LEVEL_DEBUG is an integer */
+  return n;
+}
+
+static int _cffi_const_LOG_LEVEL_INFO(unsigned long long *o)
+{
+  int n = (LOG_LEVEL_INFO) <= 0;
+  *o = (unsigned long long)((LOG_LEVEL_INFO) | 0);  /* check that LOG_LEVEL_INFO is an integer */
+  return n;
+}
+
+static int _cffi_const_LOG_LEVEL_WARNING(unsigned long long *o)
+{
+  int n = (LOG_LEVEL_WARNING) <= 0;
+  *o = (unsigned long long)((LOG_LEVEL_WARNING) | 0);  /* check that LOG_LEVEL_WARNING is an integer */
+  return n;
+}
+
+static int _cffi_const_LOG_LEVEL_ERROR(unsigned long long *o)
+{
+  int n = (LOG_LEVEL_ERROR) <= 0;
+  *o = (unsigned long long)((LOG_LEVEL_ERROR) | 0);  /* check that LOG_LEVEL_ERROR is an integer */
+  return n;
+}
+
 _CFFI_UNUSED_FN
 static void _cffi_checkfld_typedef_SharedMemoryHandle(SharedMemoryHandle *p)
 {
@@ -817,221 +872,6 @@ static void _cffi_checkfld_typedef_SharedMemoryHandle(SharedMemoryHandle *p)
   { void * *tmp = &p->data; (void)tmp; }
 }
 struct _cffi_align_typedef_SharedMemoryHandle { char x; SharedMemoryHandle y; };
-
-static TelosProxyObject * _cffi_d_TelosProxy_CreateFromHandle(void * x0, char const * x1)
-{
-  return TelosProxy_CreateFromHandle(x0, x1);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_TelosProxy_CreateFromHandle(PyObject *self, PyObject *args)
-{
-  void * x0;
-  char const * x1;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  TelosProxyObject * result;
-  PyObject *pyresult;
-  PyObject *arg0;
-  PyObject *arg1;
-
-  if (!PyArg_UnpackTuple(args, "TelosProxy_CreateFromHandle", 2, 2, &arg0, &arg1))
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(18), arg0, (char **)&x0);
-  if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (void *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(18), arg0, (char **)&x0,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(25), arg1, (char **)&x1);
-  if (datasize != 0) {
-    x1 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(25), arg1, (char **)&x1,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = TelosProxy_CreateFromHandle(x0, x1); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_pointer((char *)result, _cffi_type(73));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_TelosProxy_CreateFromHandle _cffi_d_TelosProxy_CreateFromHandle
-#endif
-
-static int _cffi_d_TelosProxy_InitType(void * x0)
-{
-  return TelosProxy_InitType(x0);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_TelosProxy_InitType(PyObject *self, PyObject *arg0)
-{
-  void * x0;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  int result;
-  PyObject *pyresult;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(18), arg0, (char **)&x0);
-  if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (void *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(18), arg0, (char **)&x0,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = TelosProxy_InitType(x0); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_int(result, int);
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_TelosProxy_InitType _cffi_d_TelosProxy_InitType
-#endif
-
-static BridgeResult _cffi_d_bridge_add_vector(int64_t x0, SharedMemoryHandle const * x1, char const * x2)
-{
-  return bridge_add_vector(x0, x1, x2);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_bridge_add_vector(PyObject *self, PyObject *args)
-{
-  int64_t x0;
-  SharedMemoryHandle const * x1;
-  char const * x2;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
-  PyObject *pyresult;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-
-  if (!PyArg_UnpackTuple(args, "bridge_add_vector", 3, 3, &arg0, &arg1, &arg2))
-    return NULL;
-
-  x0 = _cffi_to_c_int(arg0, int64_t);
-  if (x0 == (int64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg1, (char **)&x1);
-  if (datasize != 0) {
-    x1 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg1, (char **)&x1,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(25), arg2, (char **)&x2);
-  if (datasize != 0) {
-    x2 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(25), arg2, (char **)&x2,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = bridge_add_vector(x0, x1, x2); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_bridge_add_vector _cffi_d_bridge_add_vector
-#endif
-
-static BridgeResult _cffi_d_bridge_ann_search(SharedMemoryHandle const * x0, int x1, SharedMemoryHandle const * x2, double x3)
-{
-  return bridge_ann_search(x0, x1, x2, x3);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_bridge_ann_search(PyObject *self, PyObject *args)
-{
-  SharedMemoryHandle const * x0;
-  int x1;
-  SharedMemoryHandle const * x2;
-  double x3;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
-  PyObject *pyresult;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-  PyObject *arg3;
-
-  if (!PyArg_UnpackTuple(args, "bridge_ann_search", 4, 4, &arg0, &arg1, &arg2, &arg3))
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg0, (char **)&x0);
-  if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg0, (char **)&x0,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  x1 = _cffi_to_c_int(arg1, int);
-  if (x1 == (int)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg2, (char **)&x2);
-  if (datasize != 0) {
-    x2 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg2, (char **)&x2,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  x3 = (double)_cffi_to_c_double(arg3);
-  if (x3 == (double)-1 && PyErr_Occurred())
-    return NULL;
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = bridge_ann_search(x0, x1, x2, x3); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_bridge_ann_search _cffi_d_bridge_ann_search
-#endif
 
 static void _cffi_d_bridge_clear_error(void)
 {
@@ -1055,6 +895,82 @@ _cffi_f_bridge_clear_error(PyObject *self, PyObject *noarg)
 }
 #else
 #  define _cffi_f_bridge_clear_error _cffi_d_bridge_clear_error
+#endif
+
+static BridgeConfig * _cffi_d_bridge_create_config(int x0, char const * x1, char const * x2, size_t x3, char const * x4)
+{
+  return bridge_create_config(x0, x1, x2, x3, x4);
+}
+#ifndef PYPY_VERSION
+static PyObject *
+_cffi_f_bridge_create_config(PyObject *self, PyObject *args)
+{
+  int x0;
+  char const * x1;
+  char const * x2;
+  size_t x3;
+  char const * x4;
+  Py_ssize_t datasize;
+  struct _cffi_freeme_s *large_args_free = NULL;
+  BridgeConfig * result;
+  PyObject *pyresult;
+  PyObject *arg0;
+  PyObject *arg1;
+  PyObject *arg2;
+  PyObject *arg3;
+  PyObject *arg4;
+
+  if (!PyArg_UnpackTuple(args, "bridge_create_config", 5, 5, &arg0, &arg1, &arg2, &arg3, &arg4))
+    return NULL;
+
+  x0 = _cffi_to_c_int(arg0, int);
+  if (x0 == (int)-1 && PyErr_Occurred())
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(2), arg1, (char **)&x1);
+  if (datasize != 0) {
+    x1 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(2), arg1, (char **)&x1,
+            datasize, &large_args_free) < 0)
+      return NULL;
+  }
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(2), arg2, (char **)&x2);
+  if (datasize != 0) {
+    x2 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(2), arg2, (char **)&x2,
+            datasize, &large_args_free) < 0)
+      return NULL;
+  }
+
+  x3 = _cffi_to_c_int(arg3, size_t);
+  if (x3 == (size_t)-1 && PyErr_Occurred())
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(2), arg4, (char **)&x4);
+  if (datasize != 0) {
+    x4 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(2), arg4, (char **)&x4,
+            datasize, &large_args_free) < 0)
+      return NULL;
+  }
+
+  Py_BEGIN_ALLOW_THREADS
+  _cffi_restore_errno();
+  { result = bridge_create_config(x0, x1, x2, x3, x4); }
+  _cffi_save_errno();
+  Py_END_ALLOW_THREADS
+
+  (void)self; /* unused */
+  pyresult = _cffi_from_c_pointer((char *)result, _cffi_type(42));
+  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
+  return pyresult;
+}
+#else
+#  define _cffi_f_bridge_create_config _cffi_d_bridge_create_config
 #endif
 
 static BridgeResult _cffi_d_bridge_create_shared_memory(size_t x0, SharedMemoryHandle * x1)
@@ -1082,10 +998,10 @@ _cffi_f_bridge_create_shared_memory(PyObject *self, PyObject *args)
     return NULL;
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(41), arg1, (char **)&x1);
+      _cffi_type(14), arg1, (char **)&x1);
   if (datasize != 0) {
     x1 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(41), arg1, (char **)&x1,
+    if (_cffi_convert_array_argument(_cffi_type(14), arg1, (char **)&x1,
             datasize, &large_args_free) < 0)
       return NULL;
   }
@@ -1097,7 +1013,7 @@ _cffi_f_bridge_create_shared_memory(PyObject *self, PyObject *args)
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
   if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
   return pyresult;
 }
@@ -1105,7 +1021,7 @@ _cffi_f_bridge_create_shared_memory(PyObject *self, PyObject *args)
 #  define _cffi_f_bridge_create_shared_memory _cffi_d_bridge_create_shared_memory
 #endif
 
-static BridgeResult _cffi_d_bridge_destroy_shared_memory(SharedMemoryHandle const * x0)
+static BridgeResult _cffi_d_bridge_destroy_shared_memory(SharedMemoryHandle * x0)
 {
   return bridge_destroy_shared_memory(x0);
 }
@@ -1113,17 +1029,17 @@ static BridgeResult _cffi_d_bridge_destroy_shared_memory(SharedMemoryHandle cons
 static PyObject *
 _cffi_f_bridge_destroy_shared_memory(PyObject *self, PyObject *arg0)
 {
-  SharedMemoryHandle const * x0;
+  SharedMemoryHandle * x0;
   Py_ssize_t datasize;
   struct _cffi_freeme_s *large_args_free = NULL;
   BridgeResult result;
   PyObject *pyresult;
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg0, (char **)&x0);
+      _cffi_type(14), arg0, (char **)&x0);
   if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg0, (char **)&x0,
+    x0 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(14), arg0, (char **)&x0,
             datasize, &large_args_free) < 0)
       return NULL;
   }
@@ -1135,7 +1051,7 @@ _cffi_f_bridge_destroy_shared_memory(PyObject *self, PyObject *arg0)
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
   if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
   return pyresult;
 }
@@ -1143,74 +1059,40 @@ _cffi_f_bridge_destroy_shared_memory(PyObject *self, PyObject *arg0)
 #  define _cffi_f_bridge_destroy_shared_memory _cffi_d_bridge_destroy_shared_memory
 #endif
 
-static BridgeResult _cffi_d_bridge_execute_vsa_batch(char const * x0, SharedMemoryHandle const * x1, SharedMemoryHandle const * x2, size_t x3)
+static void _cffi_d_bridge_free_config(BridgeConfig * x0)
 {
-  return bridge_execute_vsa_batch(x0, x1, x2, x3);
+  bridge_free_config(x0);
 }
 #ifndef PYPY_VERSION
 static PyObject *
-_cffi_f_bridge_execute_vsa_batch(PyObject *self, PyObject *args)
+_cffi_f_bridge_free_config(PyObject *self, PyObject *arg0)
 {
-  char const * x0;
-  SharedMemoryHandle const * x1;
-  SharedMemoryHandle const * x2;
-  size_t x3;
+  BridgeConfig * x0;
   Py_ssize_t datasize;
   struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
-  PyObject *pyresult;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-  PyObject *arg3;
-
-  if (!PyArg_UnpackTuple(args, "bridge_execute_vsa_batch", 4, 4, &arg0, &arg1, &arg2, &arg3))
-    return NULL;
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(25), arg0, (char **)&x0);
+      _cffi_type(42), arg0, (char **)&x0);
   if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(25), arg0, (char **)&x0,
+    x0 = ((size_t)datasize) <= 640 ? (BridgeConfig *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(42), arg0, (char **)&x0,
             datasize, &large_args_free) < 0)
       return NULL;
   }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg1, (char **)&x1);
-  if (datasize != 0) {
-    x1 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg1, (char **)&x1,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg2, (char **)&x2);
-  if (datasize != 0) {
-    x2 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg2, (char **)&x2,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  x3 = _cffi_to_c_int(arg3, size_t);
-  if (x3 == (size_t)-1 && PyErr_Occurred())
-    return NULL;
 
   Py_BEGIN_ALLOW_THREADS
   _cffi_restore_errno();
-  { result = bridge_execute_vsa_batch(x0, x1, x2, x3); }
+  { bridge_free_config(x0); }
   _cffi_save_errno();
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
   if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
+  Py_INCREF(Py_None);
+  return Py_None;
 }
 #else
-#  define _cffi_f_bridge_execute_vsa_batch _cffi_d_bridge_execute_vsa_batch
+#  define _cffi_f_bridge_free_config _cffi_d_bridge_free_config
 #endif
 
 static BridgeResult _cffi_d_bridge_get_last_error(char * x0, size_t x1)
@@ -1234,10 +1116,10 @@ _cffi_f_bridge_get_last_error(PyObject *self, PyObject *args)
     return NULL;
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(21), arg0, (char **)&x0);
+      _cffi_type(25), arg0, (char **)&x0);
   if (datasize != 0) {
     x0 = ((size_t)datasize) <= 640 ? (char *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(21), arg0, (char **)&x0,
+    if (_cffi_convert_array_argument(_cffi_type(25), arg0, (char **)&x0,
             datasize, &large_args_free) < 0)
       return NULL;
   }
@@ -1253,76 +1135,12 @@ _cffi_f_bridge_get_last_error(PyObject *self, PyObject *args)
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
   if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
   return pyresult;
 }
 #else
 #  define _cffi_f_bridge_get_last_error _cffi_d_bridge_get_last_error
-#endif
-
-static BridgeResult _cffi_d_bridge_get_slot(void * x0, char const * x1, SharedMemoryHandle const * x2)
-{
-  return bridge_get_slot(x0, x1, x2);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_bridge_get_slot(PyObject *self, PyObject *args)
-{
-  void * x0;
-  char const * x1;
-  SharedMemoryHandle const * x2;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
-  PyObject *pyresult;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-
-  if (!PyArg_UnpackTuple(args, "bridge_get_slot", 3, 3, &arg0, &arg1, &arg2))
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(18), arg0, (char **)&x0);
-  if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (void *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(18), arg0, (char **)&x0,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(25), arg1, (char **)&x1);
-  if (datasize != 0) {
-    x1 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(25), arg1, (char **)&x1,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg2, (char **)&x2);
-  if (datasize != 0) {
-    x2 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg2, (char **)&x2,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = bridge_get_slot(x0, x1, x2); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_bridge_get_slot _cffi_d_bridge_get_slot
 #endif
 
 static BridgeResult _cffi_d_bridge_initialize(BridgeConfig const * x0)
@@ -1340,10 +1158,10 @@ _cffi_f_bridge_initialize(PyObject *self, PyObject *arg0)
   PyObject *pyresult;
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(1), arg0, (char **)&x0);
+      _cffi_type(8), arg0, (char **)&x0);
   if (datasize != 0) {
     x0 = ((size_t)datasize) <= 640 ? (BridgeConfig const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(1), arg0, (char **)&x0,
+    if (_cffi_convert_array_argument(_cffi_type(8), arg0, (char **)&x0,
             datasize, &large_args_free) < 0)
       return NULL;
   }
@@ -1355,7 +1173,7 @@ _cffi_f_bridge_initialize(PyObject *self, PyObject *arg0)
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
   if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
   return pyresult;
 }
@@ -1384,19 +1202,19 @@ _cffi_f_bridge_map_shared_memory(PyObject *self, PyObject *args)
     return NULL;
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg0, (char **)&x0);
+      _cffi_type(17), arg0, (char **)&x0);
   if (datasize != 0) {
     x0 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg0, (char **)&x0,
+    if (_cffi_convert_array_argument(_cffi_type(17), arg0, (char **)&x0,
             datasize, &large_args_free) < 0)
       return NULL;
   }
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(14), arg1, (char **)&x1);
+      _cffi_type(18), arg1, (char **)&x1);
   if (datasize != 0) {
     x1 = ((size_t)datasize) <= 640 ? (void * *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(14), arg1, (char **)&x1,
+    if (_cffi_convert_array_argument(_cffi_type(18), arg1, (char **)&x1,
             datasize, &large_args_free) < 0)
       return NULL;
   }
@@ -1408,7 +1226,7 @@ _cffi_f_bridge_map_shared_memory(PyObject *self, PyObject *args)
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
   if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
   return pyresult;
 }
@@ -1416,178 +1234,17 @@ _cffi_f_bridge_map_shared_memory(PyObject *self, PyObject *args)
 #  define _cffi_f_bridge_map_shared_memory _cffi_d_bridge_map_shared_memory
 #endif
 
-static BridgeResult _cffi_d_bridge_pin_object(void * x0)
+static BridgeResult _cffi_d_bridge_ping(char const * x0, char * x1, size_t x2)
 {
-  return bridge_pin_object(x0);
+  return bridge_ping(x0, x1, x2);
 }
 #ifndef PYPY_VERSION
 static PyObject *
-_cffi_f_bridge_pin_object(PyObject *self, PyObject *arg0)
+_cffi_f_bridge_ping(PyObject *self, PyObject *args)
 {
-  void * x0;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
-  PyObject *pyresult;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(18), arg0, (char **)&x0);
-  if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (void *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(18), arg0, (char **)&x0,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = bridge_pin_object(x0); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_bridge_pin_object _cffi_d_bridge_pin_object
-#endif
-
-static BridgeResult _cffi_d_bridge_remove_vector(int64_t x0, char const * x1)
-{
-  return bridge_remove_vector(x0, x1);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_bridge_remove_vector(PyObject *self, PyObject *args)
-{
-  int64_t x0;
-  char const * x1;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
-  PyObject *pyresult;
-  PyObject *arg0;
-  PyObject *arg1;
-
-  if (!PyArg_UnpackTuple(args, "bridge_remove_vector", 2, 2, &arg0, &arg1))
-    return NULL;
-
-  x0 = _cffi_to_c_int(arg0, int64_t);
-  if (x0 == (int64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(25), arg1, (char **)&x1);
-  if (datasize != 0) {
-    x1 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(25), arg1, (char **)&x1,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = bridge_remove_vector(x0, x1); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_bridge_remove_vector _cffi_d_bridge_remove_vector
-#endif
-
-static BridgeResult _cffi_d_bridge_send_message(void * x0, char const * x1, SharedMemoryHandle const * x2, SharedMemoryHandle const * x3)
-{
-  return bridge_send_message(x0, x1, x2, x3);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_bridge_send_message(PyObject *self, PyObject *args)
-{
-  void * x0;
-  char const * x1;
-  SharedMemoryHandle const * x2;
-  SharedMemoryHandle const * x3;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
-  PyObject *pyresult;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-  PyObject *arg3;
-
-  if (!PyArg_UnpackTuple(args, "bridge_send_message", 4, 4, &arg0, &arg1, &arg2, &arg3))
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(18), arg0, (char **)&x0);
-  if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (void *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(18), arg0, (char **)&x0,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(25), arg1, (char **)&x1);
-  if (datasize != 0) {
-    x1 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(25), arg1, (char **)&x1,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg2, (char **)&x2);
-  if (datasize != 0) {
-    x2 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg2, (char **)&x2,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg3, (char **)&x3);
-  if (datasize != 0) {
-    x3 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg3, (char **)&x3,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = bridge_send_message(x0, x1, x2, x3); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_bridge_send_message _cffi_d_bridge_send_message
-#endif
-
-static BridgeResult _cffi_d_bridge_set_slot(void * x0, char const * x1, SharedMemoryHandle const * x2)
-{
-  return bridge_set_slot(x0, x1, x2);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_bridge_set_slot(PyObject *self, PyObject *args)
-{
-  void * x0;
-  char const * x1;
-  SharedMemoryHandle const * x2;
+  char const * x0;
+  char * x1;
+  size_t x2;
   Py_ssize_t datasize;
   struct _cffi_freeme_s *large_args_free = NULL;
   BridgeResult result;
@@ -1596,14 +1253,14 @@ _cffi_f_bridge_set_slot(PyObject *self, PyObject *args)
   PyObject *arg1;
   PyObject *arg2;
 
-  if (!PyArg_UnpackTuple(args, "bridge_set_slot", 3, 3, &arg0, &arg1, &arg2))
+  if (!PyArg_UnpackTuple(args, "bridge_ping", 3, 3, &arg0, &arg1, &arg2))
     return NULL;
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(18), arg0, (char **)&x0);
+      _cffi_type(2), arg0, (char **)&x0);
   if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (void *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(18), arg0, (char **)&x0,
+    x0 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(2), arg0, (char **)&x0,
             datasize, &large_args_free) < 0)
       return NULL;
   }
@@ -1611,58 +1268,152 @@ _cffi_f_bridge_set_slot(PyObject *self, PyObject *args)
   datasize = _cffi_prepare_pointer_call_argument(
       _cffi_type(25), arg1, (char **)&x1);
   if (datasize != 0) {
-    x1 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
+    x1 = ((size_t)datasize) <= 640 ? (char *)alloca((size_t)datasize) : NULL;
     if (_cffi_convert_array_argument(_cffi_type(25), arg1, (char **)&x1,
             datasize, &large_args_free) < 0)
       return NULL;
   }
 
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg2, (char **)&x2);
-  if (datasize != 0) {
-    x2 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg2, (char **)&x2,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
+  x2 = _cffi_to_c_int(arg2, size_t);
+  if (x2 == (size_t)-1 && PyErr_Occurred())
+    return NULL;
 
   Py_BEGIN_ALLOW_THREADS
   _cffi_restore_errno();
-  { result = bridge_set_slot(x0, x1, x2); }
+  { result = bridge_ping(x0, x1, x2); }
   _cffi_save_errno();
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
   if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
   return pyresult;
 }
 #else
-#  define _cffi_f_bridge_set_slot _cffi_d_bridge_set_slot
+#  define _cffi_f_bridge_ping _cffi_d_bridge_ping
 #endif
 
-static void _cffi_d_bridge_shutdown(void)
+static BridgeResult _cffi_d_bridge_shutdown(void)
 {
-  bridge_shutdown();
+  return bridge_shutdown();
 }
 #ifndef PYPY_VERSION
 static PyObject *
 _cffi_f_bridge_shutdown(PyObject *self, PyObject *noarg)
 {
+  BridgeResult result;
+  PyObject *pyresult;
 
   Py_BEGIN_ALLOW_THREADS
   _cffi_restore_errno();
-  { bridge_shutdown(); }
+  { result = bridge_shutdown(); }
   _cffi_save_errno();
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
   (void)noarg; /* unused */
-  Py_INCREF(Py_None);
-  return Py_None;
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
+  return pyresult;
 }
 #else
 #  define _cffi_f_bridge_shutdown _cffi_d_bridge_shutdown
+#endif
+
+static BridgeResult _cffi_d_bridge_status(BridgeStatus * x0)
+{
+  return bridge_status(x0);
+}
+#ifndef PYPY_VERSION
+static PyObject *
+_cffi_f_bridge_status(PyObject *self, PyObject *arg0)
+{
+  BridgeStatus * x0;
+  Py_ssize_t datasize;
+  struct _cffi_freeme_s *large_args_free = NULL;
+  BridgeResult result;
+  PyObject *pyresult;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(11), arg0, (char **)&x0);
+  if (datasize != 0) {
+    x0 = ((size_t)datasize) <= 640 ? (BridgeStatus *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(11), arg0, (char **)&x0,
+            datasize, &large_args_free) < 0)
+      return NULL;
+  }
+
+  Py_BEGIN_ALLOW_THREADS
+  _cffi_restore_errno();
+  { result = bridge_status(x0); }
+  _cffi_save_errno();
+  Py_END_ALLOW_THREADS
+
+  (void)self; /* unused */
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
+  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
+  return pyresult;
+}
+#else
+#  define _cffi_f_bridge_status _cffi_d_bridge_status
+#endif
+
+static BridgeResult _cffi_d_bridge_submit_task(char const * x0, char * x1, size_t x2)
+{
+  return bridge_submit_task(x0, x1, x2);
+}
+#ifndef PYPY_VERSION
+static PyObject *
+_cffi_f_bridge_submit_task(PyObject *self, PyObject *args)
+{
+  char const * x0;
+  char * x1;
+  size_t x2;
+  Py_ssize_t datasize;
+  struct _cffi_freeme_s *large_args_free = NULL;
+  BridgeResult result;
+  PyObject *pyresult;
+  PyObject *arg0;
+  PyObject *arg1;
+  PyObject *arg2;
+
+  if (!PyArg_UnpackTuple(args, "bridge_submit_task", 3, 3, &arg0, &arg1, &arg2))
+    return NULL;
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(2), arg0, (char **)&x0);
+  if (datasize != 0) {
+    x0 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(2), arg0, (char **)&x0,
+            datasize, &large_args_free) < 0)
+      return NULL;
+  }
+
+  datasize = _cffi_prepare_pointer_call_argument(
+      _cffi_type(25), arg1, (char **)&x1);
+  if (datasize != 0) {
+    x1 = ((size_t)datasize) <= 640 ? (char *)alloca((size_t)datasize) : NULL;
+    if (_cffi_convert_array_argument(_cffi_type(25), arg1, (char **)&x1,
+            datasize, &large_args_free) < 0)
+      return NULL;
+  }
+
+  x2 = _cffi_to_c_int(arg2, size_t);
+  if (x2 == (size_t)-1 && PyErr_Occurred())
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+  _cffi_restore_errno();
+  { result = bridge_submit_task(x0, x1, x2); }
+  _cffi_save_errno();
+  Py_END_ALLOW_THREADS
+
+  (void)self; /* unused */
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
+  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
+  return pyresult;
+}
+#else
+#  define _cffi_f_bridge_submit_task _cffi_d_bridge_submit_task
 #endif
 
 static BridgeResult _cffi_d_bridge_unmap_shared_memory(SharedMemoryHandle const * x0, void * x1)
@@ -1686,19 +1437,19 @@ _cffi_f_bridge_unmap_shared_memory(PyObject *self, PyObject *args)
     return NULL;
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg0, (char **)&x0);
+      _cffi_type(17), arg0, (char **)&x0);
   if (datasize != 0) {
     x0 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg0, (char **)&x0,
+    if (_cffi_convert_array_argument(_cffi_type(17), arg0, (char **)&x0,
             datasize, &large_args_free) < 0)
       return NULL;
   }
 
   datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(18), arg1, (char **)&x1);
+      _cffi_type(22), arg1, (char **)&x1);
   if (datasize != 0) {
     x1 = ((size_t)datasize) <= 640 ? (void *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(18), arg1, (char **)&x1,
+    if (_cffi_convert_array_argument(_cffi_type(22), arg1, (char **)&x1,
             datasize, &large_args_free) < 0)
       return NULL;
   }
@@ -1710,7 +1461,7 @@ _cffi_f_bridge_unmap_shared_memory(PyObject *self, PyObject *args)
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
+  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(51));
   if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
   return pyresult;
 }
@@ -1718,181 +1469,137 @@ _cffi_f_bridge_unmap_shared_memory(PyObject *self, PyObject *args)
 #  define _cffi_f_bridge_unmap_shared_memory _cffi_d_bridge_unmap_shared_memory
 #endif
 
-static BridgeResult _cffi_d_bridge_unpin_object(void * x0)
+static int _cffi_d_status_simple(void)
 {
-  return bridge_unpin_object(x0);
+  return status_simple();
 }
 #ifndef PYPY_VERSION
 static PyObject *
-_cffi_f_bridge_unpin_object(PyObject *self, PyObject *arg0)
+_cffi_f_status_simple(PyObject *self, PyObject *noarg)
 {
-  void * x0;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
+  int result;
   PyObject *pyresult;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(18), arg0, (char **)&x0);
-  if (datasize != 0) {
-    x0 = ((size_t)datasize) <= 640 ? (void *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(18), arg0, (char **)&x0,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
 
   Py_BEGIN_ALLOW_THREADS
   _cffi_restore_errno();
-  { result = bridge_unpin_object(x0); }
+  { result = status_simple(); }
   _cffi_save_errno();
   Py_END_ALLOW_THREADS
 
   (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
+  (void)noarg; /* unused */
+  pyresult = _cffi_from_c_int(result, int);
   return pyresult;
 }
 #else
-#  define _cffi_f_bridge_unpin_object _cffi_d_bridge_unpin_object
-#endif
-
-static BridgeResult _cffi_d_bridge_update_vector(int64_t x0, SharedMemoryHandle const * x1, char const * x2)
-{
-  return bridge_update_vector(x0, x1, x2);
-}
-#ifndef PYPY_VERSION
-static PyObject *
-_cffi_f_bridge_update_vector(PyObject *self, PyObject *args)
-{
-  int64_t x0;
-  SharedMemoryHandle const * x1;
-  char const * x2;
-  Py_ssize_t datasize;
-  struct _cffi_freeme_s *large_args_free = NULL;
-  BridgeResult result;
-  PyObject *pyresult;
-  PyObject *arg0;
-  PyObject *arg1;
-  PyObject *arg2;
-
-  if (!PyArg_UnpackTuple(args, "bridge_update_vector", 3, 3, &arg0, &arg1, &arg2))
-    return NULL;
-
-  x0 = _cffi_to_c_int(arg0, int64_t);
-  if (x0 == (int64_t)-1 && PyErr_Occurred())
-    return NULL;
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(4), arg1, (char **)&x1);
-  if (datasize != 0) {
-    x1 = ((size_t)datasize) <= 640 ? (SharedMemoryHandle const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(4), arg1, (char **)&x1,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  datasize = _cffi_prepare_pointer_call_argument(
-      _cffi_type(25), arg2, (char **)&x2);
-  if (datasize != 0) {
-    x2 = ((size_t)datasize) <= 640 ? (char const *)alloca((size_t)datasize) : NULL;
-    if (_cffi_convert_array_argument(_cffi_type(25), arg2, (char **)&x2,
-            datasize, &large_args_free) < 0)
-      return NULL;
-  }
-
-  Py_BEGIN_ALLOW_THREADS
-  _cffi_restore_errno();
-  { result = bridge_update_vector(x0, x1, x2); }
-  _cffi_save_errno();
-  Py_END_ALLOW_THREADS
-
-  (void)self; /* unused */
-  pyresult = _cffi_from_c_deref((char *)&result, _cffi_type(71));
-  if (large_args_free != NULL) _cffi_free_array_arguments(large_args_free);
-  return pyresult;
-}
-#else
-#  define _cffi_f_bridge_update_vector _cffi_d_bridge_update_vector
+#  define _cffi_f_status_simple _cffi_d_status_simple
 #endif
 
 static const struct _cffi_global_s _cffi_globals[] = {
   { "BRIDGE_ERROR_ALREADY_EXISTS", (void *)_cffi_const_BRIDGE_ERROR_ALREADY_EXISTS, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_ALREADY_INITIALIZED", (void *)_cffi_const_BRIDGE_ERROR_ALREADY_INITIALIZED, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "BRIDGE_ERROR_INITIALIZATION_FAILED", (void *)_cffi_const_BRIDGE_ERROR_INITIALIZATION_FAILED, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_INVALID_ARGUMENT", (void *)_cffi_const_BRIDGE_ERROR_INVALID_ARGUMENT, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_INVALID_HANDLE", (void *)_cffi_const_BRIDGE_ERROR_INVALID_HANDLE, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "BRIDGE_ERROR_IO_FAILED", (void *)_cffi_const_BRIDGE_ERROR_IO_FAILED, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_MEMORY_ALLOCATION", (void *)_cffi_const_BRIDGE_ERROR_MEMORY_ALLOCATION, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_NOT_FOUND", (void *)_cffi_const_BRIDGE_ERROR_NOT_FOUND, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "BRIDGE_ERROR_NOT_IMPLEMENTED", (void *)_cffi_const_BRIDGE_ERROR_NOT_IMPLEMENTED, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_NOT_INITIALIZED", (void *)_cffi_const_BRIDGE_ERROR_NOT_INITIALIZED, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_NULL_POINTER", (void *)_cffi_const_BRIDGE_ERROR_NULL_POINTER, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_PYTHON_EXCEPTION", (void *)_cffi_const_BRIDGE_ERROR_PYTHON_EXCEPTION, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "BRIDGE_ERROR_PYTHON_FAILED", (void *)_cffi_const_BRIDGE_ERROR_PYTHON_FAILED, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_RESOURCE_EXHAUSTED", (void *)_cffi_const_BRIDGE_ERROR_RESOURCE_EXHAUSTED, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_SHARED_MEMORY", (void *)_cffi_const_BRIDGE_ERROR_SHARED_MEMORY, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "BRIDGE_ERROR_SHARED_MEMORY_FAILED", (void *)_cffi_const_BRIDGE_ERROR_SHARED_MEMORY_FAILED, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_ERROR_TIMEOUT", (void *)_cffi_const_BRIDGE_ERROR_TIMEOUT, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "BRIDGE_ERROR_UNKNOWN", (void *)_cffi_const_BRIDGE_ERROR_UNKNOWN, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
   { "BRIDGE_SUCCESS", (void *)_cffi_const_BRIDGE_SUCCESS, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
-  { "TelosProxy_CreateFromHandle", (void *)_cffi_f_TelosProxy_CreateFromHandle, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 57), (void *)_cffi_d_TelosProxy_CreateFromHandle },
-  { "TelosProxy_InitType", (void *)_cffi_f_TelosProxy_InitType, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 61), (void *)_cffi_d_TelosProxy_InitType },
-  { "bridge_add_vector", (void *)_cffi_f_bridge_add_vector, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 30), (void *)_cffi_d_bridge_add_vector },
-  { "bridge_ann_search", (void *)_cffi_f_bridge_ann_search, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 6), (void *)_cffi_d_bridge_ann_search },
-  { "bridge_clear_error", (void *)_cffi_f_bridge_clear_error, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_N, 68), (void *)_cffi_d_bridge_clear_error },
-  { "bridge_create_shared_memory", (void *)_cffi_f_bridge_create_shared_memory, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 39), (void *)_cffi_d_bridge_create_shared_memory },
-  { "bridge_destroy_shared_memory", (void *)_cffi_f_bridge_destroy_shared_memory, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 3), (void *)_cffi_d_bridge_destroy_shared_memory },
-  { "bridge_execute_vsa_batch", (void *)_cffi_f_bridge_execute_vsa_batch, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 24), (void *)_cffi_d_bridge_execute_vsa_batch },
-  { "bridge_get_last_error", (void *)_cffi_f_bridge_get_last_error, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 20), (void *)_cffi_d_bridge_get_last_error },
-  { "bridge_get_slot", (void *)_cffi_f_bridge_get_slot, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 46), (void *)_cffi_d_bridge_get_slot },
-  { "bridge_initialize", (void *)_cffi_f_bridge_initialize, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 0), (void *)_cffi_d_bridge_initialize },
-  { "bridge_map_shared_memory", (void *)_cffi_f_bridge_map_shared_memory, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 12), (void *)_cffi_d_bridge_map_shared_memory },
-  { "bridge_pin_object", (void *)_cffi_f_bridge_pin_object, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 43), (void *)_cffi_d_bridge_pin_object },
-  { "bridge_remove_vector", (void *)_cffi_f_bridge_remove_vector, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 35), (void *)_cffi_d_bridge_remove_vector },
-  { "bridge_send_message", (void *)_cffi_f_bridge_send_message, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 51), (void *)_cffi_d_bridge_send_message },
-  { "bridge_set_slot", (void *)_cffi_f_bridge_set_slot, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 46), (void *)_cffi_d_bridge_set_slot },
-  { "bridge_shutdown", (void *)_cffi_f_bridge_shutdown, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_N, 68), (void *)_cffi_d_bridge_shutdown },
-  { "bridge_unmap_shared_memory", (void *)_cffi_f_bridge_unmap_shared_memory, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 16), (void *)_cffi_d_bridge_unmap_shared_memory },
-  { "bridge_unpin_object", (void *)_cffi_f_bridge_unpin_object, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 43), (void *)_cffi_d_bridge_unpin_object },
-  { "bridge_update_vector", (void *)_cffi_f_bridge_update_vector, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 30), (void *)_cffi_d_bridge_update_vector },
+  { "LOG_LEVEL_DEBUG", (void *)_cffi_const_LOG_LEVEL_DEBUG, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "LOG_LEVEL_ERROR", (void *)_cffi_const_LOG_LEVEL_ERROR, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "LOG_LEVEL_INFO", (void *)_cffi_const_LOG_LEVEL_INFO, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "LOG_LEVEL_WARNING", (void *)_cffi_const_LOG_LEVEL_WARNING, _CFFI_OP(_CFFI_OP_ENUM, -1), (void *)0 },
+  { "bridge_clear_error", (void *)_cffi_f_bridge_clear_error, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_N, 48), (void *)_cffi_d_bridge_clear_error },
+  { "bridge_create_config", (void *)_cffi_f_bridge_create_config, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 0), (void *)_cffi_d_bridge_create_config },
+  { "bridge_create_shared_memory", (void *)_cffi_f_bridge_create_shared_memory, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 33), (void *)_cffi_d_bridge_create_shared_memory },
+  { "bridge_destroy_shared_memory", (void *)_cffi_f_bridge_destroy_shared_memory, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 13), (void *)_cffi_d_bridge_destroy_shared_memory },
+  { "bridge_free_config", (void *)_cffi_f_bridge_free_config, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 41), (void *)_cffi_d_bridge_free_config },
+  { "bridge_get_last_error", (void *)_cffi_f_bridge_get_last_error, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 24), (void *)_cffi_d_bridge_get_last_error },
+  { "bridge_initialize", (void *)_cffi_f_bridge_initialize, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 7), (void *)_cffi_d_bridge_initialize },
+  { "bridge_map_shared_memory", (void *)_cffi_f_bridge_map_shared_memory, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 16), (void *)_cffi_d_bridge_map_shared_memory },
+  { "bridge_ping", (void *)_cffi_f_bridge_ping, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 28), (void *)_cffi_d_bridge_ping },
+  { "bridge_shutdown", (void *)_cffi_f_bridge_shutdown, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_N, 37), (void *)_cffi_d_bridge_shutdown },
+  { "bridge_status", (void *)_cffi_f_bridge_status, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_O, 10), (void *)_cffi_d_bridge_status },
+  { "bridge_submit_task", (void *)_cffi_f_bridge_submit_task, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 28), (void *)_cffi_d_bridge_submit_task },
+  { "bridge_unmap_shared_memory", (void *)_cffi_f_bridge_unmap_shared_memory, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_V, 20), (void *)_cffi_d_bridge_unmap_shared_memory },
+  { "status_simple", (void *)_cffi_f_status_simple, _CFFI_OP(_CFFI_OP_CPYTHON_BLTN_N, 39), (void *)_cffi_d_status_simple },
 };
 
 static const struct _cffi_field_s _cffi_fields[] = {
   { "max_workers", offsetof(BridgeConfig, max_workers),
                    sizeof(((BridgeConfig *)0)->max_workers),
-                   _CFFI_OP(_CFFI_OP_NOOP, 8) },
+                   _CFFI_OP(_CFFI_OP_NOOP, 1) },
+  { "log_level", offsetof(BridgeConfig, log_level),
+                 sizeof(((BridgeConfig *)0)->log_level),
+                 _CFFI_OP(_CFFI_OP_NOOP, 2) },
+  { "log_file", offsetof(BridgeConfig, log_file),
+                sizeof(((BridgeConfig *)0)->log_file),
+                _CFFI_OP(_CFFI_OP_NOOP, 2) },
+  { "shared_memory_size", offsetof(BridgeConfig, shared_memory_size),
+                          sizeof(((BridgeConfig *)0)->shared_memory_size),
+                          _CFFI_OP(_CFFI_OP_NOOP, 4) },
+  { "worker_path", offsetof(BridgeConfig, worker_path),
+                   sizeof(((BridgeConfig *)0)->worker_path),
+                   _CFFI_OP(_CFFI_OP_NOOP, 2) },
   { "log_callback", offsetof(BridgeConfig, log_callback),
                     sizeof(((BridgeConfig *)0)->log_callback),
-                    _CFFI_OP(_CFFI_OP_NOOP, 76) },
+                    _CFFI_OP(_CFFI_OP_NOOP, 56) },
+  { "initialized", offsetof(BridgeStatus, initialized),
+                   sizeof(((BridgeStatus *)0)->initialized),
+                   _CFFI_OP(_CFFI_OP_NOOP, 1) },
+  { "max_workers", offsetof(BridgeStatus, max_workers),
+                   sizeof(((BridgeStatus *)0)->max_workers),
+                   _CFFI_OP(_CFFI_OP_NOOP, 1) },
+  { "active_workers", offsetof(BridgeStatus, active_workers),
+                      sizeof(((BridgeStatus *)0)->active_workers),
+                      _CFFI_OP(_CFFI_OP_NOOP, 1) },
   { "name", offsetof(SharedMemoryHandle, name),
             sizeof(((SharedMemoryHandle *)0)->name),
-            _CFFI_OP(_CFFI_OP_NOOP, 25) },
+            _CFFI_OP(_CFFI_OP_NOOP, 2) },
   { "offset", offsetof(SharedMemoryHandle, offset),
               sizeof(((SharedMemoryHandle *)0)->offset),
-              _CFFI_OP(_CFFI_OP_NOOP, 22) },
+              _CFFI_OP(_CFFI_OP_NOOP, 4) },
   { "size", offsetof(SharedMemoryHandle, size),
             sizeof(((SharedMemoryHandle *)0)->size),
-            _CFFI_OP(_CFFI_OP_NOOP, 22) },
+            _CFFI_OP(_CFFI_OP_NOOP, 4) },
   { "data", offsetof(SharedMemoryHandle, data),
             sizeof(((SharedMemoryHandle *)0)->data),
-            _CFFI_OP(_CFFI_OP_NOOP, 18) },
+            _CFFI_OP(_CFFI_OP_NOOP, 22) },
 };
 
 static const struct _cffi_struct_union_s _cffi_struct_unions[] = {
-  { "$BridgeConfig", 70, _CFFI_F_CHECK_FIELDS,
-    sizeof(BridgeConfig), offsetof(struct _cffi_align_typedef_BridgeConfig, y), 0, 2 },
-  { "$SharedMemoryHandle", 72, _CFFI_F_CHECK_FIELDS,
-    sizeof(SharedMemoryHandle), offsetof(struct _cffi_align_typedef_SharedMemoryHandle, y), 2, 4 },
-  { "TelosProxyObject", 74, _CFFI_F_OPAQUE,
-    (size_t)-1, -1, -1, 0 /* opaque */ },
+  { "$BridgeConfig", 50, _CFFI_F_CHECK_FIELDS,
+    sizeof(BridgeConfig), offsetof(struct _cffi_align_typedef_BridgeConfig, y), 0, 6 },
+  { "$BridgeStatus", 52, _CFFI_F_CHECK_FIELDS,
+    sizeof(BridgeStatus), offsetof(struct _cffi_align_typedef_BridgeStatus, y), 6, 3 },
+  { "$SharedMemoryHandle", 54, _CFFI_F_CHECK_FIELDS,
+    sizeof(SharedMemoryHandle), offsetof(struct _cffi_align_typedef_SharedMemoryHandle, y), 9, 4 },
 };
 
 static const struct _cffi_enum_s _cffi_enums[] = {
-  { "$BridgeResult", 71, _cffi_prim_int(sizeof(BridgeResult), ((BridgeResult)-1) <= 0),
-    "BRIDGE_SUCCESS,BRIDGE_ERROR_NULL_POINTER,BRIDGE_ERROR_INVALID_HANDLE,BRIDGE_ERROR_MEMORY_ALLOCATION,BRIDGE_ERROR_PYTHON_EXCEPTION,BRIDGE_ERROR_SHARED_MEMORY,BRIDGE_ERROR_TIMEOUT,BRIDGE_ERROR_ALREADY_INITIALIZED,BRIDGE_ERROR_NOT_INITIALIZED,BRIDGE_ERROR_ALREADY_EXISTS,BRIDGE_ERROR_NOT_FOUND,BRIDGE_ERROR_INVALID_ARGUMENT,BRIDGE_ERROR_RESOURCE_EXHAUSTED" },
+  { "$BridgeResult", 51, _cffi_prim_int(sizeof(BridgeResult), ((BridgeResult)-1) <= 0),
+    "BRIDGE_SUCCESS,BRIDGE_ERROR_NULL_POINTER,BRIDGE_ERROR_INVALID_HANDLE,BRIDGE_ERROR_MEMORY_ALLOCATION,BRIDGE_ERROR_PYTHON_EXCEPTION,BRIDGE_ERROR_SHARED_MEMORY,BRIDGE_ERROR_TIMEOUT,BRIDGE_ERROR_ALREADY_INITIALIZED,BRIDGE_ERROR_NOT_INITIALIZED,BRIDGE_ERROR_ALREADY_EXISTS,BRIDGE_ERROR_NOT_FOUND,BRIDGE_ERROR_INVALID_ARGUMENT,BRIDGE_ERROR_RESOURCE_EXHAUSTED,BRIDGE_ERROR_NOT_IMPLEMENTED,BRIDGE_ERROR_INITIALIZATION_FAILED,BRIDGE_ERROR_SHARED_MEMORY_FAILED,BRIDGE_ERROR_PYTHON_FAILED,BRIDGE_ERROR_IO_FAILED,BRIDGE_ERROR_UNKNOWN" },
+  { "$LogLevel", 53, _cffi_prim_int(sizeof(LogLevel), ((LogLevel)-1) <= 0),
+    "LOG_LEVEL_DEBUG,LOG_LEVEL_INFO,LOG_LEVEL_WARNING,LOG_LEVEL_ERROR" },
 };
 
 static const struct _cffi_typename_s _cffi_typenames[] = {
-  { "BridgeConfig", 70 },
-  { "BridgeResult", 71 },
-  { "IoObjectHandle", 18 },
-  { "LogCallback", 76 },
-  { "SharedMemoryHandle", 72 },
-  { "TelosProxyObject", 74 },
+  { "BridgeConfig", 50 },
+  { "BridgeResult", 51 },
+  { "BridgeStatus", 52 },
+  { "IoObjectHandle", 22 },
+  { "LogLevel", 53 },
+  { "SharedMemoryHandle", 54 },
 };
 
 static const struct _cffi_type_context_s _cffi_type_context = {
@@ -1902,12 +1609,12 @@ static const struct _cffi_type_context_s _cffi_type_context = {
   _cffi_struct_unions,
   _cffi_enums,
   _cffi_typenames,
-  33,  /* num_globals */
+  37,  /* num_globals */
   3,  /* num_struct_unions */
-  1,  /* num_enums */
+  2,  /* num_enums */
   6,  /* num_typenames */
   NULL,  /* no includes */
-  78,  /* num_types */
+  58,  /* num_types */
   0,  /* flags */
 };
 

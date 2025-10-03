@@ -58,13 +58,12 @@ CognitiveCycle setSlot("proceduralMemory", Map clone)
 CognitiveCycle setSlot("semanticMemory", Map clone)
 
 // SOAR Context Stack Implementation (per Addendum 1.4)
-CognitiveCycle setSlot("soarContext", Map clone do(
-    atPut("goalStack", list())  // Stack of goals and subgoals
-    atPut("stateStack", list())  // Stack of problem states
-    atPut("operatorStack", list())  // Stack of operators being considered
-    atPut("impasseStack", list())  // Stack of current impasses
-    atPut("chunkingRules", Map clone)  // Learned procedural rules
-))
+CognitiveCycle setSlot("soarContext", Map clone)
+CognitiveCycle soarContext atPut("goalStack", list())  // Stack of goals and subgoals
+CognitiveCycle soarContext atPut("stateStack", list())  // Stack of problem states
+CognitiveCycle soarContext atPut("operatorStack", list())  // Stack of operators being considered
+CognitiveCycle soarContext atPut("impasseStack", list())  // Stack of current impasses
+CognitiveCycle soarContext atPut("chunkingRules", Map clone)  // Learned procedural rules
 
 CognitiveCycle setSlot("setCycleId", method(id, self setSlot("cycleId", id); self markChanged; self))
 CognitiveCycle setSlot("setQuery", method(q, query := q; self markChanged; self))

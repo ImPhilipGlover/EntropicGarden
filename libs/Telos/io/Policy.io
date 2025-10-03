@@ -241,17 +241,17 @@ Policy := Object clone do(
 
     // Get policy summary
     getSummary := method(
-        Map clone do(
-            atPut("oid", oid)
-            atPut("goal", goal)
-            atPut("actionCount", actions size)
-            atPut("expectedFreeEnergy", expectedFreeEnergy)
-            atPut("confidence", confidence)
-            atPut("planningHorizon", planningHorizon)
-            atPut("performanceMetrics", getPerformanceMetrics())
-            atPut("isEffective", isEffective())
-            atPut("createdAt", createdAt)
-        )
+        summary := Map clone
+        summary atPut("oid", oid)
+        summary atPut("goal", goal)
+        summary atPut("actionCount", actions size)
+        summary atPut("expectedFreeEnergy", expectedFreeEnergy)
+        summary atPut("confidence", confidence)
+        summary atPut("planningHorizon", planningHorizon)
+        summary atPut("performanceMetrics", getPerformanceMetrics())
+        summary atPut("isEffective", isEffective())
+        summary atPut("createdAt", createdAt)
+        summary
     )
 
     // Clone policy with modifications
@@ -270,19 +270,19 @@ Policy := Object clone do(
 
     // Serialize to JSON
     asJson := method(
-        Map clone do(
-            atPut("oid", oid)
-            atPut("version", version)
-            atPut("createdAt", createdAt)
-            atPut("actions", actions)
-            atPut("expectedOutcomes", expectedOutcomes)
-            atPut("expectedFreeEnergy", expectedFreeEnergy)
-            atPut("confidence", confidence)
-            atPut("planningHorizon", planningHorizon)
-            atPut("goal", goal)
-            atPut("context", context)
-            atPut("performanceHistory", performanceHistory)
-        )
+        json := Map clone
+        json atPut("oid", oid)
+        json atPut("version", version)
+        json atPut("createdAt", createdAt)
+        json atPut("actions", actions)
+        json atPut("expectedOutcomes", expectedOutcomes)
+        json atPut("expectedFreeEnergy", expectedFreeEnergy)
+        json atPut("confidence", confidence)
+        json atPut("planningHorizon", planningHorizon)
+        json atPut("goal", goal)
+        json atPut("context", context)
+        json atPut("performanceHistory", performanceHistory)
+        json
     )
 
     // Deserialize from JSON

@@ -50,14 +50,14 @@
 // Key Components:
 // - HRCOrchestrator: Central coordinator for cognitive cycles
 // - CognitiveCycle: Individual reasoning cycle implementation
-// - PendingResolution: Placeholder for unresolved computations
+// - PendingResolution: Handles unresolved computations
 // - GenerativeKernel: LLM-powered code and response generation
 // - LLMTransducer: Natural language transduction interface
 // - PromptTemplate: Versioned prompt template management
 //
 // - HRCOrchestrator: Central coordinator for cognitive cycles
 // - CognitiveCycle: Individual reasoning cycle implementation
-// - PendingResolution: Placeholder for unresolved computations
+// - PendingResolution: Handles unresolved computations
 // - GenerativeKernel: LLM-powered code and response generation
 // - LLMTransducer: Natural language transduction interface
 // - PromptTemplate: Versioned prompt template management

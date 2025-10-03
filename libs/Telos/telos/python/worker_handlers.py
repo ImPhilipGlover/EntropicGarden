@@ -188,26 +188,44 @@ def handle_ann_search(worker, request_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def calculate_similarity(vec1, vec2) -> float:
     """
-    Calculate similarity between two vectors.
-    Supports hash-based vectors and numerical vectors.
+    Calculate similarity between two vectors using VSA operations.
+    Supports hash-based vectors, numerical vectors, and symbolic vectors.
     """
     if isinstance(vec1, dict) and isinstance(vec2, dict):
-        # Hash-based similarity
+        # Hash-based similarity (VSA hypervector operations)
         if 'hash' in vec1 and 'hash' in vec2:
-            # Simple hamming distance similarity
+            # Hamming distance similarity for hypervectors
             hamming = bin(vec1['hash'] ^ vec2['hash']).count('1')
             max_bits = max(vec1['hash'].bit_length(), vec2['hash'].bit_length(), 1)
             return 1.0 - (hamming / max_bits)
+        # Symbolic vector similarity using set operations
+        elif 'symbols' in vec1 and 'symbols' in vec2:
+            set1 = set(vec1['symbols'])
+            set2 = set(vec2['symbols'])
+            intersection = len(set1 & set2)
+            union = len(set1 | set2)
+            return intersection / union if union > 0 else 0.0
         return 0.0
     elif isinstance(vec1, (list, tuple)) and isinstance(vec2, (list, tuple)):
         # Cosine similarity for numerical vectors
         import math
+        if len(vec1) != len(vec2):
+            return 0.0
         dot_product = sum(a * b for a, b in zip(vec1, vec2))
         norm1 = math.sqrt(sum(a * a for a in vec1))
         norm2 = math.sqrt(sum(b * b for b in vec2))
         if norm1 == 0 or norm2 == 0:
             return 0.0
         return dot_product / (norm1 * norm2)
+    elif isinstance(vec1, str) and isinstance(vec2, str):
+        # String similarity using Jaccard distance on character n-grams
+        def ngrams(text, n=2):
+            return [text[i:i+n] for i in range(len(text)-n+1)]
+        ngrams1 = set(ngrams(vec1))
+        ngrams2 = set(ngrams(vec2))
+        intersection = len(ngrams1 & ngrams2)
+        union = len(ngrams1 | ngrams2)
+        return intersection / union if union > 0 else 0.0
     else:
-        # Fallback: exact equality
-        return 1.0 if vec1 == vec2 else 0.0
+        # For unsupported types, return zero similarity (no degraded functionality)
+        return 0.0

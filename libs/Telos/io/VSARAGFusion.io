@@ -90,13 +90,12 @@ VSARAGFusion setSlot("performVSARAGFusion", method(query, context,
     // Main VSA-RAG fusion operation
     // "Performing VSA-RAG fusion for query: #{query at('type', 'unknown')}" interpolate println
 
-    fusionResult := Map clone do(
-        atPut("query", query)
-        atPut("fusion_steps", list())
-        atPut("vsa_operations", list())
-        atPut("rag_operations", list())
-        atPut("integrated_result", nil)
-    )
+    fusionResult := Map clone
+    fusionResult atPut("query", query)
+    fusionResult atPut("fusion_steps", list())
+    fusionResult atPut("vsa_operations", list())
+    fusionResult atPut("rag_operations", list())
+    fusionResult atPut("integrated_result", nil)
 
     // Step 1: VSA Symbolic Processing
     vsaResult := self performVSASymbolicProcessing(query, context)
@@ -124,12 +123,11 @@ VSARAGFusion setSlot("performVSARAGFusion", method(query, context,
 
 VSARAGFusion setSlot("performVSASymbolicProcessing", method(query, context,
     // Perform VSA-based symbolic processing
-    vsaResult := Map clone do(
-        atPut("operation", "symbolic_processing")
-        atPut("query_symbols", list())
-        atPut("algebraic_operations", list())
-        atPut("symbolic_representations", Map clone)
-    )
+    vsaResult := Map clone
+    vsaResult atPut("operation", "symbolic_processing")
+    vsaResult atPut("query_symbols", list())
+    vsaResult atPut("algebraic_operations", list())
+    vsaResult atPut("symbolic_representations", Map clone)
 
     // Extract symbolic elements from query
     querySymbols := self extractQuerySymbols(query)
@@ -157,13 +155,12 @@ VSARAGFusion setSlot("performVSASymbolicProcessing", method(query, context,
 
 VSARAGFusion setSlot("performRAGRetrieval", method(query, vsaResult, context,
     // Perform RAG retrieval using VSA-derived cues
-    ragResult := Map clone do(
-        atPut("operation", "rag_retrieval")
-        atPut("retrieval_cues", if(vsaResult and vsaResult at("symbolic_representations"), vsaResult at("symbolic_representations") at("retrieval_cues"), nil))
-        atPut("community_matches", list())
-        atPut("retrieved_context", list())
-        atPut("generative_prompts", list())
-    )
+    ragResult := Map clone
+    ragResult atPut("operation", "rag_retrieval")
+    ragResult atPut("retrieval_cues", if(vsaResult and vsaResult at("symbolic_representations"), vsaResult at("symbolic_representations") at("retrieval_cues"), nil))
+    ragResult atPut("community_matches", list())
+    ragResult atPut("retrieved_context", list())
+    ragResult atPut("generative_prompts", list())
 
     retrievalCues := ragResult at("retrieval_cues")
 
@@ -186,13 +183,12 @@ VSARAGFusion setSlot("performRAGRetrieval", method(query, vsaResult, context,
 
 VSARAGFusion setSlot("performSymbolicGenerativeIntegration", method(vsaResult, ragResult, query,
     // Integrate VSA symbolic processing with RAG generative capabilities
-    integrationResult := Map clone do(
-        atPut("operation", "symbolic_generative_integration")
-        atPut("symbolic_constraints", vsaResult at("symbolic_representations"))
-        atPut("generative_context", ragResult at("retrieved_context"))
-        atPut("integrated_reasoning", Map clone)
-        atPut("fusion_quality", 0)
-    )
+    integrationResult := Map clone
+    integrationResult atPut("operation", "symbolic_generative_integration")
+    integrationResult atPut("symbolic_constraints", vsaResult at("symbolic_representations"))
+    integrationResult atPut("generative_context", ragResult at("retrieved_context"))
+    integrationResult atPut("integrated_reasoning", Map clone)
+    integrationResult atPut("fusion_quality", 0)
 
     symbolicConstraints := integrationResult at("symbolic_constraints")
     generativeContext := integrationResult at("generative_context")
@@ -214,13 +210,12 @@ VSARAGFusion setSlot("performSymbolicGenerativeIntegration", method(vsaResult, r
 
 VSARAGFusion setSlot("validateAndRefineFusion", method(integratedResult, query, context,
     // Validate fusion results and refine if necessary
-    validationResult := Map clone do(
-        atPut("operation", "fusion_validation")
-        atPut("original_result", integratedResult)
-        atPut("validation_checks", list())
-        atPut("refinements", list())
-        atPut("final_validated_result", integratedResult)
-    )
+    validationResult := Map clone
+    validationResult atPut("operation", "fusion_validation")
+    validationResult atPut("original_result", integratedResult)
+    validationResult atPut("validation_checks", list())
+    validationResult atPut("refinements", list())
+    validationResult atPut("final_validated_result", integratedResult)
 
     // Perform validation checks
     validationChecks := self performValidationChecks(integratedResult, query)
@@ -290,11 +285,10 @@ VSARAGFusion setSlot("generateRetrievalCues", method(cleanedSymbols,
     cues := list()
 
     cleanedSymbols foreach(symbol, vector,
-        cue := Map clone do(
-            atPut("symbol", symbol)
-            atPut("vector", vector)
-            atPut("similarity_threshold", 0.7)
-        )
+        cue := Map clone
+        cue atPut("symbol", symbol)
+        cue atPut("vector", vector)
+        cue atPut("similarity_threshold", 0.7)
         cues append(cue)
     )
 

@@ -69,7 +69,7 @@ PromptTemplate templateVersions atPut("doesNotUnderstand", list(defaultTemplate)
 PromptTemplate setSlot("getTemplate", method(templateName, query, context,
     template := self templates at(templateName)
     if(template isNil,
-        return "I don't understand: {message}"  // Fallback
+        Exception raise("Template not found: " .. templateName)
     )
 
     // Render template with variables

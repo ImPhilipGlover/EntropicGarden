@@ -59,88 +59,94 @@ import faiss
 import diskannpy
 
 # Import UvmObject for proper prototypal patterns (MANDATORY)
-from .uvm_object import UvmObject
+from .uvm_object import UvmObject, create_uvm_object
 
-class ScalableVectorOps(UvmObject):
-    """Container for scalable vector operations infrastructure"""
+def create_scalable_vector_ops():
+    """Factory function to create ScalableVectorOps using UvmObject pattern"""
+    return create_uvm_object(
+        # Slot initialization
+        faiss_index=None,
+        diskann_index=None,
+        torch_hd_space=None,
+        embedding_model=None,
+        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
 
-    def __init__(self):
-        self.faiss_index = None
-        self.diskann_index = None
-        self.torch_hd_space = None
-        self.embedding_model = None
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # Method bindings
+        initialize_faiss_index=lambda self, dimension=768, index_type="IVFPQ", metric="L2": _initialize_faiss_index(self, dimension, index_type, metric),
+        initialize_diskann_graph=lambda self, dimension, max_degree=64, L_build=100, alpha=1.2: _initialize_diskann_graph(self, dimension, max_degree, L_build, alpha),
+        initialize_torch_hd_space=lambda self, dimension=10000, device="auto": _initialize_torch_hd_space(self, dimension, device),
+    )
 
-    def initialize_faiss_index(self, dimension: int, index_type: str = "IVFPQ", metric: str = "L2") -> bool:
-        """Initialize FAISS index for scalable similarity search"""
+def _initialize_faiss_index(self, dimension: int, index_type: str = "IVFPQ", metric: str = "L2") -> bool:
+    """Initialize FAISS index for scalable similarity search"""
+    try:
+        if index_type == "IVFPQ":
+            # IVF + PQ for large-scale search
+            quantizer = faiss.IndexFlatIP(dimension) if metric == "IP" else faiss.IndexFlatL2(dimension)
+            self.faiss_index = faiss.IndexIVFPQ(quantizer, dimension, 100, 8, 8)  # nlist=100, m=8, nbits=8
+        elif index_type == "HNSW":
+            # HNSW for high-recall search
+            self.faiss_index = faiss.IndexHNSWFlat(dimension, 32)  # M=32
+        else:
+            # Flat index for exact search
+            self.faiss_index = faiss.IndexFlatIP(dimension) if metric == "IP" else faiss.IndexFlatL2(dimension)
+
+        self.faiss_index.metric_type = faiss.METRIC_INNER_PRODUCT if metric == "IP" else faiss.METRIC_L2
+        return True
+    except Exception as e:
+        print(f"FAISS initialization failed: {e}")
+        return False
+
+def _initialize_diskann_graph(self, dimension: int, max_degree: int = 64, L_build: int = 100, alpha: float = 1.2) -> bool:
+    """Initialize DiskANN graph for billion-scale similarity search"""
+    try:
+        # Create working directory for DiskANN index operations
+        index_dir = Path("temp/diskann_index")
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        # DiskANN parameters for optimal performance
+        self.diskann_index = {
+            'dimension': dimension,
+            'max_degree': max_degree,
+            'L_build': L_build,
+            'alpha': alpha,
+            'index_dir': str(index_dir),
+            'data_file': str(index_dir / 'data.bin'),
+            'index_file': str(index_dir / 'index.bin'),
+            'index': None  # Will be set after building
+        }
+        return True
+    except Exception as e:
+        print(f"DiskANN initialization failed: {e}")
+        return False
+
+def _initialize_torch_hd_space(self, dimension: int = 10000, device: str = "auto") -> bool:
+    """Initialize torch HD vector space for hyperdimensional computing"""
+    try:
+        if device == "auto":
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        self.device = torch.device(device)
+        self.torch_hd_space = {
+            'dimension': dimension,
+            'device': self.device,
+            'dtype': torch.float32
+        }
+
+        # Initialize HD basis vectors - torchhd may not have set_default_dtype
         try:
-            if index_type == "IVFPQ":
-                # IVF + PQ for large-scale search
-                quantizer = faiss.IndexFlatIP(dimension) if metric == "IP" else faiss.IndexFlatL2(dimension)
-                self.faiss_index = faiss.IndexIVFPQ(quantizer, dimension, 100, 8, 8)  # nlist=100, m=8, nbits=8
-            elif index_type == "HNSW":
-                # HNSW for high-recall search
-                self.faiss_index = faiss.IndexHNSWFlat(dimension, 32)  # M=32
-            else:
-                # Flat index for exact search
-                self.faiss_index = faiss.IndexFlatIP(dimension) if metric == "IP" else faiss.IndexFlatL2(dimension)
+            torchhd.set_default_dtype(torch.float32)
+        except AttributeError:
+            # Older version of torchhd doesn't have set_default_dtype
+            pass
 
-            self.faiss_index.metric_type = faiss.METRIC_INNER_PRODUCT if metric == "IP" else faiss.METRIC_L2
-            return True
-        except Exception as e:
-            print(f"FAISS initialization failed: {e}")
-            return False
-
-    def initialize_diskann_graph(self, dimension: int, max_degree: int = 64, L_build: int = 100, alpha: float = 1.2) -> bool:
-        """Initialize DiskANN graph for billion-scale similarity search"""
-        try:
-            # Create temporary directory for DiskANN index
-            index_dir = Path("temp/diskann_index")
-            index_dir.mkdir(parents=True, exist_ok=True)
-
-            # DiskANN parameters for optimal performance
-            self.diskann_index = {
-                'dimension': dimension,
-                'max_degree': max_degree,
-                'L_build': L_build,
-                'alpha': alpha,
-                'index_dir': str(index_dir),
-                'data_file': str(index_dir / 'data.bin'),
-                'index_file': str(index_dir / 'index.bin'),
-                'index': None  # Will be set after building
-            }
-            return True
-        except Exception as e:
-            print(f"DiskANN initialization failed: {e}")
-            return False
-
-    def initialize_torch_hd_space(self, dimension: int = 10000, device: str = "auto") -> bool:
-        """Initialize torch HD vector space for hyperdimensional computing"""
-        try:
-            if device == "auto":
-                device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-            self.device = torch.device(device)
-            self.torch_hd_space = {
-                'dimension': dimension,
-                'device': self.device,
-                'dtype': torch.float32
-            }
-
-            # Initialize HD basis vectors - torchhd may not have set_default_dtype
-            try:
-                torchhd.set_default_dtype(torch.float32)
-            except AttributeError:
-                # Older version of torchhd doesn't have set_default_dtype
-                pass
-
-            return True
-        except Exception as e:
-            print(f"Torch HD initialization failed: {e}")
-            return False
+        return True
+    except Exception as e:
+        print(f"Torch HD initialization failed: {e}")
+        return False
 
 # Global instance for handlers
-vector_ops = ScalableVectorOps()
+vector_ops = create_scalable_vector_ops()
 
 def handle_initialize_faiss_index(task_data: Dict[str, Any]) -> Dict[str, Any]:
     """Handle FAISS index initialization"""

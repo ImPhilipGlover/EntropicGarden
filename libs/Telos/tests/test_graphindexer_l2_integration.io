@@ -77,7 +77,6 @@ try(
         return
     )
 
-    // Test global semantic search (should work with mock data)
     "Testing global semantic search..." println
     results := indexer globalSemanticSearch("test query", 5)
     ("✓ Global semantic search completed (" .. results size .. " results)") println

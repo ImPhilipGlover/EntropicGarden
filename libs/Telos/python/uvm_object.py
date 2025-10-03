@@ -95,7 +95,7 @@ class UvmObject(dict):
                 except AttributeError:
                     continue
         
-        # Final fallback
+        # If no parent has the attribute, raise AttributeError
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
     
     def __setattr__(self, name, value):

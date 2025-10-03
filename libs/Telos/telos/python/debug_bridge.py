@@ -44,10 +44,7 @@ import sys
 import os
 
 # Import UvmObject for prototypal object creation
-try:
-    from .uvm_object import create_uvm_object
-except ImportError:  # pragma: no cover - fallback for direct execution
-    from .uvm_object import create_uvm_object  # type: ignore
+from .uvm_object import create_uvm_object
 
 # Add the current directory to Python path
 sys.path.insert(0, '.')

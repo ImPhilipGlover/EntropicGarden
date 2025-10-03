@@ -87,13 +87,18 @@ def handle_bridge_metrics(request_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def _collect_bridge_metrics(request_data: Dict[str, Any]) -> Dict[str, Any]:
     """Collect current bridge metrics."""
+    global _last_collection_time
+    
     worker_id = request_data.get('worker_id', 'unknown')
     include_system_metrics = request_data.get('include_system_metrics', True)
     
+    collection_time = time.time()
+    _last_collection_time = collection_time
+    
     metrics = {
-        'timestamp': time.time(),
+        'timestamp': collection_time,
         'worker_id': worker_id,
-        'collection_time': time.time()
+        'collection_time': collection_time
     }
     
     if include_system_metrics:
@@ -188,13 +193,13 @@ def _reset_bridge_metrics(request_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def _get_metrics_status(request_data: Dict[str, Any]) -> Dict[str, Any]:
     """Get metrics collection status."""
-    global _metrics_store
+    global _metrics_store, _last_collection_time
     
     status = {
         'collection_enabled': True,
         'reporting_enabled': True,
         'stored_reports': len(_metrics_store) if '_metrics_store' in globals() else 0,
-        'last_collection': time.time(),  # Mock - in real impl would track actual last collection
+        'last_collection': _last_collection_time,
         'system_metrics_available': psutil is not None
     }
     
@@ -207,3 +212,4 @@ def _get_metrics_status(request_data: Dict[str, Any]) -> Dict[str, Any]:
 
 # Initialize global metrics store
 _metrics_store = []
+_last_collection_time = None

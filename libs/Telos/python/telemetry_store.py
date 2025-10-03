@@ -35,60 +35,190 @@ COUNTERMEASURE 6: Recursive File Compliance Enforcement
 ==============================================================================================="""
 
 """
-TELOS Telemetry Store (Stub Implementation)
+TELOS Telemetry Store
 
-Basic telemetry storage functionality.
+Real telemetry storage functionality with persistence and analysis capabilities.
 """
 
 from typing import List, Dict, Any, Optional
 import threading
+import time
+import json
+import os
+from pathlib import Path
+import sqlite3
+from contextlib import contextmanager
 
 
-def create_telemetry_store(max_events: int = 1000) -> object:
+def create_telemetry_store(max_events: int = 1000, storage_path: Optional[str] = None) -> object:
     """
-    Factory function to create a telemetry store.
-    
+    Factory function to create a telemetry store with SQLite persistence.
+
     Returns a prototypal object (dict) with telemetry methods.
-    
+
     Args:
-        max_events: Maximum number of events to store
-        
+        max_events: Maximum number of events to store in memory
+        storage_path: Path to SQLite database file (optional)
+
     Returns:
         Dict containing telemetry store interface
     """
     # Initialize store state
     store_obj = {}
-    
+
     _max_events = max_events
     _events = []
     _lock = threading.Lock()
-    
+    _storage_path = storage_path or ":memory:"
+    _db_initialized = False
+
+    def _ensure_db():
+        """Ensure database tables exist."""
+        nonlocal _db_initialized
+        if _db_initialized:
+            return
+
+        with sqlite3.connect(_storage_path) as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS telemetry_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    event_type TEXT NOT NULL,
+                    event_data TEXT NOT NULL,
+                    trace_context TEXT
+                )
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_timestamp ON telemetry_events(timestamp)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_event_type ON telemetry_events(event_type)
+            ''')
+            _db_initialized = True
+
     def record_event(event: Dict[str, Any]):
-        """Record a telemetry event."""
+        """Record a telemetry event with persistence."""
         with _lock:
+            # Add timestamp if not present
+            if 'timestamp' not in event:
+                event['timestamp'] = time.time()
+
+            # Store in memory (for fast access)
             _events.append(event)
             if len(_events) > _max_events:
                 _events.pop(0)
-    
-    def snapshot_events(limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Get a snapshot of events."""
-        with _lock:
-            if limit is None:
-                return _events.copy()
-            return _events[-limit:].copy()
-    
+
+            # Store in database
+            try:
+                _ensure_db()
+                with sqlite3.connect(_storage_path) as conn:
+                    trace_context = event.get('trace_context')
+                    conn.execute(
+                        'INSERT INTO telemetry_events (timestamp, event_type, event_data, trace_context) VALUES (?, ?, ?, ?)',
+                        (
+                            event['timestamp'],
+                            event.get('type', 'unknown'),
+                            json.dumps(event),
+                            json.dumps(trace_context) if trace_context else None
+                        )
+                    )
+            except Exception as e:
+                # Log error but don't fail - telemetry should be non-blocking
+                print(f"Failed to persist telemetry event: {e}")
+
+    def snapshot_events(limit: Optional[int] = None, event_type: Optional[str] = None,
+                       since: Optional[float] = None) -> List[Dict[str, Any]]:
+        """Get a snapshot of events from database."""
+        try:
+            _ensure_db()
+            with sqlite3.connect(_storage_path) as conn:
+                query = 'SELECT event_data FROM telemetry_events WHERE 1=1'
+                params = []
+
+                if event_type:
+                    query += ' AND event_type = ?'
+                    params.append(event_type)
+
+                if since:
+                    query += ' AND timestamp >= ?'
+                    params.append(since)
+
+                query += ' ORDER BY timestamp DESC'
+
+                if limit:
+                    query += ' LIMIT ?'
+                    params.append(limit)
+
+                cursor = conn.execute(query, params)
+                events = []
+                for row in cursor:
+                    try:
+                        event = json.loads(row[0])
+                        events.append(event)
+                    except json.JSONDecodeError:
+                        continue
+
+                return events
+        except Exception as e:
+            # Graceful degradation to memory snapshot on database failure
+            with _lock:
+                events = _events.copy()
+                if event_type:
+                    events = [e for e in events if e.get('type') == event_type]
+                if since:
+                    events = [e for e in events if e.get('timestamp', 0) >= since]
+                if limit:
+                    events = events[-limit:]
+                return events
+
     def clear_events():
-        """Clear all events."""
+        """Clear all events from memory and database."""
         with _lock:
             _events.clear()
-    
+
+        try:
+            _ensure_db()
+            with sqlite3.connect(_storage_path) as conn:
+                conn.execute('DELETE FROM telemetry_events')
+        except Exception as e:
+            print(f"Failed to clear telemetry database: {e}")
+
+    def get_statistics() -> Dict[str, Any]:
+        """Get telemetry statistics."""
+        try:
+            _ensure_db()
+            with sqlite3.connect(_storage_path) as conn:
+                cursor = conn.execute('SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM telemetry_events')
+                count, min_time, max_time = cursor.fetchone()
+
+                # Get event type breakdown
+                cursor = conn.execute('SELECT event_type, COUNT(*) FROM telemetry_events GROUP BY event_type')
+                type_counts = {row[0]: row[1] for row in cursor}
+
+                return {
+                    'total_events': count or 0,
+                    'event_types': type_counts,
+                    'time_range': {
+                        'earliest': min_time,
+                        'latest': max_time
+                    },
+                    'memory_events': len(_events),
+                    'storage_path': _storage_path
+                }
+        except Exception as e:
+            return {
+                'error': str(e),
+                'memory_events': len(_events)
+            }
+
     # Create store interface
     store_obj.update({
         'record_event': lambda event: record_event(event),
-        'snapshot_events': lambda limit=None: snapshot_events(limit),
-        'clear_events': lambda: clear_events()
+        'snapshot_events': lambda limit=None, event_type=None, since=None: snapshot_events(limit, event_type, since),
+        'clear_events': lambda: clear_events(),
+        'get_statistics': lambda: get_statistics()
     })
-    
+
     return store_obj
 
 
@@ -116,7 +246,7 @@ def summarize_conflict_replay(store: List[Dict[str, Any]], lock) -> Dict[str, An
     
     Args:
         store: List of conflict replay events
-        lock: Lock for thread safety (unused in this stub)
+        lock: Lock for thread safety
         
     Returns:
         Dictionary with summary statistics

@@ -53,27 +53,23 @@ GenerativeWorldModel setSlot("planningHorizon", 5)
 GenerativeWorldModel setSlot("freeEnergyThreshold", 0.1)
 GenerativeWorldModel setSlot("causalDepth", 3)  // How deep to explore causal chains
 
-GenerativeWorldModel setSlot("causalGraph", Map clone do(
-    // Causal relationships: cause -> Map of effects with strengths
-    atPut("nodes", Map clone)  // State/action nodes
-    atPut("edges", Map clone)  // Causal relationships
-    atPut("temporal_links", Map clone)  // Time-ordered relationships
-))
+GenerativeWorldModel setSlot("causalGraph", Map clone)
+GenerativeWorldModel causalGraph atPut("nodes", Map clone)  // State/action nodes
+GenerativeWorldModel causalGraph atPut("edges", Map clone)  // Causal relationships
+GenerativeWorldModel causalGraph atPut("temporal_links", Map clone)  // Time-ordered relationships
 
-GenerativeWorldModel setSlot("generativeModel", Map clone do(
-    atPut("state_space", Map clone)  // Current world state beliefs
-    atPut("transition_model", Map clone)  // P(s'|s,a) - causal dynamics
-    atPut("observation_model", Map clone)  // P(o|s) - sensory predictions
-    atPut("policy_prior", Map clone)  // Preferred action sequences
-    atPut("causal_model", Map clone)  // Explicit causal relationships
-    atPut("temporal_model", Map clone)  // Time-dependent relationships
-    atPut("precision", Map clone do(
-        atPut("state", 1.0)
-        atPut("transition", 1.0)
-        atPut("observation", 1.0)
-        atPut("causal", 1.0)
-    ))
-))
+GenerativeWorldModel setSlot("generativeModel", Map clone)
+GenerativeWorldModel generativeModel atPut("state_space", Map clone)  // Current world state beliefs
+GenerativeWorldModel generativeModel atPut("transition_model", Map clone)  // P(s'|s,a) - causal dynamics
+GenerativeWorldModel generativeModel atPut("observation_model", Map clone)  // P(o|s) - sensory predictions
+GenerativeWorldModel generativeModel atPut("policy_prior", Map clone)  // Preferred action sequences
+GenerativeWorldModel generativeModel atPut("causal_model", Map clone)  // Explicit causal relationships
+GenerativeWorldModel generativeModel atPut("temporal_model", Map clone)  // Time-dependent relationships
+GenerativeWorldModel generativeModel atPut("precision", Map clone)
+GenerativeWorldModel generativeModel at("precision") atPut("state", 1.0)
+GenerativeWorldModel generativeModel at("precision") atPut("transition", 1.0)
+GenerativeWorldModel generativeModel at("precision") atPut("observation", 1.0)
+GenerativeWorldModel generativeModel at("precision") atPut("causal", 1.0)
 
 GenerativeWorldModel setSlot("planningCache", Map clone)  // Cache for expensive planning computations
 GenerativeWorldModel setSlot("learningHistory", list())  // Track learning experiences
@@ -552,7 +548,7 @@ GenerativeWorldModel setSlot("generateCandidatePolicies", method(goal, currentSt
 
     // Ensure we have at least some policies
     if(policies size == 0,
-        policies append(list("apply_strategy"))  // Fallback
+        Exception raise("No applicable policies found for current state")
     )
 
     policies

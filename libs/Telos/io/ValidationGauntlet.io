@@ -50,32 +50,36 @@ ValidationGauntlet setSlot("chaosProbability", 0.1)
 ValidationGauntlet setSlot("maxTestDuration", 300)
 ValidationGauntlet setSlot("convergenceThreshold", 0.95)
 
-ValidationGauntlet setSlot("validationMetrics", Map clone do(
-    atPut("architectural_integrity", Map clone do(
-        atPut("description", "Verification that all components maintain prototypal purity")
-        atPut("baseline", 1.0)
-        atPut("current", 1.0)
-        atPut("threshold", 0.99)
-    ))
-    atPut("reasoning_accuracy", Map clone do(
-        atPut("description", "Accuracy of cognitive cycles in resolving queries")
-        atPut("baseline", 0.85)
-        atPut("current", 0.85)
-        atPut("threshold", 0.80)
-    ))
-    atPut("antifragility_index", Map clone do(
-        atPut("description", "System's ability to improve through failure")
-        atPut("baseline", 1.0)
-        atPut("current", 1.0)
-        atPut("threshold", 0.90)
-    ))
-    atPut("federated_memory_coherence", Map clone do(
-        atPut("description", "Consistency across L1/L2/L3 memory layers")
-        atPut("baseline", 0.95)
-        atPut("current", 0.95)
-        atPut("threshold", 0.90)
-    ))
-))
+validationMetricsMap := Map clone
+architecturalIntegrity := Map clone
+architecturalIntegrity atPut("description", "Verification that all components maintain prototypal purity")
+architecturalIntegrity atPut("baseline", 1.0)
+architecturalIntegrity atPut("current", 1.0)
+architecturalIntegrity atPut("threshold", 0.99)
+validationMetricsMap atPut("architectural_integrity", architecturalIntegrity)
+
+reasoningAccuracy := Map clone
+reasoningAccuracy atPut("description", "Accuracy of cognitive cycles in resolving queries")
+reasoningAccuracy atPut("baseline", 0.85)
+reasoningAccuracy atPut("current", 0.85)
+reasoningAccuracy atPut("threshold", 0.80)
+validationMetricsMap atPut("reasoning_accuracy", reasoningAccuracy)
+
+antifragilityIndex := Map clone
+antifragilityIndex atPut("description", "System's ability to improve through failure")
+antifragilityIndex atPut("baseline", 1.0)
+antifragilityIndex atPut("current", 1.0)
+antifragilityIndex atPut("threshold", 0.90)
+validationMetricsMap atPut("antifragility_index", antifragilityIndex)
+
+federatedMemoryCoherence := Map clone
+federatedMemoryCoherence atPut("description", "Consistency across L1/L2/L3 memory layers")
+federatedMemoryCoherence atPut("baseline", 0.95)
+federatedMemoryCoherence atPut("current", 0.95)
+federatedMemoryCoherence atPut("threshold", 0.90)
+validationMetricsMap atPut("federated_memory_coherence", federatedMemoryCoherence)
+
+ValidationGauntlet setSlot("validationMetrics", validationMetricsMap)
 
 ValidationGauntlet setSlot("runFullGauntlet", method(options,
     "Starting TelOS Validation Gauntlet..." println
@@ -366,14 +370,15 @@ ValidationGauntlet setSlot("initializeOpenTelemetry", method(
 
     // Initialize monitoring session
     if(Telos hasSlot("Bridge"),
+        configMap := Map clone
+        configMap atPut("session_name", "chaos_engineering_gauntlet")
+        configMap atPut("endpoint", opentelemetryEndpoint)
+        configMap atPut("interval", monitoringInterval)
+        
         initRequest := Map clone
         initRequest atPut("operation", "opentelemetry")
         initRequest atPut("action", "initialize_monitoring")
-        initRequest atPut("config", Map clone do(
-            atPut("session_name", "chaos_engineering_gauntlet")
-            atPut("endpoint", opentelemetryEndpoint)
-            atPut("interval", monitoringInterval)
-        ))
+        initRequest atPut("config", configMap)
 
         initResponse := Telos Bridge submitTask(initRequest, 2048)
         if(initResponse and initResponse at("success"),
@@ -394,14 +399,15 @@ ValidationGauntlet setSlot("initializeOpenTelemetry", method(
 ValidationGauntlet setSlot("captureTelemetrySnapshot", method(sessionId, label,
     if(opentelemetryEnabled not or Telos hasSlot("Bridge") not, return nil)
 
+    configMap := Map clone
+    configMap atPut("session_id", sessionId)
+    configMap atPut("label", label)
+    configMap atPut("timestamp", Date now asNumber)
+    
     snapshotRequest := Map clone
     snapshotRequest atPut("operation", "opentelemetry")
     snapshotRequest atPut("action", "capture_snapshot")
-    snapshotRequest atPut("config", Map clone do(
-        atPut("session_id", sessionId)
-        atPut("label", label)
-        atPut("timestamp", Date now asNumber)
-    ))
+    snapshotRequest atPut("config", configMap)
 
     response := Telos Bridge submitTask(snapshotRequest, 4096)
     response

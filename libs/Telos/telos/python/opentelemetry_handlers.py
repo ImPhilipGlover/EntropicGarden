@@ -65,20 +65,13 @@ try:
         _telemetry_lock_proxy,
         _telemetry_max_events,
     )
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from telemetry_store import (  # type: ignore
-        build_conflict_replay_event,
-        record_event as record_telemetry_event,
-        _emit_conflict_replay_opentelemetry,
-        _telemetry_store_proxy,
-        _telemetry_lock_proxy,
-        _telemetry_max_events,
-    )
+except ImportError:  # pragma: no cover - optional dependency path
+    raise ImportError("telemetry_store module required for OpenTelemetry operations")
 
 try:
     from .worker_utils import _sanitize_trace_context
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from worker_utils import _sanitize_trace_context  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency path
+    raise ImportError("worker_utils module required for OpenTelemetry operations")
 
 
 def handle_opentelemetry(worker_instance, request_data: Dict[str, Any]) -> Dict[str, Any]:

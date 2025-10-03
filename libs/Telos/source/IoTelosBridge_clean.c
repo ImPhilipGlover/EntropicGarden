@@ -455,7 +455,7 @@ IoObject *IoTelosBridge_clearError(IoTelosBridge *self, IoObject *locals, IoMess
     return self;
 }
 
-// Stub implementations for VSA methods (not implemented in this minimal version)
+
 IoObject *IoTelosBridge_executeVSABatch(IoTelosBridge *self, IoObject *locals, IoMessage *m) {
     (void)self; (void)locals; (void)m;
     IoState_error_(IOSTATE, m, "executeVSABatch not implemented");
@@ -564,4 +564,6 @@ void IoTelosBridgeInit(IoObject *context) {
     // Register the TelosBridge prototype in the addon context
     IoObject_setSlot_to_(context, IoState_symbolWithCString_(state, "TelosBridge"), IoTelosBridge_proto(state));
     IoObject_setSlot_to_(context, IoState_symbolWithCString_(state, "SharedMemoryHandle"), IoSharedMemoryHandle_proto(state));
+}
+_symbolWithCString_(state, "SharedMemoryHandle"), IoSharedMemoryHandle_proto(state));
 }

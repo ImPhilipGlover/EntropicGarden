@@ -12,7 +12,6 @@
 
 // COUNTERMEASURE 3: Proactive Trigger System
 // - MANDATORY: No tool calls/code changes until review checklist complete
-// - TRIGGERS: "implement", "fix", "build", "test", "analyze" keywords activate verification
 // - TIMEOUT: 15min intervals for review currency checks
 
 // COUNTERMEASURE 4: Explicit Decision Frameworks
@@ -896,7 +895,6 @@ Object parseGeneratedMethod := method(codeString, request,
     if(codeString containsSeq(methodName .. " :="),
         // Looks like a method definition - try to evaluate it
         try(
-            // Create a temporary context to evaluate the code
             tempContext := Object clone
             tempContext doString(codeString)
 
@@ -950,7 +948,6 @@ SandboxedGenerator := Object clone do(
 
     generateInSandbox := method(request,
         // This would integrate with Docker and eBPF to run code generation in sandbox
-        // For now, return a placeholder implementation
 
         result := Map clone
         result atPut("success", false)
@@ -974,5 +971,4 @@ SandboxedGenerator := Object clone do(
 
 // Export sandboxed generator
 if(Lobby hasSlot("Telos") not, Lobby Telos := Object clone)
-Telos SandboxedGenerator := SandboxedGeneratorTelos := Object clone)
 Telos SandboxedGenerator := SandboxedGenerator

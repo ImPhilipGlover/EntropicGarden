@@ -454,7 +454,7 @@ def handle_clean_build(task_json: str) -> str:
             addon_backup = tempfile.mkdtemp()
             import shutil
             shutil.copytree(addon_src_dir, os.path.join(addon_backup, "addons"))
-            print(f"✅ Addons backed up to temporary location")
+            print(f"✅ Addons backed up to working location")
         
         # Remove the build directory completely
         if os.path.exists(build_dir):

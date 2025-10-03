@@ -45,50 +45,72 @@ These exceptions maintain prototypal purity by avoiding class inheritance.
 from .uvm_object import UvmObject
 
 
-class TelosWorkerError(Exception, UvmObject):
+def _telos_worker_error_str(error_self) -> str:
+    """String representation for TelosWorkerError."""
+    parts = [error_self.message]
+    if error_self.worker_id is not None:
+        parts.append(f"worker_id={error_self.worker_id}")
+    if error_self.operation is not None:
+        parts.append(f"operation={error_self.operation}")
+    return "TelosWorkerError(" + ", ".join(parts) + ")"
+
+
+def create_telos_worker_error(message: str, worker_id: int = None, operation: str = None) -> Exception:
     """
-    Base exception for worker-related errors.
-    Uses composition instead of inheritance.
+    Factory function to create a TelosWorkerError using UvmObject patterns.
+    Uses multiple inheritance (Exception + UvmObject) for Python exception compatibility.
     """
+    # Create a custom exception class that inherits from both Exception and UvmObject
+    class TelosWorkerError(Exception, UvmObject):
+        def __init__(self, msg: str, wid: int = None, op: str = None):
+            Exception.__init__(self, msg)
+            UvmObject.__init__(self)
+            self.message = msg
+            self.worker_id = wid
+            self.operation = op
 
-    def __init__(self, message: str, worker_id: int = None, operation: str = None):
-        super().__init__(message)
-        self.message = message
-        self.worker_id = worker_id
-        self.operation = operation
+        def __str__(self):
+            return _telos_worker_error_str(self)
 
-    def __str__(self):
-        parts = [self.message]
-        if self.worker_id is not None:
-            parts.append(f"worker_id={self.worker_id}")
-        if self.operation is not None:
-            parts.append(f"operation={self.operation}")
-        return "TelosWorkerError(" + ", ".join(parts) + ")"
+    error = TelosWorkerError(message, worker_id, operation)
+    
+    print(f"TelosWorkerError [Python]: Exception created with message='{message}'")
+    print(f"TelosWorkerError [Python]: UvmObject base class: {type(error)}")
+    print(f"TelosWorkerError [Python]: Exception base class: {Exception}")
+    
+    return error
 
 
-class TelosProxyError(UvmObject):
+def _telos_proxy_error_str(error_self) -> str:
+    """String representation for TelosProxyError."""
+    parts = [error_self.message]
+    if error_self.proxy_target is not None:
+        parts.append(f"proxy_target={error_self.proxy_target}")
+    if error_self.worker_id is not None:
+        parts.append(f"worker_id={error_self.worker_id}")
+    if error_self.operation is not None:
+        parts.append(f"operation={error_self.operation}")
+    return "TelosProxyError(" + ", ".join(parts) + ")"
+
+
+def create_telos_proxy_error(message: str, proxy_target: str = None, worker_id: int = None, operation: str = None) -> UvmObject:
     """
-    Exception for proxy-related errors in worker communication.
-    Inherits directly from UvmObject for pure prototypal compliance.
+    Factory function to create a TelosProxyError using pure UvmObject patterns.
     """
+    error = UvmObject()
+    
+    # Initialize slots with proper delegation chains
+    error.message = message
+    error.proxy_target = proxy_target
+    error.worker_id = worker_id
+    error.operation = operation
+    
+    print(f"TelosProxyError [Python]: UvmObject exception created with message='{message}'")
+    print(f"TelosProxyError [Python]: UvmObject base class: {type(error)}")
+    
+    return error
 
-    def __init__(self, message: str, proxy_target: str = None, worker_id: int = None, operation: str = None):
-        super().__init__()
-        self.message = message
-        self.proxy_target = proxy_target
-        self.worker_id = worker_id
-        self.operation = operation
 
-    def __str__(self):
-        parts = [self.message]
-        if self.proxy_target is not None:
-            parts.append(f"proxy_target={self.proxy_target}")
-        if self.worker_id is not None:
-            parts.append(f"worker_id={self.worker_id}")
-        if self.operation is not None:
-            parts.append(f"operation={self.operation}")
-        return "TelosProxyError(" + ", ".join(parts) + ")"
-        base_str = str(self.base_error)
-        if self.proxy_target:
-            return f"TelosProxyError(proxy_target={self.proxy_target}, {base_str[16:-1]})"
-        return f"TelosProxyError({base_str[16:-1]})"
+# For backward compatibility, provide the old class names as factory functions
+TelosWorkerError = create_telos_worker_error
+TelosProxyError = create_telos_proxy_error

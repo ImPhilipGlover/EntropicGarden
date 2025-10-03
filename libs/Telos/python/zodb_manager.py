@@ -81,11 +81,7 @@ except ImportError as e:
 # Shared memory imports for zero-copy IPC
 import multiprocessing.shared_memory as shm
 
-# UvmObject imports for prototypal persistence
-try:
-    from .uvm_object import create_uvm_object
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from uvm_object import create_uvm_object  # type: ignore
+from .uvm_object import create_uvm_object
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

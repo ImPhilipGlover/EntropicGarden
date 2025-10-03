@@ -80,7 +80,6 @@ if(Telos isNil or Telos Bridge isNil,
     compiler setSlot("bridge", Telos Bridge clone)
 )
 
-// Remove mock bridge - use real bridge or skip test
 if(compiler bridge == nil,
     "⚠️  No bridge available - skipping bridge-dependent tests" println
     compiler buildStatus := "bridge_unavailable"

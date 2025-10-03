@@ -178,7 +178,7 @@ if(errorMsg and errorMsg size > 0,
 // Test 9: Python Worker Simulation (Future Implementation)
 writeln("\n--> TEST 9: Python Worker Simulation (Future Implementation)")
 writeln("NOTE: Direct Python handler routing not yet implemented.")
-writeln("Current bridge returns mock responses for testing infrastructure.")
+writeln("Current bridge returns simulated responses for testing infrastructure.")
 writeln("Future tests will include:")
 writeln("  - load_module: Load Python worker modules")
 writeln("  - get_function: Retrieve handler functions")

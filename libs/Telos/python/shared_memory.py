@@ -70,7 +70,7 @@ def create_shared_memory_handle(name: str, size: int, create: bool = False) -> o
         """Create a new shared memory block."""
         nonlocal _fd, _mmap
         try:
-            # Create temporary file for shared memory
+            # Create shared memory segment in /dev/shm/
             _fd = os.open(f"/dev/shm/{name}", os.O_CREAT | os.O_RDWR, 0o600)
             os.ftruncate(_fd, size)
             _mmap = mmap.mmap(_fd, size)

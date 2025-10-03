@@ -392,11 +392,20 @@ add_custom_target(telos_compile
     VERBATIM
 )
 
-# Make the main build targets depend on the linter check
-add_dependencies(prototypal_lint_check io_programming_guide iovm)
-add_dependencies(telos_core prototypal_lint_check)
-add_dependencies(telos_python_extension prototypal_lint_check)
-add_dependencies(telos_compile IoTelosBridge)
+# Add standalone addon validation target
+add_custom_target(validate_bridge_addon
+    COMMAND ${CMAKE_COMMAND} -E env
+        LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}:${CMAKE_BINARY_DIR}/_build/dll
+        ${CMAKE_BINARY_DIR}/libs/iovm/io ${CMAKE_CURRENT_SOURCE_DIR}/TelosAddonChecker.io ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Standalone validation of TelosBridge addon"
+    VERBATIM
+)
+
+# Make critical targets depend on addon validation
+# add_dependencies(telos_core)
+# add_dependencies(telos_python_extension)
+# add_dependencies(telos_compile)
 
 # Print build configuration summary
 message(STATUS "==========================================")

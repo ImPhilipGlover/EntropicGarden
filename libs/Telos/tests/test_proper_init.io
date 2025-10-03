@@ -45,7 +45,9 @@ doFile("libs/Telos/io/TelosBridge.io")
 
 "Test 1: Initialize bridge using Telos Bridge initialize method..." println
 try(
-    result := Telos Bridge initialize(4)
+    initConfig := Map clone
+    initConfig atPut("max_workers", 4)
+    result := Telos Bridge initialize(initConfig)
     "Bridge initialize result: " .. result println
     "Result type: " .. result type println
     "Result == 0: " .. (result == 0) println

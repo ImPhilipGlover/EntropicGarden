@@ -51,62 +51,61 @@ ChaosConductor activeExperiments := Map clone
 ChaosConductor experimentHistory := list()
 ChaosConductor systemBaselines := Map clone
 
-ChaosConductor chaosExperiments := Map clone do(
-    atPut("CEP-001", Map clone do(
-        atPut("name", "Federated Memory Latency Injection")
-        atPut("target", "federated_memory")
-        atPut("hazard", "latency_injection")
-        atPut("parameters", Map clone atPut("latency_ms", 200))
-        atPut("steady_state_metric", "p99_hybrid_query_latency")
-        atPut("success_threshold", 1.1)
-        atPut("hypothesis", "System maintains performance within 10% when L2 cache has 200ms latency")
-        atPut("duration", 60)
-    ))
-
-    atPut("CEP-002", Map clone do(
-        atPut("name", "Transactional Outbox Poison Message")
-        atPut("target", "transactional_outbox")
-        atPut("hazard", "poison_message")
-        atPut("parameters", Map clone atPut("message_type", "malformed_event"))
-        atPut("steady_state_metric", "replication_lag")
-        atPut("success_threshold", 100)
-        atPut("hypothesis", "Poison messages are isolated without affecting valid message processing")
-        atPut("duration", 120)
-    ))
-
-    atPut("CEP-003", Map clone do(
-        atPut("name", "LLM Transducer Schema Violation")
-        atPut("target", "llm_transducer")
-        atPut("hazard", "schema_violation")
-        atPut("parameters", Map clone atPut("violation_type", "non_compliant_json"))
-        atPut("steady_state_metric", "schema_adherence_rate")
-        atPut("success_threshold", 0.99)
-        atPut("hypothesis", "LLM responses are validated and retried upon schema violations")
-        atPut("duration", 90)
-    ))
-
-    atPut("CEP-004", Map clone do(
-        atPut("name", "SOAR Operator Tie Impasse")
-        atPut("target", "cognitive_core")
-        atPut("hazard", "operator_tie")
-        atPut("parameters", Map clone atPut("duplicate_concepts", 3))
-        atPut("steady_state_metric", "reasoning_accuracy")
-        atPut("success_threshold", 0.95)
-        atPut("hypothesis", "HRCOrchestrator resolves operator tie impasses through subgoal creation")
-        atPut("duration", 180)
-    ))
-
-    atPut("CEP-005", Map clone do(
-        atPut("name", "Synaptic Bridge Memory Leak")
-        atPut("target", "synaptic_bridge")
-        atPut("hazard", "memory_pressure")
-        atPut("parameters", Map clone atPut("memory_mb", 500))
-        atPut("steady_state_metric", "memory_usage")
-        atPut("success_threshold", 1.2)
-        atPut("hypothesis", "System adapts to memory pressure through garbage collection and process management")
-        atPut("duration", 240)
-    ))
+ChaosConductor chaosExperiments := Map clone
+ChaosConductor chaosExperiments atPut("CEP-001", Map clone do(
+    atPut("name", "Federated Memory Latency Injection")
+    atPut("target", "federated_memory")
+    atPut("hazard", "latency_injection")
+    atPut("parameters", Map clone atPut("latency_ms", 200))
+    atPut("steady_state_metric", "p99_hybrid_query_latency")
+    atPut("success_threshold", 1.1)
+    atPut("hypothesis", "System maintains performance within 10% when L2 cache has 200ms latency")
+    atPut("duration", 60)
 ))
+
+ChaosConductor chaosExperiments atPut("CEP-002", Map clone do(
+    atPut("name", "Transactional Outbox Poison Message")
+    atPut("target", "transactional_outbox")
+    atPut("hazard", "poison_message")
+    atPut("parameters", Map clone atPut("message_type", "malformed_event"))
+    atPut("steady_state_metric", "replication_lag")
+    atPut("success_threshold", 100)
+    atPut("hypothesis", "Poison messages are isolated without affecting valid message processing")
+    atPut("duration", 120)
+))
+
+ChaosConductor chaosExperiments atPut("CEP-003", Map clone do(
+    atPut("name", "LLM Transducer Schema Violation")
+    atPut("target", "llm_transducer")
+    atPut("hazard", "schema_violation")
+    atPut("parameters", Map clone atPut("violation_type", "non_compliant_json"))
+    atPut("steady_state_metric", "schema_adherence_rate")
+    atPut("success_threshold", 0.99)
+    atPut("hypothesis", "LLM responses are validated and retried upon schema violations")
+    atPut("duration", 90)
+))
+
+ChaosConductor chaosExperiments atPut("CEP-004", Map clone do(
+    atPut("name", "SOAR Operator Tie Impasse")
+    atPut("target", "cognitive_core")
+    atPut("hazard", "operator_tie")
+    atPut("parameters", Map clone atPut("duplicate_concepts", 3))
+    atPut("steady_state_metric", "reasoning_accuracy")
+    atPut("success_threshold", 0.95)
+    atPut("hypothesis", "HRCOrchestrator resolves operator tie impasses through subgoal creation")
+    atPut("duration", 180)
+))
+
+ChaosConductor chaosExperiments atPut("CEP-005", Map clone do(
+    atPut("name", "Synaptic Bridge Memory Leak")
+    atPut("target", "synaptic_bridge")
+    atPut("hazard", "memory_pressure")
+    atPut("parameters", Map clone atPut("memory_mb", 500))
+    atPut("steady_state_metric", "memory_usage")
+    atPut("success_threshold", 1.2)
+    atPut("hypothesis", "System adapts to memory pressure through garbage collection and process management")
+    atPut("duration", 240)
+)))
 
 ChaosConductor startExperiment := method(experimentId, options,
     if(activeExperiments at(experimentId),

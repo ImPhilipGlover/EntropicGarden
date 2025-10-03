@@ -42,7 +42,9 @@
 doFile("libs/Telos/io/TelosBridge.io")
 
 "Step 1: Call initialize..." println
-initResult := Telos Bridge initialize(4)
+initConfig := Map clone
+initConfig atPut("max_workers", 4)
+initResult := Telos Bridge initialize(initConfig)
 "Initialize result: " .. initResult println
 
 "Step 2: Immediately call ping..." println

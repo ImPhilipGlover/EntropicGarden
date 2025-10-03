@@ -112,24 +112,91 @@ PrototypalLinter := Object clone do(
                 return false
             )
         ,
-            // Bridge not loaded yet - try to load it using the proper addon loading mechanism
-            log("Telos Bridge not found in Lobby - attempting to load using AddonLoader from libs/Telos/io/TelosBridge.io")
-            // Don't catch exceptions so we can see the actual error
-            doFile("libs/Telos/io/TelosBridge.io")
-            log("Successfully loaded libs/Telos/io/TelosBridge.io with AddonLoader")
+            // Bridge not loaded yet - use direct DynLib loading (simple approach that works)
+            log("Telos Bridge not found in Lobby - loading using direct DynLib approach")
             
-            // Now check again
-            if(Lobby hasSlot("Telos") and Lobby Telos hasSlot("Bridge"),
-                bridgeObj := Lobby Telos Bridge
-                if(bridgeObj,
-                    log("Bridge loaded successfully via AddonLoader")
-                    bridgeAvailable = true
+            // Direct DynLib loading approach (bypasses Io addon system for reliability)
+            addonPath := "build/addons/TelosBridge"
+            dllPath := addonPath .. "/_build/dll/libIoTelosBridge.so"
+            
+            log("Checking DLL path: " .. dllPath)
+            
+            if(File exists(dllPath),
+                log("DLL file exists, loading...")
+                lib := DynLib clone setPath(dllPath) open
+                if(lib,
+                    log("Library loaded successfully")
+                    
+                    // Initialize the addon
+                    context := Object clone
+                    result := lib call("IoTelosBridgeInit", context)
+                    log("IoTelosBridgeInit result: " .. result)
+                    
+                    if(result,
+                        TelosBridge := context TelosBridge
+                        if(TelosBridge isNil,
+                            log("CRITICAL: TelosBridge not found in context after init")
+                            return false
+                        )
+                        log("TelosBridge found in context")
+                        
+                        // Set up the Telos namespace
+                        Telos := Object clone do(
+                            Bridge := TelosBridge clone
+                        )
+                        
+                        Telos Bridge do(
+                            "Defining methods on Bridge object" println
+                            
+                            initialize := method(configMap,
+                                "Initializing bridge..." println
+                                config := configMap
+                                if(config isNil, config = Map clone)
+                                
+                                // Ensure required config values with defaults
+                                if(config hasKey("max_workers") not, config atPut("max_workers", 4))
+                                if(config hasKey("log_level") not, config atPut("log_level", "INFO"))
+                                if(config hasKey("log_file") not, config atPut("log_file", "telos_bridge.log"))
+                                if(config hasKey("shared_memory_size") not, config atPut("shared_memory_size", 1048576))
+                                if(config hasKey("worker_path") not, config atPut("worker_path", "workers"))
+                                
+                                "Calling proto initialize with config" println
+                                result := self proto initialize(config)
+                                "Bridge initialization result: " .. result println
+                                "Bridge initialization completed" println
+                                result
+                            )
+                            
+                            status := method(
+                                "Calling bridge status..." println
+                                result := self proto status()
+                                "Bridge status result: " .. result println
+                                result
+                            )
+                            
+                            submitTask := method(jsonRequest, bufferSize,
+                                "submitTask called with jsonRequest length: " .. jsonRequest size println
+                                result := self proto submitTask(jsonRequest, bufferSize)
+                                "submitTask result: " .. result println
+                                result
+                            )
+                            
+                            "All methods defined successfully" println
+                        )
+                        
+                        Lobby Telos := Telos
+                        log("Telos Bridge Direct DynLib Integration Loaded Successfully")
+                        bridgeAvailable = true
+                    ,
+                        log("IoTelosBridgeInit failed")
+                        return false
+                    )
                 ,
-                    log("Bridge loaded but object is nil")
+                    log("Failed to load library")
                     return false
                 )
             ,
-                log("Bridge loaded but not found in expected location")
+                log("TelosBridge DLL not found at: " .. dllPath)
                 return false
             )
         )
@@ -559,7 +626,11 @@ PrototypalLinter := Object clone do(
         taskMap atPut("verbose", verboseStr)
         taskMap atPut("human_readable", "false")
         
-        response := bridgeObj submitTask(taskMap)
+        // Convert Map to JSON string for bridge submission
+        jsonString := taskMap asJson
+        log("Task JSON: " .. jsonString)
+        
+        response := bridgeObj submitTask(jsonString, 4096)
         log("submitTask call completed, response: " .. response)
         log("Response type: " .. response type)
         log("Response proto: " .. response proto)
@@ -652,9 +723,13 @@ PrototypalLinter := Object clone do(
         cTaskMap atPut("target_path", cTargetPath)
         cTaskMap atPut("verbose", cVerboseStr)
         
+        // Convert Map to JSON string for bridge submission
+        cJsonString := cTaskMap asJson
+        log("C Task JSON: " .. cJsonString)
+        
         // Submit task via bridge - no degraded functionality allowed
         bridgeObj := Lobby Telos Bridge
-        response := bridgeObj submitTask(cTaskMap)
+        response := bridgeObj submitTask(cJsonString, 4096)
         
         if(response proto == Exception or response isNil or response isError,
             log("CRITICAL ERROR: Bridge communication failed for C linting")
@@ -779,13 +854,158 @@ PrototypalLinter := Object clone do(
         if(totalViolations > 0, 1, 0)
     )
     
-    // Persistence covenant - mark changes for ZODB
-    markChanged := method(
-        // Mark this object as modified for persistence
-        if(hasSlot("modified"),
-            modified = true
+    // Tool integration methods using the enhanced bridge
+
+    // Eradicate mocks in target path
+    eradicateMocks := method(targetPath,
+        log("Eradicating mocks in: " .. targetPath)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot eradicate mocks - synaptic bridge unavailable")
+            return false
         )
-        self
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj eradicateMocks(targetPath)
+        log("Mock eradication result: " .. result)
+        result
+    )
+
+    // Enforce compliance in target path
+    enforceCompliance := method(targetPath,
+        log("Enforcing compliance in: " .. targetPath)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot enforce compliance - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj enforceCompliance(targetPath)
+        log("Compliance enforcement result: " .. result)
+        result
+    )
+
+    // Check Io syntax in target path
+    checkIoSyntax := method(targetPath,
+        log("Checking Io syntax in: " .. targetPath)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot check Io syntax - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj checkIoSyntax(targetPath)
+        log("Io syntax check result: " .. result)
+        result
+    )
+
+    // Check addon integrity
+    checkAddons := method(targetPath,
+        log("Checking addons in: " .. targetPath)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot check addons - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj checkAddons(targetPath)
+        log("Addon check result: " .. result)
+        result
+    )
+
+    // Self-healing autopoietic processes
+
+    // Analyze and improve code
+    analyzeAndImprove := method(targetPath,
+        log("Analyzing and improving code in: " .. targetPath)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot analyze code - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj analyzeAndImprove(targetPath)
+        log("Code analysis result: " .. result)
+        result
+    )
+
+    // Optimize memory usage
+    optimizeMemory := method(targetPath,
+        log("Optimizing memory usage in: " .. targetPath)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot optimize memory - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj optimizeMemory(targetPath)
+        log("Memory optimization result: " .. result)
+        result
+    )
+
+    // Profile performance
+    profilePerformance := method(targetPath,
+        log("Profiling performance in: " .. targetPath)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot profile performance - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj profilePerformance(targetPath)
+        log("Performance profiling result: " .. result)
+        result
+    )
+
+    // Prepare LLM training data
+    prepareLLMTrainingData := method(targetPath,
+        log("Preparing LLM training data from: " .. targetPath)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot prepare LLM training data - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj prepareLLMTrainingData(targetPath)
+        log("LLM training data preparation result: " .. result)
+        result
+    )
+
+    // Interact with LLM
+    interactWithLLM := method(prompt, modelName,
+        log("Interacting with LLM: " .. modelName)
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot interact with LLM - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj interactWithLLM(prompt, modelName)
+        log("LLM interaction result: " .. result)
+        result
+    )
+
+    // Launch TelOS AI background process
+    launchTelOSAI := method(configMap,
+        log("Launching TelOS AI background process")
+
+        if(bridgeAvailable not,
+            log("CRITICAL: Cannot launch TelOS AI - synaptic bridge unavailable")
+            return false
+        )
+
+        bridgeObj := Lobby Telos Bridge
+        result := bridgeObj launchTelOSAI(configMap)
+        log("TelOS AI launch result: " .. result)
+        result
     )
 )
 

@@ -60,9 +60,9 @@ check_file() {
     local file="$1"
     local ext="${file##*.}"
     local basename=$(basename "$file")
-    
+
     FILES_CHECKED=$((FILES_CHECKED + 1))
-    
+
     case "$ext" in
         io)
             # Skip linter and compiler files that contain forbidden patterns in their validation logic
@@ -70,7 +70,7 @@ check_file() {
                 echo "ℹ️  Skipping $file: Linter/compiler file with validation patterns."
                 return
             fi
-            
+
             # Check for forbidden class patterns
             if grep -q "class \| extends \| subclass " "$file"; then
                 echo "🟡 Warning in $file: Found forbidden class-like pattern."

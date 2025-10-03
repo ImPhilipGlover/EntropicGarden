@@ -346,11 +346,4 @@ DocsTrainingGround setSlot("printTrainingReport", method(
 // Export
 //
 
-DocsTrainingGroundmade")}" interpolate println
-))
-
-//
-// Export
-//
-
 DocsTrainingGround

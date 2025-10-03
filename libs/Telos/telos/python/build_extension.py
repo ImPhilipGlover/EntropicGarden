@@ -54,17 +54,14 @@ from cffi import FFI
 from typing import Dict, Any
 
 # Import UvmObject for prototypal object creation
-try:
-    from .uvm_object import create_uvm_object
-except ImportError:  # pragma: no cover - fallback for direct execution
-    from uvm_object import create_uvm_object  # type: ignore
+from .uvm_object import create_uvm_object
 
 def main():
     """Generate the CFFI Python extension."""
     
     # Determine paths
     script_dir = Path(__file__).parent
-    source_dir = script_dir.parent / "source"
+    source_dir = script_dir.parent.parent / "source"
     header_file = source_dir / "synaptic_bridge.h"
     
     print(f"Building TELOS Python extension...")
@@ -109,12 +106,27 @@ def main():
             void* data;
         } SharedMemoryHandle;
         
-        typedef void (*LogCallback)(int level, const char* message);
+        typedef enum {
+            LOG_LEVEL_DEBUG = 0,
+            LOG_LEVEL_INFO = 1,
+            LOG_LEVEL_WARNING = 2,
+            LOG_LEVEL_ERROR = 3
+        } LogLevel;
         
         typedef struct {
             int max_workers;
-            LogCallback log_callback;
+            const char* log_level;
+            const char* log_file;
+            size_t shared_memory_size;
+            const char* worker_path;
+            void (*log_callback)(int level, const char* message);
         } BridgeConfig;
+        
+        typedef struct {
+            int initialized;
+            int max_workers;
+            int active_workers;
+        } BridgeStatus;
         
         typedef enum {
             BRIDGE_SUCCESS = 0,
@@ -129,74 +141,44 @@ def main():
             BRIDGE_ERROR_ALREADY_EXISTS = -9,
             BRIDGE_ERROR_NOT_FOUND = -10,
             BRIDGE_ERROR_INVALID_ARGUMENT = -11,
-            BRIDGE_ERROR_RESOURCE_EXHAUSTED = -12
+            BRIDGE_ERROR_RESOURCE_EXHAUSTED = -12,
+            BRIDGE_ERROR_NOT_IMPLEMENTED = -13,
+            BRIDGE_ERROR_INITIALIZATION_FAILED = -14,
+            BRIDGE_ERROR_SHARED_MEMORY_FAILED = -15,
+            BRIDGE_ERROR_PYTHON_FAILED = -16,
+            BRIDGE_ERROR_IO_FAILED = -17,
+            BRIDGE_ERROR_UNKNOWN = -999
         } BridgeResult;
         
-        // TelosProxyObject forward declaration for IoProxy type
-        typedef struct TelosProxyObject TelosProxyObject;
-        
-        // Prototypal proxy functions
-        TelosProxyObject* TelosProxy_CreateFromHandle(IoObjectHandle ioHandle, const char *objectId);
-        int TelosProxy_InitType(void *module);
+        // Configuration management
+        BridgeConfig* bridge_create_config(int max_workers, const char* log_level,
+                                          const char* log_file, size_t shared_memory_size,
+                                          const char* worker_path);
+        void bridge_free_config(BridgeConfig* config);
         
         // Lifecycle management
         BridgeResult bridge_initialize(const BridgeConfig* config);
-        void bridge_shutdown(void);
-        BridgeResult bridge_pin_object(IoObjectHandle handle);
-        BridgeResult bridge_unpin_object(IoObjectHandle handle);
+        BridgeResult bridge_shutdown(void);
         
         // Error handling
-        BridgeResult bridge_get_last_error(char* error_buffer, size_t buffer_size);
+        BridgeResult bridge_get_last_error(char* buffer, size_t buffer_size);
         void bridge_clear_error(void);
+        
+        // Status queries
+        BridgeResult bridge_status(BridgeStatus* status);
+        int status_simple(void);
         
         // Shared memory management
         BridgeResult bridge_create_shared_memory(size_t size, SharedMemoryHandle* handle);
-        BridgeResult bridge_destroy_shared_memory(const SharedMemoryHandle* handle);
+        BridgeResult bridge_destroy_shared_memory(SharedMemoryHandle* handle);
         BridgeResult bridge_map_shared_memory(const SharedMemoryHandle* handle, void** mapped_ptr);
         BridgeResult bridge_unmap_shared_memory(const SharedMemoryHandle* handle, void* mapped_ptr);
         
-        // Simplified shared memory management (Io-compatible)
-        int bridge_create_shared_memory_simple(size_t size);
-        BridgeResult bridge_destroy_shared_memory_simple(int handle_id);
-        BridgeResult bridge_get_shared_memory_name(int handle_id, char* name_buffer, size_t buffer_size);
-        uintptr_t bridge_map_shared_memory_simple(int handle_id);
-        BridgeResult bridge_unmap_shared_memory_simple(int handle_id, uintptr_t mapped_addr);
+        // Task submission
+        BridgeResult bridge_submit_task(const char* task_json, char* response_buffer, size_t buffer_size);
         
-        // Core computational functions
-        BridgeResult bridge_execute_vsa_batch(const char* operation_name,
-                                            const SharedMemoryHandle* input_handle,
-                                            const SharedMemoryHandle* output_handle,
-                                            size_t batch_size);
-        
-        BridgeResult bridge_ann_search(const SharedMemoryHandle* query_handle,
-                                     int k,
-                                     const SharedMemoryHandle* results_handle,
-                                     double similarity_threshold);
-        
-        BridgeResult bridge_add_vector(int64_t vector_id,
-                                     const SharedMemoryHandle* vector_handle,
-                                     const char* index_name);
-        
-        BridgeResult bridge_update_vector(int64_t vector_id,
-                                        const SharedMemoryHandle* vector_handle,
-                                        const char* index_name);
-        
-        BridgeResult bridge_remove_vector(int64_t vector_id,
-                                        const char* index_name);
-        
-        // Message passing
-        BridgeResult bridge_send_message(IoObjectHandle target_handle,
-                                       const char* message_name,
-                                       const SharedMemoryHandle* args_handle,
-                                       const SharedMemoryHandle* result_handle);
-        
-        BridgeResult bridge_get_slot(IoObjectHandle object_handle,
-                                   const char* slot_name,
-                                   const SharedMemoryHandle* result_handle);
-        
-        BridgeResult bridge_set_slot(IoObjectHandle object_handle,
-                                   const char* slot_name,
-                                   const SharedMemoryHandle* value_handle);
+        // Connectivity testing
+        BridgeResult bridge_ping(const char* message, char* response_buffer, size_t buffer_size);
     """
     
     # Define the C declarations for CFFI
@@ -215,12 +197,6 @@ def main():
         "_telos_bridge",
         '''
         #include "synaptic_bridge.h"
-        #include "TelosProxyObject.h"
-        
-        // Module initialization function to set up IoProxy type
-        static int _telos_bridge_init_types(PyObject *module) {
-            return TelosProxy_InitType(module);
-        }
         ''',
         include_dirs=[str(source_dir), str(telos_core_includedir)],
         libraries=["telos_core"],

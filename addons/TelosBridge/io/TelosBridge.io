@@ -13,7 +13,7 @@ Telos Bridge do(
     ),
 
     status := method(
-        statusCode := self proto status_simple()
+        statusCode := self proto status()
         statusMap := Map clone
         if(statusCode == 0,
             statusMap atPut("initialized", true)

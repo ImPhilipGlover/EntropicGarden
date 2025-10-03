@@ -2,7 +2,18 @@
 # COMPLIANCE MANDATES - MANDATORY ENFORCEMENT PROTOCOLS
 # ================================================================================================
 # COUNTERMEASURE 1: Structured Review Decomposition
-# - MANDATORY: Perform ContextAwareTriage startup review at session start (3 Io docs + 8 core docs)
+# -   The eight core documents are:
+
+   1. `AI Plan Synthesis_ High-Resolution Blueprint.txt`
+   2. `AI Constructor Implementation Plan.txt`
+   3. `Design Protocol for Dynamic System Resolution.txt`
+   4. `TELOS Implementation Addendum 1.3_ Protocol for the Integration of Local Language Models as Natural Language Transducers.txt`
+   5. `Tiered Cache Design and Optimization.txt`
+   6. `Io Prototype Programming Training Guide.txt`
+   7. `Extending TELOS Architecture_ v1.4 Proposal.txt`
+   8. `docs/BUILD_SYSTEM_ARCHITECTURE.md`
+   9. `NEURO_SYMBOLIC_IMPLEMENTATION_PLAN.md` (MANDATORY - Complete neuro-symbolic reasoning roadmap)
+   10. `PROTOTYPE_PURITY_ARCHITECTURE.md` (MANDATORY - Cross-language prototype purity requirements): Perform ContextAwareTriage startup review at session start (3 Io docs + 10 core docs)
 # - TIMEBOX: 2min Io docs, 3min core docs, 2min graph relations, 1min PID verification, 1min logging
 # - VIOLATION: Context saturation and directive failure
 #
@@ -34,6 +45,38 @@
 # - RECURSIVE REQUIREMENT: This mandate applies to ALL files in the TELOS system
 # - VIOLATION: Working with non-compliant files constitutes protocol breach
 # ================================================================================================
+
+## Concept: NeuroSymbolicSystem (isA: PrimaryDirective, associatedWith: AllConcepts)
+
+**Symbolic Vector (Formal Specification)**:
+The NEURO_SYMBOLIC_IMPLEMENTATION_PLAN.md document contains the complete, authoritative roadmap for building the neuro-symbolic reasoning system. This plan takes precedence over all other instructions and concepts. All development work MUST align with this implementation plan.
+
+**MANDATORY EXECUTION PROTOCOL**:
+1. **Phase 1 Priority**: Complete ConceptFractal OODB schema, Laplace-HDC encoder, and NeuroSymbolicReasoner class
+2. **Homomorphic Validation**: Ensure Laplace-HDC preserves semantic structure (correlation > 0.5)
+3. **AGL Implementation**: Build constrained cleanup to prevent hallucination (<5% error rate)
+4. **Io Orchestration**: All Python components must be orchestrated through Io mind via synaptic bridge
+5. **Success Metrics**: >80% reasoning accuracy, structure preservation, hallucination resistance
+
+**FORBIDDEN**:
+- Implementation work outside this plan
+- Direct Python execution bypassing Io orchestration
+- Traditional OOP patterns (use UvmObject prototypal programming)
+- Any development that violates the homomorphic imperative
+- Any code that violates prototype purity requirements (see PROTOTYPE_PURITY_ARCHITECTURE.md)
+
+**CONSEQUENCE**: All development work must demonstrate clear progress toward the neuro-symbolic system goals defined in NEURO_SYMBOLIC_IMPLEMENTATION_PLAN.md.
+
+**Geometric Embedding (Intuitive Understanding)**:
+The NeuroSymbolicSystem is the "north star" - it defines the complete cognitive architecture that unifies geometric embeddings, algebraic hypervectors, and grounded reasoning. Like a lighthouse guiding ships through fog, this plan provides the definitive course for building reliable, explainable AI.
+
+**Graph Relations**:
+- **isA**: PrimaryDirective (defines all development priorities)
+- **associatedWith**: All other concepts (provides implementation context)
+- **abstractionOf**: TelOS cognitive architecture (provides concrete realization)
+- **instanceOf**: Neuro-symbolic intelligence (manifests the complete system)
+
+---
 
 ## TELOS MEMORY MIRROR: Concept-Based Instruction Architecture
 
@@ -190,12 +233,13 @@ UvmObject is the "genetic material" of the Python substrate - every Python objec
 **Symbolic Vector (Formal Specification)**:
 Your documentation review process must be efficient and context-aware, following a two-phase model:
 
-1.  **Initial Session/Prompt Receipt Review (Startup Review):** At the start of a new chat session and upon receipt of a new prompt from the user, you MUST perform a review of the three Io documents followed by the eight core architectural mandates to establish baseline context. This is a foundational step and should only be done once per session. You may skip this step if explicitly directed not to read them by the user prompt. Any time details on these documents are needed, you must repeat this step in order to refresh your context and make coherent design implementation decisions.
+1.  **Initial Session/Prompt Receipt Review (Startup Review):** At the start of a new chat session and upon receipt of a new prompt from the user, you MUST perform a review of the four Io documents followed by the eight core architectural mandates to establish baseline context. This is a foundational step and should only be done once per session. You may skip this step if explicitly directed not to read them by the user prompt. Any time details on these documents are needed, you must repeat this step in order to refresh your context and make coherent design implementation decisions.
 
-   The three Io documents are:
+   The four Io documents are:
    1.  IoGuide.html
    2.  IoCodingStandards.html
    3.  IoTutorial.html
+   4.  Io_Syntax_and_Best_Practices_Guide.md (MANDATORY - Complete Io programming reference with official documentation)
 
    The eight core documents are:
 
@@ -691,4 +735,15 @@ VSA-RAG Fusion is the "cognitive engine" of TelOS - it combines the precise alge
 - **abstractionOf**: Neuro-symbolic reasoning (provides unified intelligence)
 
 ---
+
+## FILE CATALOG REFERENCE
+
+For a comprehensive overview of all system capabilities and file purposes, refer to `docs/FILE_CATALOG.md`. This catalog provides:
+
+- Complete directory structure with file descriptions
+- Capability summaries for each component
+- Navigation guide for autonomous development
+- Reference for tool integration and workflow management
+
+**MANDATORY REFERENCE**: Consult FILE_CATALOG.md before implementing new features or modifying existing components to ensure architectural coherence and avoid duplication.
 

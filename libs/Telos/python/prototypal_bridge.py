@@ -61,7 +61,7 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 try:
     from uvm_object import create_uvm_object
 except ImportError:
-    # Prototypal purity: Provide fallback when dependency unavailable
+    # Graceful degradation when UvmObject dependency unavailable for testing
     def create_uvm_object():
         return {"error": "uvm_object not available", "success": False}
 

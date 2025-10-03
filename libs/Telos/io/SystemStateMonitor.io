@@ -49,47 +49,63 @@ SystemStateMonitor setSlot("adaptationEnabled", true)
 SystemStateMonitor setSlot("freeEnergyThreshold", 0.1)
 SystemStateMonitor setSlot("learningRate", 0.01)
 
-SystemStateMonitor setSlot("systemState", Map clone do(
-    atPut("cognitive_load", 0.5)
-    atPut("memory_pressure", 0.3)
-    atPut("network_latency", 50)
-    atPut("error_rate", 0.02)
-    atPut("adaptation_energy", 0.1)
-))
+systemStateMap := Map clone
+systemStateMap atPut("cognitive_load", 0.5)
+systemStateMap atPut("memory_pressure", 0.3)
+systemStateMap atPut("network_latency", 50)
+systemStateMap atPut("error_rate", 0.02)
+systemStateMap atPut("adaptation_energy", 0.1)
+SystemStateMonitor setSlot("systemState", systemStateMap)
 
-SystemStateMonitor setSlot("generativeModel", Map clone do(
-    atPut("state_space", Map clone)  // Internal state representations
-    atPut("observation_model", Map clone)  // P(o|s) - sensory predictions
-    atPut("transition_model", Map clone)  // P(s'|s,a) - state dynamics
-    atPut("policy_prior", Map clone)  // Preferred policies
-    atPut("precision", 1.0)  // Confidence in model predictions
-))
+generativeModelMap := Map clone
+generativeModelMap atPut("state_space", Map clone)  // Internal state representations
+generativeModelMap atPut("observation_model", Map clone)  // P(o|s) - sensory predictions
+generativeModelMap atPut("transition_model", Map clone)  // P(s'|s,a) - state dynamics
+generativeModelMap atPut("policy_prior", Map clone)  // Preferred policies
+generativeModelMap atPut("precision", 1.0)  // Confidence in model predictions
+SystemStateMonitor setSlot("generativeModel", generativeModelMap)
 
 SystemStateMonitor setSlot("freeEnergyHistory", list())
 SystemStateMonitor setSlot("adaptationHistory", list())
 
 SystemStateMonitor setSlot("initGenerativeModel", method(
     // Initialize the generative model for active inference
-    generativeModel at("state_space") atPut("homeostatic_setpoint", Map clone do(
-        atPut("cognitive_load", 0.4)
-        atPut("memory_pressure", 0.2)
-        atPut("network_latency", 30)
-        atPut("error_rate", 0.01)
-    ))
+    homeostaticSetpoint := Map clone
+    homeostaticSetpoint atPut("cognitive_load", 0.4)
+    homeostaticSetpoint atPut("memory_pressure", 0.2)
+    homeostaticSetpoint atPut("network_latency", 30)
+    homeostaticSetpoint atPut("error_rate", 0.01)
+    generativeModel at("state_space") atPut("homeostatic_setpoint", homeostaticSetpoint)
 
-    generativeModel at("observation_model") atPut("sensory_precision", Map clone do(
-        atPut("cognitive_load", 2.0)
-        atPut("memory_pressure", 1.5)
-        atPut("network_latency", 1.0)
-        atPut("error_rate", 3.0)
-    ))
+    sensoryPrecision := Map clone
+    sensoryPrecision atPut("cognitive_load", 2.0)
+    sensoryPrecision atPut("memory_pressure", 1.5)
+    sensoryPrecision atPut("network_latency", 1.0)
+    sensoryPrecision atPut("error_rate", 3.0)
+    generativeModel at("observation_model") atPut("sensory_precision", sensoryPrecision)
 
-    generativeModel at("transition_model") atPut("adaptation_effects", Map clone do(
-        atPut("increase_precision", Map clone atPut("cognitive_load", -0.1) atPut("error_rate", -0.005))
-        atPut("reduce_complexity", Map clone atPut("memory_pressure", -0.05) atPut("cognitive_load", -0.05))
-        atPut("optimize_queries", Map clone atPut("network_latency", -10) atPut("cognitive_load", 0.02))
-        atPut("garbage_collect", Map clone atPut("memory_pressure", -0.1) atPut("adaptation_energy", 0.05))
-    ))
+    adaptationEffects := Map clone
+    increasePrecision := Map clone
+    increasePrecision atPut("cognitive_load", -0.1)
+    increasePrecision atPut("error_rate", -0.005)
+    adaptationEffects atPut("increase_precision", increasePrecision)
+    
+    reduceComplexity := Map clone
+    reduceComplexity atPut("memory_pressure", -0.05)
+    reduceComplexity atPut("cognitive_load", -0.05)
+    adaptationEffects atPut("reduce_complexity", reduceComplexity)
+    
+    optimizeQueries := Map clone
+    optimizeQueries atPut("network_latency", -10)
+    optimizeQueries atPut("cognitive_load", 0.02)
+    adaptationEffects atPut("optimize_queries", optimizeQueries)
+    
+    garbageCollect := Map clone
+    garbageCollect atPut("memory_pressure", -0.1)
+    garbageCollect atPut("adaptation_energy", 0.05)
+    adaptationEffects atPut("garbage_collect", garbageCollect)
+    
+    generativeModel at("transition_model") atPut("adaptation_effects", adaptationEffects)
 
     generativeModel at("policy_prior") atPut("preferred_actions", list(
         "monitor_system_state",

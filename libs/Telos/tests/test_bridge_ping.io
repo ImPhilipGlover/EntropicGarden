@@ -38,30 +38,50 @@
 
 "=== Testing Bridge Ping Function ===" println
 
-doFile("libs/Telos/io/TelosBridge.io")
+// Load the addon directly using DynLib
+addonPath := "build/addons/TelosBridge"
+dllPath := addonPath .. "/_build/dll/libIoTelosBridge.so"
 
-// Initialize first
-initConfig := Map clone
-initConfig atPut("max_workers", 4)
-initConfig atPut("log_level", "INFO")
-result := Telos Bridge initialize(initConfig)
-"Initialize result: " .. result println
+"Loading addon from: " .. dllPath println
 
-// Create a simpler ping test
-"Testing bridge_ping via TelosCoreLib directly..." println
-
-try(
-    lib := Telos Bridge TelosCoreLib
-    "Lib loaded: " .. (lib isNil not) println
-    
-    // Try calling ping directly with careful buffer handling
-    responseBuffer := Sequence clone setSize(256)
-    result := lib call("bridge_ping", "test", responseBuffer, 256)
-    "Direct ping result: " .. result println
-    "Response buffer: '" .. responseBuffer .. "'" println
-    
-) catch(Exception,
-    "Ping failed: " .. Exception message println
+if(File with(dllPath) exists,
+    "DLL file exists, loading..." println
+    lib := DynLib clone setPath(dllPath) open
+    if(lib,
+        "Library loaded successfully" println
+        // Try to call the init function
+        context := Object clone
+        result := lib call("IoTelosBridgeInit", context)
+        "Init result: " .. (result or "nil") println
+        
+        // Set up the Telos namespace
+        Telos := Object clone do(
+            Bridge := context TelosBridge
+        )
+        
+        Lobby Telos := Telos
+        
+        "Context slotNames: " .. (context slotNames) println
+        "Context TelosBridge: " .. (context TelosBridge) println
+        "Context TelosBridge type: " .. (context TelosBridge type) println
+        "Context TelosBridge slotNames: " .. (context TelosBridge slotNames) println
+        
+        // Test initialization
+        initConfig := Map clone
+        initConfig atPut("max_workers", 4)
+        initConfig atPut("log_level", "INFO")
+        result := Telos Bridge initialize(initConfig)
+        "Initialize result: " .. result println
+        
+        // Test status
+        status := Telos Bridge status
+        "Status result: " .. status println
+        
+    ,
+        "Failed to load library" println
+    )
+,
+    "DLL file does not exist at: " .. dllPath println
 )
 
 "=== Ping Test Complete ===" println

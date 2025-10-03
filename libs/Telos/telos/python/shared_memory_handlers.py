@@ -127,8 +127,8 @@ def handle_shared_memory(worker, request_data: Dict[str, Any]) -> Dict[str, Any]
             except Exception as e:
                 logger.error(f"Failed to get buffer address: {e}")
                 return {
-                    'success': True,
-                    'mapped_ptr': 0  # Return 0 as a fallback - C code will handle this
+                    'success': False,
+                    'error': f'Failed to get buffer address: {str(e)}'
                 }
 
         elif memory_operation == 'unmap':

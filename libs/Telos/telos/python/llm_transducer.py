@@ -55,10 +55,7 @@ from urllib import request as urllib_request
 from urllib import error as urllib_error
 
 # UvmObject imports for prototypal compliance
-try:
-    from .uvm_object import create_uvm_object
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from uvm_object import create_uvm_object  # type: ignore
+from .uvm_object import create_uvm_object
 
 logger = logging.getLogger(__name__)
 

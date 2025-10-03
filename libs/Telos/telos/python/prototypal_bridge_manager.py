@@ -78,13 +78,8 @@ from prototypal_bridge_messaging import (
 
 logger = logging.getLogger(__name__)
 
-# Import the CFFI bridge (this will be available when imported from prototypal_bridge.py)
-try:
-    from _telos_bridge import lib, ffi
-except ImportError:
-    # Fallback for when the C extension is not built yet
-    lib = None
-    ffi = None
+# Import the CFFI bridge (MANDATORY)
+from _telos_bridge import lib, ffi
 
 def create_prototypal_bridge_manager():
     """

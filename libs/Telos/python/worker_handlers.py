@@ -184,15 +184,34 @@ def handle_scalable_vector_operation(worker, request_data: Dict[str, Any]) -> Di
     try:
         from scalable_vector_handlers import handle_scalable_vector_operation as _handle_op
         import json
-        
+
         # Convert request data to JSON string for handler
         task_json = json.dumps(request_data)
         result_json = _handle_op(task_json)
         result = json.loads(result_json)
-        
+
         return result
     except Exception as e:
         return {
             'success': False,
             'error': f'Scalable vector operation failed: {str(e)}'
+        }
+
+
+def handle_training_pipeline_operation(worker, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle training pipeline operations (docs preprocessing, kernel training, insights)"""
+    try:
+        from training_pipeline_handlers import handle_training_pipeline_operation as _handle_op
+        import json
+
+        # Convert request data to JSON string for handler
+        task_json = json.dumps(request_data)
+        result_json = _handle_op(task_json)
+        result = json.loads(result_json)
+
+        return result
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Training pipeline operation failed: {str(e)}'
         }

@@ -70,7 +70,7 @@ import threading
 try:
     from .uvm_object import create_uvm_object
 except ImportError:
-    # UvmObject required for prototypal programming - cannot fallback
+    # Graceful error when UvmObject dependency unavailable for prototypal programming
     raise ImportError("uvm_object module required for TELOS L1 cache functionality")
 
 # FAISS imports
@@ -235,7 +235,7 @@ def create_faiss_index_manager(vector_dim: int = 1536, index_type: str = "IVFFla
     manager = create_uvm_object()
     
     if not FAISS_AVAILABLE:
-        # FAISS required for L1 cache functionality - no fallback allowed
+        # FAISS library is mandatory for L1 cache operations - system requires this dependency
         raise ImportError(f"FAISS library required for TELOS L1 cache but not available: {FAISS_IMPORT_ERROR}")
     
     # Internal state

@@ -44,22 +44,13 @@ to maintain the 300-line architectural limit.
 from typing import Dict, Any, List, Optional
 import logging
 
-try:
-    from .worker_utils import (
-        _extract_vector_from_config,
-        _prepare_vector_response,
-        _ensure_l1_cache_manager,
-        _l1_cache_config,
-        FAISS_AVAILABLE,
-    )
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from worker_utils import (  # type: ignore
-        _extract_vector_from_config,
-        _prepare_vector_response,
-        _ensure_l1_cache_manager,
-        _l1_cache_config,
-        FAISS_AVAILABLE,
-    )
+from .worker_utils import (
+    _extract_vector_from_config,
+    _prepare_vector_response,
+    _ensure_l1_cache_manager,
+    _l1_cache_config,
+    FAISS_AVAILABLE,
+)
 
 
 def handle_vector_operations(worker, request_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -276,7 +267,5 @@ def handle_vector_operations(worker, request_data: Dict[str, Any]) -> Dict[str, 
 
     return {
         'success': False,
-        'error': f"Unknown vector operation: {action}",
-    }  'success': False,
         'error': f"Unknown vector operation: {action}",
     }

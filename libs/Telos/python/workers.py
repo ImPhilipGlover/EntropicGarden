@@ -65,240 +65,117 @@ import time
 import types
 from pathlib import Path
 
-try:
-    from .telemetry_store import (
-        record_event as record_telemetry_event,
-        snapshot_events as snapshot_telemetry_events,
-        summarize_conflict_replay,
-        build_conflict_replay_event,
-        clear_events as clear_telemetry_events,
-        DEFAULT_MAX_EVENTS as TELEMETRY_DEFAULT_MAX_EVENTS,
-    )
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from telemetry_store import (  # type: ignore
-        record_event as record_telemetry_event,
-        snapshot_events as snapshot_telemetry_events,
-        summarize_conflict_replay,
-        build_conflict_replay_event,
-        clear_events as clear_telemetry_events,
-        DEFAULT_MAX_EVENTS as TELEMETRY_DEFAULT_MAX_EVENTS,
-    )
+from .telemetry_store import (
+    record_event as record_telemetry_event,
+    snapshot_events as snapshot_telemetry_events,
+    summarize_conflict_replay,
+    build_conflict_replay_event,
+    clear_events as clear_telemetry_events,
+    DEFAULT_MAX_EVENTS as TELEMETRY_DEFAULT_MAX_EVENTS,
+)
 
-try:
-    from .performance_benchmark import create_performance_benchmark
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from performance_benchmark import create_performance_benchmark  # type: ignore
+from .performance_benchmark import create_performance_benchmark
 
-try:
-    from .performance_benchmark_handlers import (
-        handle_create_performance_benchmark,
-        handle_benchmark_llm_transduction,
-        handle_benchmark_zodb_operations,
-        handle_benchmark_federated_memory,
-        handle_generate_benchmark_report,
-        handle_print_benchmark_summary,
-    )
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from performance_benchmark_handlers import (  # type: ignore
-        handle_create_performance_benchmark,
-        handle_benchmark_llm_transduction,
-        handle_benchmark_zodb_operations,
-        handle_benchmark_federated_memory,
-        handle_generate_benchmark_report,
-        handle_print_benchmark_summary,
-    )
+from .performance_benchmark_handlers import (
+    handle_create_performance_benchmark,
+    handle_benchmark_llm_transduction,
+    handle_benchmark_zodb_operations,
+    handle_benchmark_federated_memory,
+    handle_generate_benchmark_report,
+    handle_print_benchmark_summary,
+)
 
-try:
-    from . import prototypal_bridge
-except ImportError:  # pragma: no cover - fallback for direct imports
-    import prototypal_bridge  # type: ignore
+from . import prototypal_bridge
 
-try:
-    from .l1_cache_manager import (
-        create_l1_cache_manager,
-        load_vector_from_shared_memory,
-        store_vector_in_shared_memory,
-        FAISS_AVAILABLE,
-        FAISS_IMPORT_ERROR,
-    )
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from l1_cache_manager import (  # type: ignore
-        create_l1_cache_manager,
-        load_vector_from_shared_memory,
-        store_vector_in_shared_memory,
-        FAISS_AVAILABLE,
-        FAISS_IMPORT_ERROR,
-    )
+from .l1_cache_manager import (
+    create_l1_cache_manager,
+    load_vector_from_shared_memory,
+    store_vector_in_shared_memory,
+    FAISS_AVAILABLE,
+    FAISS_IMPORT_ERROR,
+)
 
-try:
-    from .uvm_object import create_uvm_object
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from uvm_object import create_uvm_object  # type: ignore
+from .uvm_object import create_uvm_object
 
-try:
-    from .llm_transducer import create_llm_transducer
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from llm_transducer import create_llm_transducer  # type: ignore
+from .llm_transducer import create_llm_transducer
 
-try:
-    from .worker_types import create_prototypal_worker, create_base_worker, register_worker_prototype, get_worker_prototype
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from worker_types import create_prototypal_worker, create_base_worker, register_worker_prototype, get_worker_prototype  # type: ignore
+from .worker_types import create_prototypal_worker, create_base_worker, register_worker_prototype, get_worker_prototype
 
-try:
-    from .worker_exceptions import TelosProxyError, TelosWorkerError
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from worker_exceptions import TelosProxyError, TelosWorkerError  # type: ignore
+from .worker_exceptions import TelosProxyError, TelosWorkerError
 
-try:
-    from .worker_utils import (
-        _sanitize_trace_context,
-        _start_worker_span,
-        _emit_conflict_replay_opentelemetry,
-        configure_telemetry_context,
-        _normalize_l1_config,
-        _ensure_l1_cache_manager,
-        _resolve_shared_memory_name,
-        _extract_vector_from_config,
-        _prepare_vector_response,
-        _get_federated_memory_interface,
-        create_worker_prototype,
-        get_worker_prototype,
-        extend_worker_prototype,
-    )
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from worker_utils import (  # type: ignore
-        _sanitize_trace_context,
-        _start_worker_span,
-        _emit_conflict_replay_opentelemetry,
-        configure_telemetry_context,
-        _normalize_l1_config,
-        _ensure_l1_cache_manager,
-        _resolve_shared_memory_name,
-        _extract_vector_from_config,
-        _prepare_vector_response,
-        _get_federated_memory_interface,
-        create_worker_prototype,
-        get_worker_prototype,
-        extend_worker_prototype,
-    )
+from .worker_utils import (
+    _sanitize_trace_context,
+    _start_worker_span,
+    _emit_conflict_replay_opentelemetry,
+    configure_telemetry_context,
+    _normalize_l1_config,
+    _ensure_l1_cache_manager,
+    _resolve_shared_memory_name,
+    _extract_vector_from_config,
+    _prepare_vector_response,
+    _get_federated_memory_interface,
+    create_worker_prototype,
+    get_worker_prototype,
+    extend_worker_prototype,
+)
 # NOTE: The implementation of the worker helper functions (vector extraction,
 # shared-memory helpers, L1 cache normalization, and prototype registry) was
 # moved into `libs/Telos/python/worker_utils.py` to reduce duplication and
 # centralize shared state. The local duplicate implementations that previously
 # followed have been removed so this module uses the shared implementations
 # imported above.
-try:
-    # Import shared global state from worker_utils to avoid duplication
-    from .worker_utils import (
-        _worker_prototypes,
-        _telemetry_store_proxy,
-        _telemetry_lock_proxy,
-        _telemetry_max_events,
-        _l1_cache_manager,
-        _l1_cache_config,
-        _l1_cache_lock,
-        FEDERATED_MEMORY_AVAILABLE,
-        _federated_memory_module,
-        FEDERATED_MEMORY_IMPORT_ERROR,
-        _federated_memory_lock,
-    )
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from worker_utils import (  # type: ignore
-        _worker_prototypes,
-        _telemetry_store_proxy,
-        _telemetry_lock_proxy,
-        _telemetry_max_events,
-        _l1_cache_manager,
-        _l1_cache_config,
-        _l1_cache_lock,
-        FEDERATED_MEMORY_AVAILABLE,
-        _federated_memory_module,
-        FEDERATED_MEMORY_IMPORT_ERROR,
-        _federated_memory_lock,
-    )
-try:
-    from .shared_memory import SharedMemoryHandle, create_shared_memory_manager
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from shared_memory import SharedMemoryHandle, create_shared_memory_manager  # type: ignore
+from .worker_utils import (
+    _worker_prototypes,
+    _telemetry_store_proxy,
+    _telemetry_lock_proxy,
+    _telemetry_max_events,
+    _l1_cache_manager,
+    _l1_cache_config,
+    _l1_cache_lock,
+    FEDERATED_MEMORY_AVAILABLE,
+    _federated_memory_module,
+    FEDERATED_MEMORY_IMPORT_ERROR,
+    _federated_memory_lock,
+)
+from .shared_memory import SharedMemoryHandle, create_shared_memory_manager
 
 from .process_pool import create_process_pool_manager
 
 
 
-try:
-    from .worker_handlers import handle_ping, handle_vsa_batch, handle_ann_search, handle_scalable_vector_operation
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from worker_handlers import handle_ping, handle_vsa_batch, handle_ann_search, handle_scalable_vector_operation  # type: ignore
+from .worker_handlers import handle_ping, handle_vsa_batch, handle_ann_search, handle_scalable_vector_operation
 
-try:
-    from .transactional_outbox_handlers import handle_transactional_outbox
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from transactional_outbox_handlers import handle_transactional_outbox  # type: ignore
+from .transactional_outbox_handlers import handle_transactional_outbox
 
-try:
-    from .zodb_handlers import handle_zodb_manager
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from zodb_handlers import handle_zodb_manager  # type: ignore
+from .zodb_handlers import handle_zodb_manager
 
-try:
-    from .federated_memory_handlers import handle_federated_memory
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from federated_memory_handlers import handle_federated_memory  # type: ignore
+from .federated_memory_handlers import handle_federated_memory
 
 
 
-try:
-    from .opentelemetry_handlers import handle_opentelemetry
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from opentelemetry_handlers import handle_opentelemetry  # type: ignore
+from .opentelemetry_handlers import handle_opentelemetry
 
 
 
-try:
-    from .bridge_metrics_handlers import handle_bridge_metrics
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from bridge_metrics_handlers import handle_bridge_metrics  # type: ignore
+from .bridge_metrics_handlers import handle_bridge_metrics
 
 
 
-try:
-    from .llm_handlers import handle_llm_transducer
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from llm_handlers import handle_llm_transducer  # type: ignore
+from .llm_handlers import handle_llm_transducer
 
-try:
-    from .linting_handlers import handle_lint_python, handle_lint_c, handle_lint_combined
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from linting_handlers import handle_lint_python, handle_lint_c, handle_lint_combined  # type: ignore
+from .linting_handlers import handle_lint_python, handle_lint_c, handle_lint_combined
 
 
 
-try:
-    from .transactional_outbox_scenarios import run_scenario as transactional_outbox_run_scenario
-    from .transactional_outbox_scenarios import dlq_snapshot as transactional_outbox_dlq_snapshot
-    from .transactional_outbox_scenarios import purge_processed as transactional_outbox_purge_processed
-    from .transactional_outbox_scenarios import enqueue_matrix as transactional_outbox_enqueue_matrix
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from transactional_outbox_scenarios import (  # type: ignore
-        run_scenario as transactional_outbox_run_scenario,
-        dlq_snapshot as transactional_outbox_dlq_snapshot,
-        purge_processed as transactional_outbox_purge_processed,
-        enqueue_matrix as transactional_outbox_enqueue_matrix,
-    )
+from .transactional_outbox_scenarios import run_scenario as transactional_outbox_run_scenario
+from .transactional_outbox_scenarios import dlq_snapshot as transactional_outbox_dlq_snapshot
+from .transactional_outbox_scenarios import purge_processed as transactional_outbox_purge_processed
+from .transactional_outbox_scenarios import enqueue_matrix as transactional_outbox_enqueue_matrix
 
-try:
-    from .zodb_scenarios import run_smoke as zodb_run_smoke
-    from .zodb_scenarios import run_read_only as zodb_run_read_only
-    from .zodb_scenarios import run_commit_abort as zodb_run_commit_abort
-    from .zodb_scenarios import run_fault as zodb_run_fault
-except ImportError:  # pragma: no cover - fallback for direct imports
-    from zodb_scenarios import (  # type: ignore
-        run_smoke as zodb_run_smoke,
-        run_read_only as zodb_run_read_only,
-        run_commit_abort as zodb_run_commit_abort,
-        run_fault as zodb_run_fault,
-    )
+from .zodb_scenarios import run_smoke as zodb_run_smoke
+from .zodb_scenarios import run_read_only as zodb_run_read_only
+from .zodb_scenarios import run_commit_abort as zodb_run_commit_abort
+from .zodb_scenarios import run_fault as zodb_run_fault
 
 from .worker_factory import create_base_worker
 from .worker_lifecycle import initialize_workers, shutdown_workers, submit_worker_task
@@ -489,8 +366,7 @@ def _worker_execute(request_data: Dict[str, Any]) -> Dict[str, Any]:
     global _worker_instance
 
     if '_worker_instance' not in globals():
-        # Fallback if worker wasn't properly initialized
-        _worker_instance = create_base_worker(os.getpid())
+        raise RuntimeError("Worker not properly initialized - call initialize_workers() first")
 
     sanitized_context = _sanitize_trace_context(request_data.get('trace_context'))
     payload = dict(request_data)

@@ -70,8 +70,7 @@ def _worker_execute(request_data: Dict[str, Any]) -> Dict[str, Any]:
     global _worker_instance
 
     if '_worker_instance' not in globals() or _worker_instance is None:
-        # Fallback if worker wasn't properly initialized
-        _worker_instance = create_base_worker(os.getpid())
+        raise RuntimeError("Worker not properly initialized - call initialize_workers() first")
 
     sanitized_context = _sanitize_trace_context(request_data.get('trace_context'))
     payload = dict(request_data)

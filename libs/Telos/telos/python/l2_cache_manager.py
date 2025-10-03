@@ -618,44 +618,44 @@ def create_disk_vector_index(storage_path: str, vector_dim: int = 1536,
                                 graph_degree = max(2, min(32, len(active_items) - 1)) if len(active_items) > 1 else 2
                                 num_threads = max(1, min(4, os.cpu_count() or 1))
 
-                                # Use transient DiskANN index for search (legitimate temp directory usage)
-                                with tempfile.TemporaryDirectory(prefix="telos_diskann_") as index_dir:
-                                    _diskann.build_memory_index(
-                                        data=vectors,
-                                        distance_metric="cosine",
-                                        index_directory=index_dir,
-                                        complexity=complexity,
-                                        graph_degree=graph_degree,
-                                        num_threads=num_threads,
-                                        vector_dtype=np.float32,
-                                        tags=labels,
-                                        index_prefix="telos_mem"
-                                    )
+                                # Use persistent DiskANN directory for memory index
+                                os.makedirs(_diskann_directory, exist_ok=True)
+                                _diskann.build_memory_index(
+                                    data=vectors,
+                                    distance_metric="cosine",
+                                    index_directory=_diskann_directory,
+                                    complexity=complexity,
+                                    graph_degree=graph_degree,
+                                    num_threads=num_threads,
+                                    vector_dtype=np.float32,
+                                    tags=labels,
+                                    index_prefix="search_mem"
+                                )
 
-                                    diskann_index = _diskann.StaticMemoryIndex(
-                                        index_directory=index_dir,
-                                        index_prefix="telos_mem",
-                                        num_threads=num_threads,
-                                        initial_search_complexity=complexity,
-                                        distance_metric="cosine",
-                                        vector_dtype=np.float32,
-                                        dimensions=_vector_dim
-                                    )
+                                diskann_index = _diskann.StaticMemoryIndex(
+                                    index_directory=_diskann_directory,
+                                    index_prefix="search_mem",
+                                    num_threads=num_threads,
+                                    initial_search_complexity=complexity,
+                                    distance_metric="cosine",
+                                    vector_dtype=np.float32,
+                                    dimensions=_vector_dim
+                                )
 
-                                    query = np.asarray(query_vector, dtype=np.float32).reshape(1, -1)
-                                    response = diskann_index.search(
-                                        query,
-                                        k_neighbors=min(k, len(active_items)),
-                                        complexity=complexity
-                                    )
+                                query = np.asarray(query_vector, dtype=np.float32).reshape(1, -1)
+                                response = diskann_index.search(
+                                    query,
+                                    k_neighbors=min(k, len(active_items)),
+                                    complexity=complexity
+                                )
 
-                                    for label, distance in zip(response.identifiers[0], response.distances[0]):
-                                        oid = label_to_oid.get(int(label))
-                                        if oid is None:
-                                            continue
-                                        similarity = float(1.0 - distance)
-                                        if similarity >= threshold:
-                                            similarities.append((oid, similarity))
+                                for label, distance in zip(response.identifiers[0], response.distances[0]):
+                                    oid = label_to_oid.get(int(label))
+                                    if oid is None:
+                                        continue
+                                    similarity = float(1.0 - distance)
+                                    if similarity >= threshold:
+                                        similarities.append((oid, similarity))
 
                                 used_diskann = True
                                 diskann_success = True

@@ -584,10 +584,9 @@ def create_l1_faiss_cache_manager(
                     return future.result(timeout=0.1)  # 100ms timeout
                 except threading.TimeoutError:
                     logger.warning(f"Streaming query {query_id} timed out")
-                    return []
+                    raise RuntimeError(f"Streaming search timed out for query {query_id}")
             else:
-                # Fallback to direct search
-                pass
+                raise RuntimeError("Failed to submit streaming query")
         
         # Direct search
         with _lock:

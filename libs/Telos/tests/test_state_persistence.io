@@ -44,7 +44,9 @@ doFile("libs/Telos/io/TelosBridge.io")
 "=== BRIDGE STATE PERSISTENCE TEST ===" println
 
 "Test 1: Initialize bridge..." println
-initResult := Telos Bridge initialize(4)
+initConfig := Map clone
+initConfig atPut("max_workers", 4)
+initResult := Telos Bridge initialize(initConfig)
 "Bridge initialize result: " .. initResult println
 
 "Test 2: IMMEDIATE submitTask test after initialization..." println
@@ -58,7 +60,9 @@ secondResult := Telos Bridge submitTask(testTask, 1024)
 
 "Test 4: Check if we can initialize again (should fail)..." println
 try(
-    reinitResult := Telos Bridge initialize(4)
+    reinitConfig := Map clone
+    reinitConfig atPut("max_workers", 4)
+    reinitResult := Telos Bridge initialize(reinitConfig)
     "Reinitialize result: " .. reinitResult println
     if(reinitResult == -5,
         "✅ Got expected BRIDGE_ERROR_ALREADY_INITIALIZED (-5)" println,

@@ -44,7 +44,9 @@ doFile("libs/Telos/io/TelosBridge.io")
 "=== TESTING SUBMITTASK WITH BUILD OPERATION ===" println
 
 // Initialize the bridge first
-initResult := Telos Bridge initialize(4)
+initConfig := Map clone
+initConfig atPut("max_workers", 4)
+initResult := Telos Bridge initialize(initConfig)
 "Bridge initialization: " .. initResult println
 
 if(initResult == true,

@@ -218,7 +218,6 @@ TestChaosConductor setSlot("testChaosTriggering", method(
     hrc setChaosEnabled(true)
     hrc setChaosProbability(1.0)  // Always trigger
 
-    // Mock successful cycle outcome
     cycleOutcome := Map clone
     cycleOutcome atPut("success", true)
     cycleOutcome atPut("strategy", "vsa_native")
